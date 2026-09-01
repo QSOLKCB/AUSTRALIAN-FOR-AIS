@@ -41,6 +41,7 @@ CULTURAL_DEPENDENCY_VALUES = frozenset({"low", "medium", "high", "unknown"})
 SOURCE_TYPE_VALUES = frozenset({"synthetic", "naturalistic", "constructed"})
 
 HostilityValue = bool | Literal["uncertain"]
+SocialValence = Literal["friendly", "hostile", "neutral", "ambiguous", "unknown"]
 
 
 @dataclass
@@ -56,7 +57,7 @@ class BenchmarkExample:
     pragmatic_interpretations: list[str]
     primary_pragmatic_interpretation: str
     humour_mechanisms: list[str]
-    social_valence: str
+    social_valence: SocialValence
     hostility: HostilityValue
     confidence: float
     ambiguity: bool
@@ -137,7 +138,7 @@ class EvaluationRecord:
     predicted_literal: str
     predicted_pragmatic: str
     predicted_hostility: HostilityValue
-    predicted_social_valence: str
+    predicted_social_valence: SocialValence
     predicted_ambiguity: bool
     model_confidence: float
     model_id: str | None = None
