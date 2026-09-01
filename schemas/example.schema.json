@@ -1,6 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/QSOLKCB/AUSTRALIAN-FOR-AIS/schemas/example.schema.json",
+  "$id": "https://github.com/QSOLKCB/AUSTRALIAN-FOR-AIS/schemas/v0.1.0/example.schema.json",
+  "x-project-schema-version": "0.1.0",
   "title": "Australian For AIs — Benchmark Example",
   "description": "Schema for a single benchmark example in the Australian For AIs dataset.",
   "type": "object",
@@ -145,12 +146,14 @@
     "provenance": {
       "type": "string",
       "minLength": 1,
-      "description": "Description of origin, licensing, and consent status."
+      "pattern": "\\S",
+      "description": "Description of origin, licensing, and consent status. Must contain non-whitespace content."
     },
     "license": {
       "type": "string",
       "minLength": 1,
-      "description": "Licence for this example."
+      "pattern": "\\S",
+      "description": "Licence for this example. Must contain non-whitespace content."
     },
     "tags": {
       "type": "array",
@@ -161,6 +164,7 @@
     },
     "context_swap_group": {
       "type": "string",
+      "minLength": 1,
       "description": "Optional. Links examples that share the same utterance but differ in context."
     }
   }
