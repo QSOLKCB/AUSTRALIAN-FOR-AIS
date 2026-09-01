@@ -18,6 +18,7 @@ import jsonschema
 _SCHEMA_PACKAGE_ROOT = resources.files("australian_for_ais").joinpath("schemas")
 _EXAMPLE_SCHEMA_RESOURCE = _SCHEMA_PACKAGE_ROOT.joinpath("example.schema.json")
 _EVALUATION_SCHEMA_RESOURCE = _SCHEMA_PACKAGE_ROOT.joinpath("evaluation.schema.json")
+_INSUFFICIENT_CONTEXT = "insufficient_context"
 
 
 class ValidationError(Exception):
@@ -110,14 +111,25 @@ def _semantic_validate_example(record: Mapping[str, Any]) -> None:
 
     primary = record.get("primary_pragmatic_interpretation", "")
     primary_normalised = _normalise_text(primary)
-    if primary_normalised == "insufficient_context" and primary != "insufficient_context":
+    if primary_normalised == _INSUFFICIENT_CONTEXT and primary != _INSUFFICIENT_CONTEXT:
         raise ValidationError(
             "The insufficient-context sentinel must be written exactly as "
             "'insufficient_context'."
         )
 
+    # The sentinel is a control value, not an ordinary accepted reading. It is
+    # admitted only through the exact primary field and is injected by scoring
+    # only for that case.
+    for interpretation in interps:
+        if isinstance(interpretation, str) and _normalise_text(interpretation) == _INSUFFICIENT_CONTEXT:
+            raise ValidationError(
+                "'insufficient_context' is reserved for "
+                "'primary_pragmatic_interpretation' and must not appear in "
+                "'pragmatic_interpretations'."
+            )
+
     accepted = {_normalise_text(v) for v in interps if isinstance(v, str)}
-    if primary != "insufficient_context" and primary_normalised not in accepted:
+    if primary != _INSUFFICIENT_CONTEXT and primary_normalised not in accepted:
         raise ValidationError(
             "'primary_pragmatic_interpretation' must be present in "
             "'pragmatic_interpretations', unless it is 'insufficient_context'."
@@ -129,7 +141,7 @@ def _semantic_validate_example(record: Mapping[str, Any]) -> None:
             "at least two distinct normalized readings."
         )
 
-    if primary == "insufficient_context":
+    if primary == _INSUFFICIENT_CONTEXT:
         if record.get("ambiguity") is not True:
             raise ValidationError(
                 "'insufficient_context' requires 'ambiguity' to be true."
@@ -154,13 +166,25 @@ def _semantic_validate_example(record: Mapping[str, Any]) -> None:
         )
 
 
+def _accepted_direction_set(record: Mapping[str, Any]) -> set[str]:
+    """Return normalized accepted directions used to validate context swaps."""
+    accepted = {
+        _normalise_text(value)
+        for value in record.get("pragmatic_interpretations", [])
+        if isinstance(value, str)
+    }
+    if record.get("primary_pragmatic_interpretation") == _INSUFFICIENT_CONTEXT:
+        accepted.add(_INSUFFICIENT_CONTEXT)
+    return accepted
+
+
 def validate_context_swap_groups(records: Sequence[Mapping[str, Any]]) -> None:
     """
     Validate dataset-level context-swap contracts.
 
     Every group must contain at least two records, preserve the same observed
-    utterance, use distinct contexts, and encode distinct primary pragmatic
-    directions so every generated pair has a meaningful context contrast.
+    utterance, use distinct contexts, encode distinct primary pragmatic
+    directions, and keep accepted direction sets disjoint between members.
     """
     groups: dict[str, list[Mapping[str, Any]]] = {}
     for record in records:
@@ -198,6 +222,17 @@ def validate_context_swap_groups(records: Sequence[Mapping[str, Any]]) -> None:
                 "pragmatic interpretation for every member."
             )
 
+        direction_sets = [_accepted_direction_set(member) for member in members]
+        for i in range(len(direction_sets)):
+            for j in range(i + 1, len(direction_sets)):
+                overlap = direction_sets[i] & direction_sets[j]
+                if overlap:
+                    overlap_text = ", ".join(sorted(overlap))
+                    raise ValidationError(
+                        f"context_swap_group '{group_name}' must use disjoint accepted "
+                        f"pragmatic directions between members; overlap: {overlap_text}."
+                    )
+
 
 def validate_evaluation_record(record: Any) -> None:
     """Validate a single complete evaluation prediction record."""
@@ -211,6 +246,17 @@ def validate_evaluation_record(record: Any) -> None:
 
     for field_name in ("example_id", "predicted_literal", "predicted_pragmatic"):
         _require_non_whitespace_text(record, field_name)
+
+    predicted_pragmatic = record.get("predicted_pragmatic")
+    if (
+        isinstance(predicted_pragmatic, str)
+        and _normalise_text(predicted_pragmatic) == _INSUFFICIENT_CONTEXT
+        and predicted_pragmatic != _INSUFFICIENT_CONTEXT
+    ):
+        raise ValidationError(
+            "The insufficient-context prediction sentinel must be written exactly as "
+            "'insufficient_context'."
+        )
 
     model_id = record.get("model_id")
     if model_id is not None and (
@@ -236,16 +282,27 @@ def validate_evaluation_record(record: Any) -> None:
 
 
 def iter_jsonl(path: pathlib.Path) -> Iterator[tuple[int, Any]]:
-    """Iterate over a JSONL file, yielding ``(line_number, parsed_value)`` tuples."""
-    with path.open(encoding="utf-8") as fh:
-        for lineno, line in enumerate(fh, start=1):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                yield lineno, json.loads(line)
-            except json.JSONDecodeError as exc:
-                raise ValidationError(f"Line {lineno}: malformed JSON — {exc}") from exc
+    """Iterate over a regular JSONL file, yielding ``(line_number, value)`` tuples."""
+    if not path.is_file():
+        raise ValidationError(f"JSONL input is not a regular file: {path}")
+
+    try:
+        with path.open(encoding="utf-8") as fh:
+            for lineno, line in enumerate(fh, start=1):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    yield lineno, json.loads(line)
+                except json.JSONDecodeError as exc:
+                    raise ValidationError(
+                        f"Line {lineno}: malformed JSON — {exc}"
+                    ) from exc
+    except ValidationError:
+        raise
+    except OSError as exc:
+        detail = exc.strerror or str(exc)
+        raise ValidationError(f"Could not read JSONL input '{path}': {detail}") from exc
 
 
 def validate_jsonl_file(
@@ -257,6 +314,7 @@ def validate_jsonl_file(
 
     Duplicate ``id`` or ``example_id`` values are rejected so the validation gate
     cannot approve a file that the corresponding loader later refuses to use.
+    Example datasets must contain at least one valid record.
     """
     if record_validator is None:
         record_validator = validate_example_record
@@ -307,9 +365,12 @@ def validate_jsonl_file(
         errors.append(str(exc))
 
     if is_example_dataset and not errors:
-        try:
-            validate_context_swap_groups(valid_example_records)
-        except ValidationError as exc:
-            errors.append(str(exc))
+        if not valid_example_records:
+            errors.append("Benchmark dataset must contain at least one example record.")
+        else:
+            try:
+                validate_context_swap_groups(valid_example_records)
+            except ValidationError as exc:
+                errors.append(str(exc))
 
     return errors
