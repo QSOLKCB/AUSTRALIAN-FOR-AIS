@@ -16,11 +16,11 @@ import pathlib
 import sys
 
 from .scoring import load_examples, load_predictions, score
-from .validation import ValidationError, validate_jsonl_file, validate_evaluation_record
+from .validation import ValidationError, validate_jsonl_file
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
-    """Validate a JSONL dataset file against the example schema."""
+    """Validate a JSONL dataset file against the example schema and dataset invariants."""
     path = pathlib.Path(args.file)
 
     if not path.exists():
@@ -36,7 +36,6 @@ def cmd_validate(args: argparse.Namespace) -> int:
             print(f"  {err}", file=sys.stderr)
         return 1
 
-    # Count valid records
     with path.open(encoding="utf-8") as fh:
         count = sum(1 for line in fh if line.strip())
     print(f"OK — {count} record(s) valid.")
@@ -44,7 +43,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 
 def cmd_evaluate(args: argparse.Namespace) -> int:
-    """Evaluate predictions against benchmark examples."""
+    """Evaluate a complete prediction file against benchmark examples."""
     examples_path = pathlib.Path(args.examples)
     predictions_path = pathlib.Path(args.predictions)
 
@@ -69,14 +68,13 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
         return 1
 
     result = score(examples, predictions)
-    scores = result.as_dict()
-
-    print(json.dumps(scores, indent=2))
+    print(json.dumps(result.as_dict(), indent=2))
 
     if result.errors:
-        print(f"\nWarnings ({len(result.errors)}):", file=sys.stderr)
+        print(f"\nEvaluation error(s) ({len(result.errors)}):", file=sys.stderr)
         for err in result.errors:
             print(f"  {err}", file=sys.stderr)
+        return 1
 
     return 0
 
@@ -93,14 +91,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # validate
     val_parser = subparsers.add_parser(
         "validate",
         help="Validate a JSONL dataset file against the example schema.",
     )
     val_parser.add_argument("file", help="Path to the JSONL file to validate.")
 
-    # evaluate
     eval_parser = subparsers.add_parser(
         "evaluate",
         help="Evaluate model predictions against benchmark examples.",
@@ -117,11 +113,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "validate":
         return cmd_validate(args)
-    elif args.command == "evaluate":
+    if args.command == "evaluate":
         return cmd_evaluate(args)
-    else:
-        parser.print_help()
-        return 1
+
+    parser.print_help()
+    return 1
 
 
 if __name__ == "__main__":
