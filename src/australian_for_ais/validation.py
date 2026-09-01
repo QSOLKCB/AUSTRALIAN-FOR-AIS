@@ -38,7 +38,8 @@ def _get_evaluation_schema() -> dict:
 
 
 def _normalise_text(value: str) -> str:
-    return value.strip().casefold()
+    """Case-fold text and collapse all whitespace runs for semantic comparison."""
+    return " ".join(value.split()).casefold()
 
 
 def _require_non_whitespace_text(record: Mapping[str, Any], field_name: str) -> None:
@@ -108,19 +109,25 @@ def _semantic_validate_example(record: Mapping[str, Any]) -> None:
         )
 
     primary = record.get("primary_pragmatic_interpretation", "")
+    primary_normalised = _normalise_text(primary)
+    if primary_normalised == "insufficient_context" and primary != "insufficient_context":
+        raise ValidationError(
+            "The insufficient-context sentinel must be written exactly as "
+            "'insufficient_context'."
+        )
+
     accepted = {_normalise_text(v) for v in interps if isinstance(v, str)}
-    if primary != "insufficient_context" and _normalise_text(primary) not in accepted:
+    if primary != "insufficient_context" and primary_normalised not in accepted:
         raise ValidationError(
             "'primary_pragmatic_interpretation' must be present in "
             "'pragmatic_interpretations', unless it is 'insufficient_context'."
         )
 
-    if record.get("ambiguity") is True:
-        if len(accepted) < 2:
-            raise ValidationError(
-                "If 'ambiguity' is true, 'pragmatic_interpretations' must contain "
-                "at least two distinct normalized readings."
-            )
+    if record.get("ambiguity") is True and len(accepted) < 2:
+        raise ValidationError(
+            "If 'ambiguity' is true, 'pragmatic_interpretations' must contain "
+            "at least two distinct normalized readings."
+        )
 
     if primary == "insufficient_context":
         if record.get("ambiguity") is not True:
@@ -167,7 +174,7 @@ def validate_context_swap_groups(records: Sequence[Mapping[str, Any]]) -> None:
                 f"context_swap_group '{group_name}' must contain at least two records."
             )
 
-        utterances = {str(member["utterance"]).strip() for member in members}
+        utterances = {_normalise_text(str(member["utterance"])) for member in members}
         if len(utterances) != 1:
             raise ValidationError(
                 f"context_swap_group '{group_name}' must use the same utterance "
