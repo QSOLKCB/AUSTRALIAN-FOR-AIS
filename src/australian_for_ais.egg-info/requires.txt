@@ -1,5 +1,0 @@
-jsonschema<5,>=4.21
-
-[dev]
-pytest<9,>=8.0
-pytest-cov<6,>=5.0

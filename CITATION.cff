@@ -1,8 +1,7 @@
 cff-version: 1.2.0
 message: >-
-  If you use this project in your research, please cite it using this metadata.
-  Note: many fields are placeholders and will be updated when the project reaches
-  a citable release milestone. Do not invent values for unknown fields.
+  This repository is currently a pre-release research substrate. If you use it,
+  cite the repository using this metadata and the exact commit or release you used.
 title: "Australian For AIs: A Cultural-Pragmatics Benchmark for Ethical Language Understanding"
 abstract: >-
   Australian For AIs is a cultural-pragmatics research project and benchmark
@@ -11,8 +10,7 @@ abstract: >-
   social context, discourse markers, ambiguity, and intended meaning.
 type: software
 license: Apache-2.0
-version: "0.1.0-phase1"
-date-released: "2024-01-01"
+version: "0.1.0"
 repository-code: "https://github.com/QSOLKCB/AUSTRALIAN-FOR-AIS"
 keywords:
   - natural language processing
@@ -27,7 +25,6 @@ keywords:
   - sentiment analysis
 authors:
   - name: "Australian For AIs Contributors"
-    alias: "QSOLKCB/AUSTRALIAN-FOR-AIS"
-# NOTE: Individual author ORCID identifiers, institutional affiliations, and DOI
-# are not yet assigned. Do not fabricate these values. Update this file when
-# formal publication or archival deposition occurs.
+# NOTE: No release date, DOI, ORCID identifiers, or institutional affiliations are
+# asserted here because they have not been established for this repository release.
+# Add them only when they are real and verifiable.
