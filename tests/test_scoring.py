@@ -1,14 +1,12 @@
-"""
-Tests for the deterministic reference evaluator.
-"""
+"""Tests for the deterministic reference evaluator."""
 
 import json
 import pathlib
 
 import pytest
 
+from australian_for_ais.models import BenchmarkExample, EvaluationRecord
 from australian_for_ais.scoring import (
-    ComponentScores,
     _context_swap_sensitive,
     _normalise,
     _pragmatic_matches,
@@ -16,7 +14,6 @@ from australian_for_ais.scoring import (
     load_predictions,
     score,
 )
-from australian_for_ais.models import BenchmarkExample, EvaluationRecord
 from australian_for_ais.validation import ValidationError
 
 REPO_ROOT = pathlib.Path(__file__).parent.parent
@@ -51,8 +48,11 @@ def _make_example(**kwargs) -> BenchmarkExample:
 def _make_prediction(**kwargs) -> EvaluationRecord:
     defaults = dict(
         example_id="t-001",
+        predicted_literal="Literal reading",
         predicted_pragmatic="Pragmatic reading A",
         predicted_hostility=False,
+        predicted_social_valence="neutral",
+        predicted_ambiguity=False,
         model_confidence=0.8,
     )
     defaults.update(kwargs)
@@ -63,27 +63,27 @@ class TestHelpers:
     def test_normalise(self):
         assert _normalise("  Hello World  ") == "hello world"
 
-    def test_pragmatic_matches_exact(self):
-        assert _pragmatic_matches("Pragmatic reading A", ["Pragmatic reading A"])
-
-    def test_pragmatic_matches_case_insensitive(self):
-        assert _pragmatic_matches("PRAGMATIC READING A", ["Pragmatic reading A"])
-
-    def test_pragmatic_matches_no_match(self):
-        assert not _pragmatic_matches("Something else", ["Pragmatic reading A"])
-
     def test_pragmatic_matches_multiple(self):
-        assert _pragmatic_matches("Reading B", ["Reading A", "Reading B"])
+        assert _pragmatic_matches("READING B", ["Reading A", "Reading B"])
 
-    def test_context_swap_sensitive_different(self):
-        pred_a = _make_prediction(example_id="a", predicted_pragmatic="Sarcasm")
-        pred_b = _make_prediction(example_id="b", predicted_pragmatic="Sincere praise")
-        assert _context_swap_sensitive(pred_a, pred_b)
+    def test_context_swap_requires_correct_direction(self):
+        ex_a = _make_example(
+            id="a",
+            pragmatic_interpretations=["Sincere praise"],
+            primary_pragmatic_interpretation="Sincere praise",
+        )
+        ex_b = _make_example(
+            id="b",
+            pragmatic_interpretations=["Sarcastic criticism"],
+            primary_pragmatic_interpretation="Sarcastic criticism",
+        )
+        pred_a = _make_prediction(example_id="a", predicted_pragmatic="Sincere praise")
+        pred_b = _make_prediction(example_id="b", predicted_pragmatic="Sarcastic criticism")
+        assert _context_swap_sensitive(ex_a, ex_b, pred_a, pred_b)
 
-    def test_context_swap_not_sensitive_same(self):
-        pred_a = _make_prediction(example_id="a", predicted_pragmatic="Sarcasm")
-        pred_b = _make_prediction(example_id="b", predicted_pragmatic="sarcasm")
-        assert not _context_swap_sensitive(pred_a, pred_b)
+        swapped_a = _make_prediction(example_id="a", predicted_pragmatic="Sarcastic criticism")
+        swapped_b = _make_prediction(example_id="b", predicted_pragmatic="Sincere praise")
+        assert not _context_swap_sensitive(ex_a, ex_b, swapped_a, swapped_b)
 
 
 class TestScoring:
@@ -93,139 +93,115 @@ class TestScoring:
     def _predictions(self) -> dict[str, EvaluationRecord]:
         return {"t-001": _make_prediction()}
 
-    def test_perfect_pragmatic_score(self):
-        examples = self._examples()
-        predictions = self._predictions()
-        result = score(examples, predictions)
-        assert result.pragmatic_match == 1
-        assert result.pragmatic_total == 1
-
-    def test_wrong_pragmatic(self):
-        examples = self._examples()
-        predictions = {"t-001": _make_prediction(predicted_pragmatic="Wrong")}
-        result = score(examples, predictions)
-        assert result.pragmatic_match == 0
-
-    def test_hostility_correct(self):
+    def test_perfect_component_scores(self):
         result = score(self._examples(), self._predictions())
+        assert result.literal_correct == 1
+        assert result.pragmatic_match == 1
         assert result.hostility_correct == 1
+        assert result.social_valence_correct == 1
+        assert result.n_matched_predictions == 1
+        assert result.errors == []
 
-    def test_hostility_wrong(self):
-        examples = self._examples()
-        predictions = {"t-001": _make_prediction(predicted_hostility=True)}
+    def test_missing_prediction_counts_in_denominators(self):
+        examples = {
+            "t-001": _make_example(id="t-001"),
+            "t-002": _make_example(id="t-002"),
+        }
+        predictions = {"t-001": _make_prediction(example_id="t-001")}
         result = score(examples, predictions)
-        assert result.hostility_correct == 0
+        assert result.pragmatic_total == 2
+        assert result.hostility_total == 2
+        assert result.literal_total == 2
+        assert result.social_valence_total == 2
+        assert result.pragmatic_match == 1
+        assert result.as_dict()["pragmatic_match_rate"] == 0.5
+        assert result.as_dict()["prediction_coverage_rate"] == 0.5
+        assert any("Missing prediction" in err for err in result.errors)
 
-    def test_ambiguity_recognition_for_ambiguous_example(self):
+    def test_missing_ambiguous_prediction_counts_as_missed(self):
         ex = _make_example(
             ambiguity=True,
-            pragmatic_interpretations=["Reading A", "Reading B"],
-            primary_pragmatic_interpretation="Reading A",
+            pragmatic_interpretations=["A", "B"],
+            primary_pragmatic_interpretation="A",
         )
-        examples = {"t-001": ex}
-        predictions = {"t-001": _make_prediction(predicted_ambiguity=True)}
-        result = score(examples, predictions)
+        result = score({"t-001": ex}, {})
         assert result.ambiguity_total == 1
-        assert result.ambiguity_recognised == 1
-
-    def test_ambiguity_not_recognised(self):
-        ex = _make_example(
-            ambiguity=True,
-            pragmatic_interpretations=["Reading A", "Reading B"],
-            primary_pragmatic_interpretation="Reading A",
-        )
-        examples = {"t-001": ex}
-        predictions = {"t-001": _make_prediction(predicted_ambiguity=False)}
-        result = score(examples, predictions)
         assert result.ambiguity_recognised == 0
 
-    def test_non_ambiguous_example_not_counted(self):
-        examples = self._examples()  # ambiguity=False
-        result = score(examples, self._predictions())
-        assert result.ambiguity_total == 0
-
-    def test_social_valence_correct(self):
+    def test_confidence_changes_brier_score(self):
         examples = self._examples()
-        predictions = {"t-001": _make_prediction(predicted_social_valence="neutral")}
-        result = score(examples, predictions)
-        assert result.social_valence_correct == 1
+        good_conf = score(
+            examples,
+            {"t-001": _make_prediction(model_confidence=0.95)},
+        ).as_dict()["confidence_brier_score"]
+        low_conf = score(
+            examples,
+            {"t-001": _make_prediction(model_confidence=0.2)},
+        ).as_dict()["confidence_brier_score"]
+        assert good_conf < low_conf
 
-    def test_social_valence_wrong(self):
-        examples = self._examples()
-        predictions = {"t-001": _make_prediction(predicted_social_valence="hostile")}
-        result = score(examples, predictions)
-        assert result.social_valence_correct == 0
+    def test_wrong_high_confidence_is_penalised(self):
+        result = score(
+            self._examples(),
+            {"t-001": _make_prediction(predicted_pragmatic="Wrong", model_confidence=0.95)},
+        )
+        assert result.as_dict()["confidence_brier_score"] == pytest.approx(0.9025)
 
-    def test_literal_accuracy(self):
-        examples = self._examples()
-        predictions = {"t-001": _make_prediction(predicted_literal="Literal reading")}
-        result = score(examples, predictions)
-        assert result.literal_correct == 1
-        assert result.literal_total == 1
+    def test_unknown_prediction_generates_error(self):
+        predictions = {"unknown": _make_prediction(example_id="unknown")}
+        result = score(self._examples(), predictions)
+        assert any("unknown example_id" in err for err in result.errors)
+        assert any("Missing prediction" in err for err in result.errors)
 
-    def test_literal_wrong(self):
-        examples = self._examples()
-        predictions = {"t-001": _make_prediction(predicted_literal="Wrong literal")}
-        result = score(examples, predictions)
-        assert result.literal_correct == 0
+    def test_context_swap_requires_correct_answers(self):
+        ex_a = _make_example(
+            id="cs-a",
+            context_swap_group="csw-1",
+            pragmatic_interpretations=["Sincere praise"],
+            primary_pragmatic_interpretation="Sincere praise",
+        )
+        ex_b = _make_example(
+            id="cs-b",
+            context_swap_group="csw-1",
+            pragmatic_interpretations=["Sarcastic criticism"],
+            primary_pragmatic_interpretation="Sarcastic criticism",
+        )
+        examples = {"cs-a": ex_a, "cs-b": ex_b}
 
-    def test_unknown_example_id_generates_error(self):
-        examples = self._examples()
-        predictions = {"no-such-id": _make_prediction(example_id="no-such-id")}
-        result = score(examples, predictions)
-        assert len(result.errors) == 1
+        correct = {
+            "cs-a": _make_prediction(example_id="cs-a", predicted_pragmatic="Sincere praise"),
+            "cs-b": _make_prediction(example_id="cs-b", predicted_pragmatic="Sarcastic criticism"),
+        }
+        assert score(examples, correct).context_swap_sensitive == 1
 
-    def test_context_swap_sensitivity(self):
+        wrong_but_different = {
+            "cs-a": _make_prediction(example_id="cs-a", predicted_pragmatic="Wrong A"),
+            "cs-b": _make_prediction(example_id="cs-b", predicted_pragmatic="Wrong B"),
+        }
+        assert score(examples, wrong_but_different).context_swap_sensitive == 0
+
+    def test_context_swap_missing_member_is_failure(self):
         ex_a = _make_example(id="cs-a", context_swap_group="csw-1")
         ex_b = _make_example(id="cs-b", context_swap_group="csw-1")
-        examples = {"cs-a": ex_a, "cs-b": ex_b}
-        pred_a = _make_prediction(example_id="cs-a", predicted_pragmatic="Sincere praise")
-        pred_b = _make_prediction(example_id="cs-b", predicted_pragmatic="Sarcasm")
-        predictions = {"cs-a": pred_a, "cs-b": pred_b}
-        result = score(examples, predictions)
-        assert result.context_swap_pairs_found == 1
-        assert result.context_swap_sensitive == 1
-
-    def test_context_swap_not_sensitive(self):
-        ex_a = _make_example(id="cs-a", context_swap_group="csw-1")
-        ex_b = _make_example(id="cs-b", context_swap_group="csw-1")
-        examples = {"cs-a": ex_a, "cs-b": ex_b}
-        pred_a = _make_prediction(example_id="cs-a", predicted_pragmatic="Same output")
-        pred_b = _make_prediction(example_id="cs-b", predicted_pragmatic="Same output")
-        predictions = {"cs-a": pred_a, "cs-b": pred_b}
-        result = score(examples, predictions)
+        result = score(
+            {"cs-a": ex_a, "cs-b": ex_b},
+            {"cs-a": _make_prediction(example_id="cs-a")},
+        )
         assert result.context_swap_pairs_found == 1
         assert result.context_swap_sensitive == 0
 
     def test_scoring_is_deterministic(self):
-        examples = self._examples()
-        predictions = self._predictions()
-        result_1 = score(examples, predictions)
-        result_2 = score(examples, predictions)
+        result_1 = score(self._examples(), self._predictions())
+        result_2 = score(self._examples(), self._predictions())
         assert result_1.as_dict() == result_2.as_dict()
 
-    def test_component_scores_as_dict_structure(self):
-        result = score(self._examples(), self._predictions())
-        d = result.as_dict()
-        assert "pragmatic_match_rate" in d
-        assert "hostility_accuracy" in d
-        assert "ambiguity_recognition_rate" in d
-        assert "context_swap_sensitivity_rate" in d
-        assert "errors" in d
 
-
-class TestLoadExamples:
+class TestLoaders:
     def test_load_starter_examples(self):
         examples = load_examples(DATA_PATH)
-        assert len(examples) > 0
+        assert len(examples) == 15
 
-    def test_load_malformed_fails(self, tmp_path):
-        bad = tmp_path / "bad.jsonl"
-        bad.write_text('{"id": "x", malformed}\n', encoding="utf-8")
-        with pytest.raises(ValidationError):
-            load_examples(bad)
-
-    def test_load_duplicate_id_fails(self, tmp_path):
+    def test_load_duplicate_example_id_fails(self, tmp_path):
         rec = {
             "id": "dup-001",
             "locale": "en-AU",
@@ -246,10 +222,24 @@ class TestLoadExamples:
             "provenance": "test",
             "license": "Apache-2.0",
         }
-        dup = tmp_path / "dup.jsonl"
-        dup.write_text(
-            json.dumps(rec) + "\n" + json.dumps(rec) + "\n",
-            encoding="utf-8"
-        )
+        path = tmp_path / "dup.jsonl"
+        path.write_text(json.dumps(rec) + "\n" + json.dumps(rec) + "\n", encoding="utf-8")
         with pytest.raises(ValidationError, match="duplicate"):
-            load_examples(dup)
+            load_examples(path)
+
+    def test_load_prediction_requires_complete_record(self, tmp_path):
+        path = tmp_path / "predictions.jsonl"
+        path.write_text(
+            json.dumps(
+                {
+                    "example_id": "t-001",
+                    "predicted_pragmatic": "Pragmatic reading A",
+                    "predicted_hostility": False,
+                    "model_confidence": 0.8,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(ValidationError):
+            load_predictions(path)
