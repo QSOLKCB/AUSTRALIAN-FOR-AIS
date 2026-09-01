@@ -35,7 +35,7 @@ Each example contains:
 - **tags**: searchable non-normative tags
 - **context_swap_group**: optional link between same-utterance context variants
 
-Required textual fields and scorable interpretation strings must contain at least one non-whitespace character.
+Required textual fields and scorable interpretation strings must contain at least one non-whitespace character. A benchmark dataset must contain at least one valid example record; blank or empty datasets fail validation.
 
 ### Important Distinctions
 
@@ -50,6 +50,8 @@ Required textual fields and scorable interpretation strings must contain at leas
 
 The primary pragmatic interpretation must be one of the accepted pragmatic interpretations unless it is exactly `insufficient_context`. An `insufficient_context` record must still preserve at least two distinct plausible readings, set `ambiguity: true`, and keep annotator confidence at or below 0.4.
 
+`insufficient_context` is a reserved control value, not an ordinary accepted reading. It must not appear in `pragmatic_interpretations`. The evaluator injects it as an accepted answer only when the example's exact primary field is `insufficient_context`, and prediction files must use that exact canonical spelling.
+
 A reading described as genuinely plausible in the fixture should be represented in `pragmatic_interpretations` if the evaluator is expected to accept it. `alternative_interpretations` must not become a hidden list of answers that the scorer treats as wrong.
 
 ---
@@ -62,10 +64,11 @@ Before scoring, a group is valid only when:
 
 1. it contains at least two records;
 2. every member has the same observed utterance;
-3. every member supplies a distinct context; and
-4. every member has a distinct primary pragmatic direction.
+3. every member supplies a distinct context;
+4. every member has a distinct primary pragmatic direction; and
+5. accepted pragmatic direction sets are disjoint between members.
 
-These dataset-level checks prevent unrelated utterances, duplicate contexts, or orphan records from silently entering the context-sensitivity metric.
+The disjointness rule is necessary because overlapping accepted sets can allow swapped answers to receive credit even when the model selects the wrong context-specific direction. Context-swap items are therefore stricter than ordinary ambiguous items.
 
 A pair passes only when:
 
@@ -95,6 +98,10 @@ When an example explicitly declares `primary_pragmatic_interpretation: "insuffic
 
 A prediction file may contain fewer records than the dataset, but missing records are counted as incorrect for dataset-proportion metrics and are reported as evaluation errors. Unknown IDs are also errors. Both the module CLI and `scripts/evaluate_predictions.py` return a non-zero exit code when evaluation errors are present.
 
+The public `score()` API also validates dictionary integrity before computing metrics. Mapping keys must match the `id` or `example_id` stored inside their records, and an empty benchmark mapping is rejected.
+
+All advertised JSONL inputs must be regular files. Directory paths and unreadable inputs are converted into validation failures rather than uncaught filesystem tracebacks.
+
 ---
 
 ## Component Metrics
@@ -121,9 +128,9 @@ No component is combined into a single "Australian understanding" score.
 
 ## Exact-Match Limitation
 
-The Phase 1 pragmatic evaluator uses case-folded exact string matching against accepted interpretations. This is deliberately transparent and deterministic, but it is not semantic equivalence.
+The Phase 1 pragmatic evaluator uses case-folded exact string matching with collapsed whitespace against accepted interpretations. This is deliberately transparent and deterministic, but it is not semantic equivalence.
 
-The one explicit sentinel rule is `insufficient_context`: it is accepted only when the example itself declares that sentinel as its primary pragmatic interpretation.
+The one explicit sentinel rule is `insufficient_context`: it is accepted only in exact canonical spelling and only when the example itself declares that sentinel as its primary pragmatic interpretation.
 
 A later phase may introduce a separately validated semantic scoring protocol.
 
