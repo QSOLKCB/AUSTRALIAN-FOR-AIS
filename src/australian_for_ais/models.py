@@ -12,12 +12,8 @@ Note on epistemic status:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Union
+from typing import Literal
 
-
-# ---------------------------------------------------------------------------
-# Taxonomy values — must match schemas/example.schema.json
-# ---------------------------------------------------------------------------
 
 HUMOUR_MECHANISMS = frozenset({
     "understatement",
@@ -42,28 +38,14 @@ SOCIAL_VALENCE_VALUES = frozenset({
 })
 
 CULTURAL_DEPENDENCY_VALUES = frozenset({"low", "medium", "high", "unknown"})
-
 SOURCE_TYPE_VALUES = frozenset({"synthetic", "naturalistic", "constructed"})
 
-# hostility is boolean | "uncertain"
-HostilityValue = Union[bool, str]  # str must be "uncertain"
+HostilityValue = bool | Literal["uncertain"]
 
-
-# ---------------------------------------------------------------------------
-# BenchmarkExample
-# ---------------------------------------------------------------------------
 
 @dataclass
 class BenchmarkExample:
-    """
-    A single benchmark example.
-
-    Fields strictly distinguish:
-    - Observation (utterance)
-    - Literal inference (literal_interpretation)
-    - Pragmatic inference (pragmatic_interpretations, primary_pragmatic_interpretation)
-    - Annotator metadata (confidence, annotation_notes)
-    """
+    """A single benchmark example with observation and annotation fields kept distinct."""
 
     id: str
     locale: str
@@ -90,7 +72,6 @@ class BenchmarkExample:
 
     @classmethod
     def from_dict(cls, data: dict) -> "BenchmarkExample":
-        """Construct from a dictionary (e.g. parsed from JSON)."""
         return cls(
             id=data["id"],
             locale=data["locale"],
@@ -117,7 +98,6 @@ class BenchmarkExample:
         )
 
     def to_dict(self) -> dict:
-        """Serialise to a dictionary suitable for JSON output."""
         d: dict = {
             "id": self.id,
             "locale": self.locale,
@@ -149,39 +129,30 @@ class BenchmarkExample:
         return d
 
 
-# ---------------------------------------------------------------------------
-# EvaluationRecord
-# ---------------------------------------------------------------------------
-
 @dataclass
 class EvaluationRecord:
-    """
-    A single model prediction record used in evaluation.
-
-    Mirrors schemas/evaluation.schema.json.
-    """
+    """A complete model prediction record used in Phase 1 evaluation."""
 
     example_id: str
+    predicted_literal: str
     predicted_pragmatic: str
     predicted_hostility: HostilityValue
+    predicted_social_valence: str
+    predicted_ambiguity: bool
     model_confidence: float
-    predicted_literal: str | None = None
-    predicted_social_valence: str | None = None
-    predicted_ambiguity: bool | None = None
     model_id: str | None = None
     notes: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict) -> "EvaluationRecord":
-        """Construct from a dictionary."""
         return cls(
             example_id=data["example_id"],
+            predicted_literal=data["predicted_literal"],
             predicted_pragmatic=data["predicted_pragmatic"],
             predicted_hostility=data["predicted_hostility"],
+            predicted_social_valence=data["predicted_social_valence"],
+            predicted_ambiguity=data["predicted_ambiguity"],
             model_confidence=data["model_confidence"],
-            predicted_literal=data.get("predicted_literal"),
-            predicted_social_valence=data.get("predicted_social_valence"),
-            predicted_ambiguity=data.get("predicted_ambiguity"),
             model_id=data.get("model_id"),
             notes=data.get("notes"),
         )
