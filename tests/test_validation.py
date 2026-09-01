@@ -7,6 +7,7 @@ import pytest
 
 from australian_for_ais.validation import (
     ValidationError,
+    validate_context_swap_groups,
     validate_evaluation_record,
     validate_example_record,
     validate_jsonl_file,
@@ -51,6 +52,32 @@ def _minimal_valid_prediction() -> dict:
     }
 
 
+def _context_swap_pair() -> list[dict]:
+    a = _minimal_valid_example()
+    a.update(
+        {
+            "id": "swap-a",
+            "utterance": "Good one, mate.",
+            "context": "A successful task has just been completed.",
+            "pragmatic_interpretations": ["Sincere praise"],
+            "primary_pragmatic_interpretation": "Sincere praise",
+            "context_swap_group": "swap-1",
+        }
+    )
+    b = _minimal_valid_example()
+    b.update(
+        {
+            "id": "swap-b",
+            "utterance": "Good one, mate.",
+            "context": "A careless mistake has just caused a problem.",
+            "pragmatic_interpretations": ["Sarcastic criticism"],
+            "primary_pragmatic_interpretation": "Sarcastic criticism",
+            "context_swap_group": "swap-1",
+        }
+    )
+    return [a, b]
+
+
 class TestExampleValidation:
     def test_valid_record_passes(self):
         validate_example_record(_minimal_valid_example())
@@ -79,9 +106,26 @@ class TestExampleValidation:
         with pytest.raises(ValidationError, match="must be present"):
             validate_example_record(rec)
 
+    def test_ambiguous_requires_two_distinct_readings(self):
+        rec = _minimal_valid_example()
+        rec["ambiguity"] = True
+        rec["pragmatic_interpretations"] = ["Reading A", "  reading a  "]
+        rec["primary_pragmatic_interpretation"] = "Reading A"
+        with pytest.raises(ValidationError, match="distinct normalized"):
+            validate_example_record(rec)
+
+    def test_insufficient_context_still_requires_two_distinct_readings(self):
+        rec = _minimal_valid_example()
+        rec["ambiguity"] = True
+        rec["primary_pragmatic_interpretation"] = "insufficient_context"
+        rec["confidence"] = 0.3
+        with pytest.raises(ValidationError, match="distinct normalized"):
+            validate_example_record(rec)
+
     def test_insufficient_context_requires_low_confidence(self):
         rec = _minimal_valid_example()
         rec["ambiguity"] = True
+        rec["pragmatic_interpretations"] = ["Understated praise", "Lukewarm response"]
         rec["primary_pragmatic_interpretation"] = "insufficient_context"
         rec["confidence"] = 0.41
         with pytest.raises(ValidationError, match="at or below 0.4"):
@@ -90,14 +134,41 @@ class TestExampleValidation:
     def test_insufficient_context_at_ceiling_passes(self):
         rec = _minimal_valid_example()
         rec["ambiguity"] = True
+        rec["pragmatic_interpretations"] = ["Understated praise", "Lukewarm response"]
         rec["primary_pragmatic_interpretation"] = "insufficient_context"
         rec["confidence"] = 0.4
         validate_example_record(rec)
 
-    @pytest.mark.parametrize("field", ["provenance", "license"])
-    def test_whitespace_metadata_fails(self, field):
+    @pytest.mark.parametrize(
+        "field",
+        [
+            "id",
+            "locale",
+            "utterance",
+            "context",
+            "speaker_relationship",
+            "literal_interpretation",
+            "primary_pragmatic_interpretation",
+            "provenance",
+            "license",
+        ],
+    )
+    def test_whitespace_required_text_fails(self, field):
         rec = _minimal_valid_example()
         rec[field] = "   "
+        with pytest.raises(ValidationError):
+            validate_example_record(rec)
+
+    def test_whitespace_pragmatic_interpretation_fails(self):
+        rec = _minimal_valid_example()
+        rec["pragmatic_interpretations"] = ["   "]
+        rec["primary_pragmatic_interpretation"] = "   "
+        with pytest.raises(ValidationError):
+            validate_example_record(rec)
+
+    def test_whitespace_alternative_interpretation_fails(self):
+        rec = _minimal_valid_example()
+        rec["alternative_interpretations"] = ["   "]
         with pytest.raises(ValidationError):
             validate_example_record(rec)
 
@@ -111,6 +182,34 @@ class TestExampleValidation:
         rec["hostility"] = "maybe"
         with pytest.raises(ValidationError):
             validate_example_record(rec)
+
+
+class TestContextSwapValidation:
+    def test_valid_pair_passes(self):
+        validate_context_swap_groups(_context_swap_pair())
+
+    def test_group_requires_at_least_two_members(self):
+        with pytest.raises(ValidationError, match="at least two"):
+            validate_context_swap_groups([_context_swap_pair()[0]])
+
+    def test_group_requires_same_utterance(self):
+        records = _context_swap_pair()
+        records[1]["utterance"] = "Different utterance."
+        with pytest.raises(ValidationError, match="same utterance"):
+            validate_context_swap_groups(records)
+
+    def test_group_requires_distinct_contexts(self):
+        records = _context_swap_pair()
+        records[1]["context"] = records[0]["context"].upper()
+        with pytest.raises(ValidationError, match="distinct context"):
+            validate_context_swap_groups(records)
+
+    def test_group_requires_distinct_primary_directions(self):
+        records = _context_swap_pair()
+        records[1]["primary_pragmatic_interpretation"] = "Sincere praise"
+        records[1]["pragmatic_interpretations"] = ["Sincere praise"]
+        with pytest.raises(ValidationError, match="distinct primary"):
+            validate_context_swap_groups(records)
 
 
 class TestEvaluationValidation:
@@ -139,6 +238,21 @@ class TestEvaluationValidation:
         with pytest.raises(ValidationError, match="JSON object"):
             validate_evaluation_record(None)
 
+    @pytest.mark.parametrize(
+        "field", ["example_id", "predicted_literal", "predicted_pragmatic"]
+    )
+    def test_whitespace_prediction_text_fails(self, field):
+        rec = _minimal_valid_prediction()
+        rec[field] = "   "
+        with pytest.raises(ValidationError):
+            validate_evaluation_record(rec)
+
+    def test_blank_model_id_fails_when_present(self):
+        rec = _minimal_valid_prediction()
+        rec["model_id"] = "   "
+        with pytest.raises(ValidationError):
+            validate_evaluation_record(rec)
+
     def test_predicted_hostility_invalid_fails(self):
         rec = _minimal_valid_prediction()
         rec["predicted_hostility"] = "maybe"
@@ -166,9 +280,18 @@ class TestJSONLValidation:
     def test_duplicate_ids_rejected_by_validation_gate(self, tmp_path):
         rec = _minimal_valid_example()
         dup = tmp_path / "dup.jsonl"
-        dup.write_text(json.dumps(rec) + "\n" + json.dumps(rec) + "\n", encoding="utf-8")
+        dup.write_text(
+            json.dumps(rec) + "\n" + json.dumps(rec) + "\n", encoding="utf-8"
+        )
         errors = validate_jsonl_file(dup)
         assert any("duplicate" in err.lower() for err in errors)
+
+    def test_malformed_context_swap_rejected_by_validation_gate(self, tmp_path):
+        rec = _context_swap_pair()[0]
+        path = tmp_path / "bad-swap.jsonl"
+        path.write_text(json.dumps(rec) + "\n", encoding="utf-8")
+        errors = validate_jsonl_file(path)
+        assert any("at least two" in err for err in errors)
 
     def test_blank_lines_skipped(self, tmp_path):
         rec = _minimal_valid_example()

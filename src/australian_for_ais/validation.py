@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import pathlib
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from importlib import resources
 from typing import Any, Callable
 
@@ -41,6 +41,22 @@ def _normalise_text(value: str) -> str:
     return value.strip().casefold()
 
 
+def _require_non_whitespace_text(record: Mapping[str, Any], field_name: str) -> None:
+    value = record.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValidationError(f"'{field_name}' must contain non-whitespace text.")
+
+
+def _require_non_whitespace_items(values: Any, field_name: str) -> None:
+    if not isinstance(values, Sequence) or isinstance(values, (str, bytes)):
+        return
+    for index, value in enumerate(values):
+        if not isinstance(value, str) or not value.strip():
+            raise ValidationError(
+                f"'{field_name}[{index}]' must contain non-whitespace text."
+            )
+
+
 def validate_example_record(record: Any) -> None:
     """Validate a single benchmark example record."""
     if not isinstance(record, Mapping):
@@ -55,33 +71,55 @@ def validate_example_record(record: Any) -> None:
 
 
 def _semantic_validate_example(record: Mapping[str, Any]) -> None:
-    if not str(record.get("id", "")).strip():
-        raise ValidationError("'id' must be a non-empty string.")
+    for field_name in (
+        "id",
+        "locale",
+        "utterance",
+        "context",
+        "speaker_relationship",
+        "literal_interpretation",
+        "primary_pragmatic_interpretation",
+        "provenance",
+        "license",
+    ):
+        _require_non_whitespace_text(record, field_name)
+
+    _require_non_whitespace_items(
+        record.get("pragmatic_interpretations"), "pragmatic_interpretations"
+    )
+    _require_non_whitespace_items(
+        record.get("alternative_interpretations", []), "alternative_interpretations"
+    )
 
     confidence = record.get("confidence")
-    if not isinstance(confidence, (int, float)) or isinstance(confidence, bool) or not (0.0 <= confidence <= 1.0):
+    if (
+        not isinstance(confidence, (int, float))
+        or isinstance(confidence, bool)
+        or not (0.0 <= confidence <= 1.0)
+    ):
         raise ValidationError(
             f"'confidence' must be a number between 0.0 and 1.0, got {confidence!r}."
         )
 
     interps = record.get("pragmatic_interpretations", [])
     if not isinstance(interps, list) or len(interps) < 1:
-        raise ValidationError("'pragmatic_interpretations' must contain at least one entry.")
+        raise ValidationError(
+            "'pragmatic_interpretations' must contain at least one entry."
+        )
 
     primary = record.get("primary_pragmatic_interpretation", "")
-    if primary != "insufficient_context":
-        accepted = {_normalise_text(v) for v in interps if isinstance(v, str)}
-        if _normalise_text(primary) not in accepted:
-            raise ValidationError(
-                "'primary_pragmatic_interpretation' must be present in "
-                "'pragmatic_interpretations', unless it is 'insufficient_context'."
-            )
+    accepted = {_normalise_text(v) for v in interps if isinstance(v, str)}
+    if primary != "insufficient_context" and _normalise_text(primary) not in accepted:
+        raise ValidationError(
+            "'primary_pragmatic_interpretation' must be present in "
+            "'pragmatic_interpretations', unless it is 'insufficient_context'."
+        )
 
     if record.get("ambiguity") is True:
-        if primary != "insufficient_context" and len(interps) < 2:
+        if len(accepted) < 2:
             raise ValidationError(
-                "If 'ambiguity' is true and primary is not 'insufficient_context', "
-                "'pragmatic_interpretations' must contain at least two entries."
+                "If 'ambiguity' is true, 'pragmatic_interpretations' must contain "
+                "at least two distinct normalized readings."
             )
 
     if primary == "insufficient_context":
@@ -100,10 +138,58 @@ def _semantic_validate_example(record: Mapping[str, Any]) -> None:
             f"'hostility' must be true, false, or 'uncertain', got {hostility!r}."
         )
 
-    for field_name in ("provenance", "license"):
-        value = record.get(field_name)
-        if not isinstance(value, str) or not value.strip():
-            raise ValidationError(f"'{field_name}' must contain non-whitespace text.")
+    context_swap_group = record.get("context_swap_group")
+    if context_swap_group is not None and (
+        not isinstance(context_swap_group, str) or not context_swap_group.strip()
+    ):
+        raise ValidationError(
+            "'context_swap_group' must contain non-whitespace text when present."
+        )
+
+
+def validate_context_swap_groups(records: Sequence[Mapping[str, Any]]) -> None:
+    """
+    Validate dataset-level context-swap contracts.
+
+    Every group must contain at least two records, preserve the same observed
+    utterance, use distinct contexts, and encode distinct primary pragmatic
+    directions so every generated pair has a meaningful context contrast.
+    """
+    groups: dict[str, list[Mapping[str, Any]]] = {}
+    for record in records:
+        group = record.get("context_swap_group")
+        if isinstance(group, str) and group.strip():
+            groups.setdefault(group, []).append(record)
+
+    for group_name, members in groups.items():
+        if len(members) < 2:
+            raise ValidationError(
+                f"context_swap_group '{group_name}' must contain at least two records."
+            )
+
+        utterances = {str(member["utterance"]).strip() for member in members}
+        if len(utterances) != 1:
+            raise ValidationError(
+                f"context_swap_group '{group_name}' must use the same utterance "
+                "for every member."
+            )
+
+        contexts = {_normalise_text(str(member["context"])) for member in members}
+        if len(contexts) != len(members):
+            raise ValidationError(
+                f"context_swap_group '{group_name}' must contain a distinct context "
+                "for every member."
+            )
+
+        primaries = {
+            _normalise_text(str(member["primary_pragmatic_interpretation"]))
+            for member in members
+        }
+        if len(primaries) != len(members):
+            raise ValidationError(
+                f"context_swap_group '{group_name}' must contain a distinct primary "
+                "pragmatic interpretation for every member."
+            )
 
 
 def validate_evaluation_record(record: Any) -> None:
@@ -116,8 +202,21 @@ def validate_evaluation_record(record: Any) -> None:
     except jsonschema.ValidationError as exc:
         raise ValidationError(f"Schema validation failed: {exc.message}") from exc
 
+    for field_name in ("example_id", "predicted_literal", "predicted_pragmatic"):
+        _require_non_whitespace_text(record, field_name)
+
+    model_id = record.get("model_id")
+    if model_id is not None and (
+        not isinstance(model_id, str) or not model_id.strip()
+    ):
+        raise ValidationError("'model_id' must contain non-whitespace text when present.")
+
     mc = record.get("model_confidence")
-    if not isinstance(mc, (int, float)) or isinstance(mc, bool) or not (0.0 <= mc <= 1.0):
+    if (
+        not isinstance(mc, (int, float))
+        or isinstance(mc, bool)
+        or not (0.0 <= mc <= 1.0)
+    ):
         raise ValidationError(
             f"'model_confidence' must be a number between 0.0 and 1.0, got {mc!r}."
         )
@@ -147,7 +246,7 @@ def validate_jsonl_file(
     record_validator: Callable[[Any], None] | None = None,
 ) -> list[str]:
     """
-    Validate all records in a JSONL file, including dataset-level uniqueness.
+    Validate all records in a JSONL file, including dataset-level invariants.
 
     Duplicate ``id`` or ``example_id`` values are rejected so the validation gate
     cannot approve a file that the corresponding loader later refuses to use.
@@ -155,8 +254,10 @@ def validate_jsonl_file(
     if record_validator is None:
         record_validator = validate_example_record
 
+    is_example_dataset = record_validator is validate_example_record
     errors: list[str] = []
     seen: dict[tuple[str, str], int] = {}
+    valid_example_records: list[Mapping[str, Any]] = []
 
     try:
         for lineno, record in iter_jsonl(path):
@@ -173,8 +274,17 @@ def validate_jsonl_file(
                 errors.append(f"Line {lineno} (id={display_id}): {exc}")
                 continue
 
+            if is_example_dataset and isinstance(record, Mapping):
+                valid_example_records.append(record)
+
             if isinstance(record, Mapping):
-                key_name = "id" if "id" in record else "example_id" if "example_id" in record else None
+                key_name = (
+                    "id"
+                    if "id" in record
+                    else "example_id"
+                    if "example_id" in record
+                    else None
+                )
                 if key_name is not None:
                     key_value = record.get(key_name)
                     if isinstance(key_value, str):
@@ -188,5 +298,11 @@ def validate_jsonl_file(
                             seen[key] = lineno
     except ValidationError as exc:
         errors.append(str(exc))
+
+    if is_example_dataset and not errors:
+        try:
+            validate_context_swap_groups(valid_example_records)
+        except ValidationError as exc:
+            errors.append(str(exc))
 
     return errors

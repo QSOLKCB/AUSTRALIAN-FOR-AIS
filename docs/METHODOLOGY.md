@@ -75,9 +75,21 @@ The same caution applies to `nah yeah`, `mate`, `old mate`, `righto`, profanity,
 
 ---
 
+## Ambiguity and Insufficient Context
+
+An ambiguous record must preserve at least two distinct normalized pragmatic readings. Duplicate strings, including case- or whitespace-only variants, do not constitute multiple interpretations.
+
+`insufficient_context` is a special primary annotation used only when the supplied context does not justify choosing among those retained readings. It therefore does **not** erase the candidate interpretations. A model may explicitly predict `insufficient_context` for such an example, and that answer is accepted for pragmatic scoring when the example itself declares the sentinel.
+
+This avoids rewarding a model for confidently collapsing unresolved ambiguity into one arbitrarily chosen reading.
+
+---
+
 ## Context-Swap Design
 
-A context-swap group holds the utterance constant while changing context. Success requires the prediction for each context to match an accepted interpretation for that context and the two predictions to differ. Different-but-wrong outputs do not pass.
+A context-swap group holds the utterance constant while changing context. Dataset validation requires at least two members, the same observed utterance, distinct contexts, and distinct primary pragmatic directions.
+
+Success requires the prediction for each context to match an accepted interpretation for that context and the paired predictions to differ. Different-but-wrong outputs do not pass.
 
 This turns context sensitivity into a controlled test rather than a vocabulary quiz.
 
@@ -112,13 +124,16 @@ Phase 1 reports:
 - literal interpretation accuracy;
 - pragmatic interpretation match;
 - ambiguity recognition on annotated ambiguous items;
-- hostility classification accuracy;
+- hostility classification accuracy on examples with resolved boolean hostility annotations;
+- a separate count of examples whose hostility annotation remains `uncertain`;
 - social-valence classification accuracy;
 - confidence calibration using the Brier score for confidence in pragmatic correctness; and
 - directionally correct context-swap sensitivity.
 
-For the Brier component, pragmatic correctness is encoded as `1` when the submitted pragmatic prediction matches an accepted interpretation and `0` otherwise. The reported value is the mean squared difference between the model's confidence and that binary outcome. Lower is better. Missing prediction records have no confidence value, so calibration is computed over submitted valid predictions while coverage is reported independently.
+An annotated hostility value of `uncertain` is not a categorical truth label. Such examples are excluded from the hostility-accuracy denominator rather than rewarding a model merely for echoing annotator uncertainty.
 
-Missing predictions still count as incorrect in dataset-proportion accuracy metrics and produce evaluation errors.
+For the Brier component, pragmatic correctness is encoded as `1` when the submitted pragmatic prediction matches an accepted interpretation, including the explicit `insufficient_context` sentinel when declared by the example, and `0` otherwise. The reported value is the mean squared difference between the model's confidence and that binary outcome. Lower is better.
+
+Missing prediction records have no confidence value, so calibration is computed over submitted valid predictions while coverage is reported independently. Missing predictions still count as incorrect in dataset-proportion accuracy metrics and produce evaluation errors.
 
 Phase 1 metrics are deliberately modest and are not a validated scientific instrument.

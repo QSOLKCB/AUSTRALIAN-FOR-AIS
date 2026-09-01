@@ -7,7 +7,7 @@ Usage:
 
 Prints component scores as JSON.
 
-Exits with status 0 on success, 1 on validation errors, 2 on usage errors.
+Exits with status 0 on success, 1 on validation/evaluation errors, 2 on usage errors.
 """
 
 from __future__ import annotations
@@ -24,15 +24,18 @@ from australian_for_ais.validation import ValidationError
 
 def main() -> int:
     if len(sys.argv) != 3:
-        print(f"Usage: {sys.argv[0]} <examples.jsonl> <predictions.jsonl>", file=sys.stderr)
+        print(
+            f"Usage: {sys.argv[0]} <examples.jsonl> <predictions.jsonl>",
+            file=sys.stderr,
+        )
         return 2
 
     examples_path = pathlib.Path(sys.argv[1])
     predictions_path = pathlib.Path(sys.argv[2])
 
-    for p in (examples_path, predictions_path):
-        if not p.exists():
-            print(f"Error: file not found: {p}", file=sys.stderr)
+    for path in (examples_path, predictions_path):
+        if not path.exists():
+            print(f"Error: file not found: {path}", file=sys.stderr)
             return 2
 
     try:
@@ -51,9 +54,10 @@ def main() -> int:
     print(json.dumps(result.as_dict(), indent=2))
 
     if result.errors:
-        print(f"\nWarnings ({len(result.errors)}):", file=sys.stderr)
+        print(f"\nEvaluation error(s) ({len(result.errors)}):", file=sys.stderr)
         for err in result.errors:
             print(f"  {err}", file=sys.stderr)
+        return 1
 
     return 0
 

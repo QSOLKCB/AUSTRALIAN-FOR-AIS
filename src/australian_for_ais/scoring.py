@@ -18,6 +18,7 @@ from .models import BenchmarkExample, EvaluationRecord
 from .validation import (
     ValidationError,
     iter_jsonl,
+    validate_context_swap_groups,
     validate_evaluation_record,
     validate_example_record,
 )
@@ -42,6 +43,7 @@ class ComponentScores:
 
     hostility_correct: int = 0
     hostility_total: int = 0
+    hostility_uncertain_examples: int = 0
 
     social_valence_correct: int = 0
     social_valence_total: int = 0
@@ -62,13 +64,20 @@ class ComponentScores:
             "n_examples": self.n_examples,
             "n_predictions": self.n_predictions,
             "n_matched_predictions": self.n_matched_predictions,
-            "prediction_coverage_rate": safe_rate(self.n_matched_predictions, self.n_examples),
+            "prediction_coverage_rate": safe_rate(
+                self.n_matched_predictions, self.n_examples
+            ),
             "literal_accuracy": safe_rate(self.literal_correct, self.literal_total),
-            "pragmatic_match_rate": safe_rate(self.pragmatic_match, self.pragmatic_total),
+            "pragmatic_match_rate": safe_rate(
+                self.pragmatic_match, self.pragmatic_total
+            ),
             "ambiguity_recognition_rate": safe_rate(
                 self.ambiguity_recognised, self.ambiguity_total
             ),
-            "hostility_accuracy": safe_rate(self.hostility_correct, self.hostility_total),
+            "hostility_accuracy": safe_rate(
+                self.hostility_correct, self.hostility_total
+            ),
+            "hostility_uncertain_examples": self.hostility_uncertain_examples,
             "social_valence_accuracy": safe_rate(
                 self.social_valence_correct, self.social_valence_total
             ),
@@ -97,7 +106,21 @@ def _pragmatic_matches(predicted: str, annotated_interpretations: list[str]) -> 
     return any(_normalise(a) == pred_norm for a in annotated_interpretations)
 
 
-def _hostility_matches(predicted: bool | str, annotated: bool | str) -> bool:
+def _accepted_pragmatic_interpretations(ex: BenchmarkExample) -> list[str]:
+    """
+    Return the accepted pragmatic answers for one example.
+
+    ``insufficient_context`` is an explicit accepted answer only when it is the
+    example's declared primary interpretation. This preserves uncertainty rather
+    than rewarding a forced choice between unresolved readings.
+    """
+    accepted = list(ex.pragmatic_interpretations)
+    if _normalise(ex.primary_pragmatic_interpretation) == "insufficient_context":
+        accepted.append("insufficient_context")
+    return accepted
+
+
+def _hostility_matches(predicted: bool | str, annotated: bool) -> bool:
     return predicted == annotated
 
 
@@ -108,7 +131,9 @@ def _social_valence_matches(predicted: str, annotated: str) -> bool:
 def _find_context_swap_pairs(
     examples: dict[str, BenchmarkExample],
 ) -> list[tuple[BenchmarkExample, BenchmarkExample]]:
-    """Find all unordered pairs sharing a context-swap group."""
+    """Validate and return all unordered pairs sharing a context-swap group."""
+    validate_context_swap_groups([ex.to_dict() for ex in examples.values()])
+
     groups: dict[str, list[str]] = {}
     for ex_id, ex in examples.items():
         if ex.context_swap_group:
@@ -139,20 +164,29 @@ def _context_swap_sensitive(
     )
     return (
         outputs_differ
-        and _pragmatic_matches(pred_a.predicted_pragmatic, ex_a.pragmatic_interpretations)
-        and _pragmatic_matches(pred_b.predicted_pragmatic, ex_b.pragmatic_interpretations)
+        and _pragmatic_matches(
+            pred_a.predicted_pragmatic, _accepted_pragmatic_interpretations(ex_a)
+        )
+        and _pragmatic_matches(
+            pred_b.predicted_pragmatic, _accepted_pragmatic_interpretations(ex_b)
+        )
     )
 
 
 def load_examples(path: pathlib.Path) -> dict[str, BenchmarkExample]:
-    """Load and validate benchmark examples, rejecting duplicate IDs."""
+    """Load and validate benchmark examples, rejecting dataset-level violations."""
     examples: dict[str, BenchmarkExample] = {}
+    raw_records = []
+
     for lineno, record in iter_jsonl(path):
         validate_example_record(record)
+        raw_records.append(record)
         ex = BenchmarkExample.from_dict(record)
         if ex.id in examples:
             raise ValidationError(f"Line {lineno}: duplicate example id '{ex.id}'.")
         examples[ex.id] = ex
+
+    validate_context_swap_groups(raw_records)
     return examples
 
 
@@ -187,13 +221,16 @@ def score(
             )
 
     for ex_id, ex in examples.items():
-        # These denominators describe the dataset, not the submitted subset.
         result.literal_total += 1
         result.pragmatic_total += 1
-        result.hostility_total += 1
         result.social_valence_total += 1
         if ex.ambiguity:
             result.ambiguity_total += 1
+
+        if ex.hostility == "uncertain":
+            result.hostility_uncertain_examples += 1
+        else:
+            result.hostility_total += 1
 
         pred = predictions.get(ex_id)
         if pred is None:
@@ -208,12 +245,14 @@ def score(
             result.literal_correct += 1
 
         pragmatic_correct = _pragmatic_matches(
-            pred.predicted_pragmatic, ex.pragmatic_interpretations
+            pred.predicted_pragmatic, _accepted_pragmatic_interpretations(ex)
         )
         if pragmatic_correct:
             result.pragmatic_match += 1
 
-        if _hostility_matches(pred.predicted_hostility, ex.hostility):
+        if ex.hostility != "uncertain" and _hostility_matches(
+            pred.predicted_hostility, ex.hostility
+        ):
             result.hostility_correct += 1
 
         if _social_valence_matches(pred.predicted_social_valence, ex.social_valence):
@@ -222,7 +261,6 @@ def score(
         if ex.ambiguity and pred.predicted_ambiguity is True:
             result.ambiguity_recognised += 1
 
-        # Deterministic Brier score for confidence in the pragmatic prediction.
         target = 1.0 if pragmatic_correct else 0.0
         result.confidence_brier_sum += (pred.model_confidence - target) ** 2
         result.confidence_total += 1

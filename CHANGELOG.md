@@ -54,6 +54,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added project schema version `0.1.0` to machine-readable schema metadata
 - Hardened dataset validation for duplicate IDs, non-object JSON, and whitespace-only provenance/licence metadata
 - Restricted the model hostility type to `bool | Literal["uncertain"]`
+- Added dataset-level validation for malformed context-swap groups: orphan members, changed utterances, duplicate contexts, and duplicate primary directions now fail closed
+- Required ambiguous annotations to retain at least two distinct normalized pragmatic readings, including `insufficient_context` cases
+- Made explicit `insufficient_context` predictions scorable instead of rewarding forced certainty
+- Excluded unresolved `hostility: "uncertain"` annotations from categorical hostility accuracy and report their count separately
+- Moved the documented lukewarm reading for `au-006` into the accepted pragmatic interpretations
+- Rejected whitespace-only benchmark and prediction text across required linguistic/scorable fields
+- Made `scripts/evaluate_predictions.py` return non-zero on missing/unknown prediction errors, matching the module CLI
 
 ### Removed
 
