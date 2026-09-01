@@ -2,12 +2,9 @@
 
 ## Research Principle
 
-Language meaning is conditional on context, culture, relationship, discourse, and uncertainty.
-Surface lexical meaning alone is not sufficient evidence of intended social meaning.
+Language meaning is conditional on context, culture, relationship, discourse, and uncertainty. Surface lexical meaning alone is not sufficient evidence of intended social meaning.
 
-This principle motivates using Australian English as a benchmark environment. Australian English
-makes systematic use of pragmatic mechanisms — understatement, irony, affectionate insult,
-deadpan humour — that create a substantial gap between surface and intended meaning.
+Australian English is used here as a deliberately difficult research environment because documented and observed Australian discourse provides rich cases of understatement, irony, affectionate insult, deadpan humour, discourse markers, and relationship-conditioned meaning. These are tendencies and research targets, not universal rules about Australian speakers.
 
 ---
 
@@ -15,12 +12,12 @@ deadpan humour — that create a substantial gap between surface and intended me
 
 The project studies whether AI systems can:
 
-1. Recognise that surface and pragmatic meaning differ
-2. Use contextual information to inform pragmatic interpretation
-3. Represent genuine ambiguity rather than collapsing it
-4. Calibrate confidence appropriately for culturally dependent language
-5. Distinguish lexical profanity from social aggression
-6. Detect when "the same utterance means different things" given different contexts
+1. recognise that surface and pragmatic meaning can differ;
+2. use contextual information when interpreting an utterance;
+3. represent genuine ambiguity rather than silently collapsing it;
+4. calibrate confidence appropriately;
+5. distinguish lexical profanity from social aggression; and
+6. respond correctly when an identical utterance changes pragmatic meaning under a changed context.
 
 ---
 
@@ -28,24 +25,19 @@ The project studies whether AI systems can:
 
 **RQ1:** Can language models distinguish lexical profanity from social aggression?
 
-**RQ2:** Does providing relationship context materially improve pragmatic interpretation
-accuracy?
+**RQ2:** Does providing relationship context materially improve pragmatic interpretation accuracy?
 
 **RQ3:** Can models correctly recognise when an utterance is pragmatically ambiguous?
 
 **RQ4:** Do models become overconfident when interpreting culturally dependent humour?
 
-**RQ5:** Do safety or moderation systems disproportionately classify ordinary Australian
-discourse as hostile or abusive?
+**RQ5:** Do safety or moderation systems disproportionately classify ordinary Australian discourse as hostile or abusive?
 
-**RQ6:** Can models distinguish sincere praise from inverse praise when lexical content is
-identical?
+**RQ6:** Can models distinguish sincere praise from inverse praise when lexical content is identical?
 
-**RQ7:** Do context-swap examples expose reliance on lexical shortcuts rather than genuine
-contextual reasoning?
+**RQ7:** Do context-swap examples expose reliance on lexical shortcuts rather than contextual reasoning?
 
-**RQ8:** How much of performance on this benchmark transfers to other dialects or cultural
-settings?
+**RQ8:** How much of performance on this benchmark transfers to other dialects or cultural settings?
 
 These are questions under investigation, not assumed conclusions.
 
@@ -53,88 +45,80 @@ These are questions under investigation, not assumed conclusions.
 
 ## Taxonomy of Pragmatic Mechanisms
 
-The following mechanisms appear in the starter dataset and are used as tags in example records.
-The taxonomy is extensible and not claimed to be exhaustive.
+The active Phase 1 taxonomy is intentionally small and extensible.
 
 | Tag | Description |
 |---|---|
 | `understatement` | Deliberately diminished description of a significant situation |
-| `sarcasm` | Use of praise language to express criticism or contempt |
-| `irony` | Stating the opposite of what is meant |
-| `deadpan` | Presenting absurd or humorous content without tonal cues |
-| `affectionate_insult` | Insulting language used to express affection or solidarity |
-| `inverse_praise` | Ostensible positive framing expressing negative evaluation |
+| `sarcasm` | Surface-positive or otherwise literal wording used to convey criticism |
+| `irony` | A contrast between expressed surface content and intended meaning |
+| `deadpan` | Humorous or incongruous content delivered without overt expressive emphasis |
+| `affectionate_insult` | Insulting language used within an affectionate or solidarity context |
+| `inverse_praise` | Ostensible praise conveying negative evaluation |
 | `profanity_non_hostile` | Profanity without hostile or aggressive intent |
-| `discourse_marker` | Conversational markers such as "yeah nah" that carry pragmatic meaning |
+| `discourse_marker` | Conversational marker whose function depends on discourse context |
 | `self_deprecation` | Intentionally diminished self-representation |
 | `absurdist_escalation` | Escalation to an absurd degree for comic or emphatic effect |
-| `relational_teasing` | Humour directed at a specific person within an established relationship |
-| `tall_poppy_humour` | Deflation of success or status (related to tall poppy cultural pattern) |
-| `ambiguous_address` | Address terms whose social valence depends on relationship and context |
+| `relational_teasing` | Humour directed at a person within a relationship context |
+| `tall_poppy_humour` | Humorous deflation of success or status as an analytical hypothesis |
+| `ambiguous_address` | Address term whose valence depends on relationship and context |
 | `literal` | The utterance is intended and interpreted at face value |
-| `unknown` | The mechanism cannot be determined from available information |
+| `unknown` | The active taxonomy does not justify a more specific mechanism |
 
-Examples may carry multiple tags. Tags represent analytical hypotheses, not established facts.
+Examples may carry multiple tags. Tags are analytical annotations, not established facts.
+
+### Discourse markers such as “yeah nah”
+
+Phase 1 explicitly rejects a fixed phrase-to-intent lookup table. A sequence such as `yeah nah` may have conventional directional tendencies in some Australian discourse, but a benchmark item must justify its interpretation from the supplied context, discourse position, relationship, and available delivery cues. The starter invitation fixture therefore treats refusal as the **best estimate for that context**, not as a universal lexical rule.
+
+The same caution applies to `nah yeah`, `mate`, `old mate`, `righto`, profanity, and other socially loaded forms.
 
 ---
 
 ## Context-Swap Design
 
-A context-swap pair consists of:
+A context-swap group holds the utterance constant while changing context. Success requires the prediction for each context to match an accepted interpretation for that context and the two predictions to differ. Different-but-wrong outputs do not pass.
 
-- The same utterance
-- Two or more different contexts
-- Different expected pragmatic interpretations for each context
-
-Context-swap tests are designed to measure whether a model's interpretation is actually
-influenced by context, or whether it relies solely on lexical content.
-
-A model that produces the same interpretation for both contexts of a context-swap pair has
-failed to use context information — even if that interpretation happens to be correct for
-one of the contexts.
+This turns context sensitivity into a controlled test rather than a vocabulary quiz.
 
 ---
 
 ## Minimal Pairs
 
-Future phases will use minimal pairs: example variants that differ in exactly one feature
-(speaker relationship, preceding event, tone description, or social setting) while keeping
-lexical content constant.
-
-Minimal pairs allow measurement of whether changing one contextual dimension changes model output.
+Future phases will use variants that differ in one controlled factor such as speaker relationship, preceding event, explicit delivery cue, or social setting while holding other features constant.
 
 ---
 
 ## Scoring Philosophy
 
-The following distinctions must be maintained:
+The following distinctions are mandatory:
 
-- **DEFINED ≠ VALIDATED**: A metric that has been defined is not automatically validated.
-- **BENCHMARK SCORE ≠ CULTURAL COMPETENCE**: See AU-HUMOUR-010.
-- **CORRELATION ≠ PRAGMATIC UNDERSTANDING**: Statistical correlation between model output
-  and labels does not imply the model understands pragmatic meaning.
-- **ONE ANNOTATOR ≠ CULTURAL CONSENSUS**: Single-annotator labels are not culturally
-  representative. See AU-HUMOUR-009.
-- **LEXICAL MATCH ≠ INTENT RECOGNITION**: Matching an expected output string does not
-  demonstrate the model recognised communicative intent.
-- **MODEL EXPLANATION ≠ EVIDENCE OF INTERNAL REASONING**: A model's verbal explanation of
-  its interpretation is not evidence about its actual internal process.
+- **DEFINED ≠ VALIDATED**
+- **BENCHMARK SCORE ≠ CULTURAL COMPETENCE**
+- **CORRELATION ≠ PRAGMATIC UNDERSTANDING**
+- **ONE ANNOTATOR ≠ CULTURAL CONSENSUS**
+- **LEXICAL MATCH ≠ INTENT RECOGNITION**
+- **MODEL EXPLANATION ≠ EVIDENCE OF INTERNAL REASONING**
 
-These distinctions are enforced in the reference evaluator and documented in invariants.
+Phase 1 uses deterministic exact matching because it is inspectable. The limitation is explicit rather than hidden behind a semantic judge.
 
 ---
 
-## Phase 1 Scope
+## Phase 1 Metrics
 
-Phase 1 implements component metrics that can be defined rigorously against synthetic fixtures:
+Phase 1 reports:
 
-- **Literal interpretation accuracy**: Does the model correctly identify the literal meaning?
-- **Pragmatic interpretation match**: Does the predicted pragmatic interpretation match any
-  of the annotated plausible interpretations?
-- **Ambiguity recognition**: Does the model correctly identify ambiguous examples as ambiguous?
-- **Hostility classification**: Does the model correctly classify `hostility` (true/false/uncertain)?
-- **Social-valence classification**: Does the model correctly classify social valence?
-- **Uncertainty calibration**: Is the model's reported confidence appropriate?
-- **Context sensitivity**: Does model output change between context-swap examples?
+- prediction coverage;
+- literal interpretation accuracy;
+- pragmatic interpretation match;
+- ambiguity recognition on annotated ambiguous items;
+- hostility classification accuracy;
+- social-valence classification accuracy;
+- confidence calibration using the Brier score for confidence in pragmatic correctness; and
+- directionally correct context-swap sensitivity.
 
-Phase 1 metrics are deliberately modest. They do not constitute a validated scientific instrument.
+For the Brier component, pragmatic correctness is encoded as `1` when the submitted pragmatic prediction matches an accepted interpretation and `0` otherwise. The reported value is the mean squared difference between the model's confidence and that binary outcome. Lower is better. Missing prediction records have no confidence value, so calibration is computed over submitted valid predictions while coverage is reported independently.
+
+Missing predictions still count as incorrect in dataset-proportion accuracy metrics and produce evaluation errors.
+
+Phase 1 metrics are deliberately modest and are not a validated scientific instrument.
