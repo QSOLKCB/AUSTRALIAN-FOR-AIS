@@ -2,109 +2,123 @@
 
 ## Design Philosophy
 
-The benchmark is designed to test pragmatic understanding, not lexical recall.
+The benchmark is designed to test pragmatic interpretation rather than lexical recall. A benchmark that can be solved by a fixed phrase lookup has failed its purpose.
 
-A benchmark that can be solved by lexical pattern-matching has failed its purpose. The design
-choices described here are intended to make surface-level heuristics insufficient.
+The project therefore keeps observation, literal interpretation, pragmatic annotation, uncertainty, and model prediction as separate fields.
 
 ---
 
 ## Example Record Structure
 
-Each example consists of:
+Each example contains:
 
-- **id**: Stable unique identifier. Must not change after initial assignment.
-- **locale**: Language variety (e.g., "en-AU").
-- **utterance**: The linguistic form of what was said.
-- **context**: Situational context required to interpret the utterance.
-- **speaker_relationship**: The social relationship between speaker and addressee.
-- **literal_interpretation**: The context-free denotative reading.
-- **pragmatic_interpretations**: List of plausible socially intended readings (≥1 entry).
-- **primary_pragmatic_interpretation**: The annotator's best-estimate reading.
-- **humour_mechanisms**: Taxonomy tags for pragmatic devices in use.
-- **social_valence**: The social register (friendly / hostile / neutral / ambiguous / unknown).
-- **hostility**: Whether aggressive social intent is present (true / false / uncertain).
-- **confidence**: Annotator certainty (0.0–1.0).
-- **ambiguity**: Whether multiple substantially different interpretations are plausible.
-- **cultural_dependency**: Whether interpretation requires specific cultural knowledge.
-- **context_required**: Whether interpretation is substantially context-dependent.
-- **alternative_interpretations**: Other plausible readings.
-- **annotation_notes**: Free-text documentation of annotation reasoning.
-- **source_type**: Origin category (synthetic / naturalistic / constructed).
-- **provenance**: Description of origin, licensing, and consent status.
-- **license**: Licence for this example.
-- **tags**: Arbitrary searchable tags.
-- **context_swap_group**: Optional — links examples that share an utterance but differ in context.
+- **id**: stable unique identifier
+- **locale**: language variety, e.g. `en-AU`
+- **utterance**: observed linguistic form
+- **context**: supplied situational context
+- **speaker_relationship**: relationship between speaker and addressee
+- **literal_interpretation**: context-free denotative reading
+- **pragmatic_interpretations**: one or more accepted plausible readings
+- **primary_pragmatic_interpretation**: annotator's best estimate, not objective ground truth
+- **humour_mechanisms**: active taxonomy tags
+- **social_valence**: friendly / hostile / neutral / ambiguous / unknown
+- **hostility**: true / false / uncertain
+- **confidence**: annotator certainty from 0.0 to 1.0
+- **ambiguity**: whether substantially different readings remain plausible
+- **cultural_dependency**: low / medium / high / unknown
+- **context_required**: whether the supplied context materially affects interpretation
+- **alternative_interpretations**: additional plausible readings
+- **annotation_notes**: reasoning and caveats
+- **source_type**: synthetic / naturalistic / constructed
+- **provenance**: origin and rights/consent information
+- **license**: licence for the example
+- **tags**: searchable non-normative tags
+- **context_swap_group**: optional link between same-utterance context variants
 
 ### Important Distinctions
 
 | Field | Epistemic Status |
 |---|---|
-| `utterance` | Observation (what was said) |
-| `literal_interpretation` | Inference (context-free) |
-| `pragmatic_interpretations` | Annotator inference (context-dependent) |
+| `utterance` | Observation |
+| `literal_interpretation` | Context-free inference |
+| `pragmatic_interpretations` | Annotator inference |
 | `primary_pragmatic_interpretation` | Annotator preference, not ground truth |
 | `hostility` | Annotator inference, may be uncertain |
 | `confidence` | Annotator self-report |
 
-These distinctions must be preserved in all tooling.
+The primary pragmatic interpretation must be one of the accepted pragmatic interpretations unless it is exactly `insufficient_context`. This keeps the declared best estimate and the evaluator's accepted answers aligned.
 
 ---
 
 ## Context-Swap Test Design
 
-A context-swap pair consists of:
-- The same `utterance`
-- Two or more different `context` values
-- Different `primary_pragmatic_interpretation` values for each
+A context-swap group contains the same utterance under two or more different contexts.
 
-Both records share a `context_swap_group` identifier.
+A pair passes only when:
 
-**Evaluation rule:** A model passes a context-swap test if and only if its output differs
-between the two context conditions in the expected direction. Producing the same output
-for both contexts is a context-swap failure, regardless of whether either output is correct.
+1. both prediction records are present;
+2. each prediction matches an accepted pragmatic interpretation for its own context; and
+3. the two pragmatic predictions differ.
+
+Merely producing two different strings is not sufficient. Swapped answers or two different wrong answers are failures.
 
 ---
 
 ## Evaluation Records
 
-Evaluation records (prediction files) must include:
+Every Phase 1 evaluation record must include all advertised dimensions:
 
-- `example_id`: Must match an existing example `id`
-- `predicted_literal`: Model's literal interpretation
-- `predicted_pragmatic`: Model's pragmatic interpretation
-- `predicted_hostility`: Model's hostility classification
-- `predicted_social_valence`: Model's social valence classification
-- `predicted_ambiguity`: Model's ambiguity judgement
-- `model_confidence`: Model's reported confidence (0.0–1.0)
+- `example_id`
+- `predicted_literal`
+- `predicted_pragmatic`
+- `predicted_hostility`
+- `predicted_social_valence`
+- `predicted_ambiguity`
+- `model_confidence`
+
+A prediction file may contain fewer records than the dataset, but missing records are counted as incorrect for dataset-proportion metrics and are reported as evaluation errors. Unknown IDs are also errors. The CLI returns a non-zero exit code when such errors are present.
 
 ---
 
 ## Component Metrics
 
-Phase 1 implements these metrics deterministically:
+Phase 1 reports independent components only:
 
-1. **literal_accuracy**: Proportion of examples where `predicted_literal` matches `literal_interpretation`
-2. **pragmatic_match**: Proportion of examples where `predicted_pragmatic` matches any entry in `pragmatic_interpretations`
-3. **ambiguity_recognition**: Proportion of ambiguous examples correctly identified as ambiguous
-4. **hostility_accuracy**: Proportion of examples where `predicted_hostility` matches `hostility`
-5. **social_valence_accuracy**: Proportion of examples where `predicted_social_valence` matches `social_valence`
-6. **context_swap_sensitivity**: Proportion of context-swap pairs where model output differs between conditions
+1. **prediction_coverage_rate**: fraction of benchmark examples with a matching prediction record
+2. **literal_accuracy**: correct literal predictions / all examples
+3. **pragmatic_match_rate**: accepted pragmatic predictions / all examples
+4. **ambiguity_recognition_rate**: ambiguous examples correctly marked ambiguous / all ambiguous examples
+5. **hostility_accuracy**: correct hostility predictions / all examples
+6. **social_valence_accuracy**: correct social-valence predictions / all examples
+7. **confidence_brier_score**: mean Brier score for confidence in the submitted pragmatic predictions; lower is better
+8. **context_swap_sensitivity_rate**: context-swap pairs that are both directionally correct and different / all context-swap pairs
 
-**These metrics are not aggregated into a single score.**
+Confidence calibration is reported only over submitted, schema-valid predictions because an absent record contains no confidence value. Coverage is reported separately, and missing records already count as failures in the dataset-proportion metrics.
 
-Aggregation would hide the differential performance across pragmatic mechanisms and create
-false precision. Researchers should inspect component metrics separately.
+No component is combined into a single "Australian understanding" score.
+
+---
+
+## Exact-Match Limitation
+
+The Phase 1 pragmatic evaluator uses case-folded exact string matching against the accepted interpretations. This is deliberately transparent and deterministic, but it is not semantic equivalence. A later phase may introduce a separately validated semantic scoring protocol.
 
 ---
 
 ## Schema Versioning
 
-The schema version is recorded in `schemas/example.schema.json` via the `$schema` URI and
-the `$id` field.
+Both schemas carry two machine-readable version markers:
 
-If the schema changes in a backward-incompatible way:
-1. Increment the schema version in both schema files.
-2. Update all existing records if required.
-3. Document the change in CHANGELOG.md.
-4. Update models.py to match.
+- a versioned `$id`, currently containing `/v0.1.0/`;
+- `x-project-schema-version: "0.1.0"`.
+
+The JSON Schema `$schema` URI identifies the JSON Schema dialect only. It is **not** the project schema version.
+
+For a backward-incompatible schema change:
+
+1. increment the project schema version in both root schemas and packaged copies;
+2. update affected records and Python models;
+3. update tests and documentation;
+4. document the change in `CHANGELOG.md`.
+
+The root `schemas/` files are the review-facing contracts. Equivalent copies are packaged under `src/australian_for_ais/schemas/` so installed wheels can validate offline.
