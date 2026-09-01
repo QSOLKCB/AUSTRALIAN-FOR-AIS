@@ -20,10 +20,14 @@ reference evaluator, and tests needed for later dataset expansion.
 - CLI for validation and evaluation
 - Test suite (all offline)
 - Ethics, methodology, annotation, and governance documentation
+- Research reference corpus with explicit copyright, provenance, and epistemic-status boundaries
+- Repository hygiene rules preventing generated local artefacts from entering the research record
 
 **Graduation Criteria:**
 - [ ] All tests pass in CI
 - [ ] All starter examples validate against the schema
+- [ ] Research references are explicitly separated from redistributable benchmark data
+- [ ] No fabricated release/citation metadata remains in the Phase 1 branch
 - [ ] Invariants reviewed by at least one researcher outside the initial author
 - [ ] PR reviewed and merged
 
@@ -38,6 +42,7 @@ reference evaluator, and tests needed for later dataset expansion.
 - Inter-annotator agreement analysis tools
 - Pilot annotation of ~50–100 examples with multiple annotators
 - Revised annotation guide based on pilot experience
+- Mechanism-selection review informed by the Phase 1 research reference corpus
 
 **Graduation Criteria:**
 - [ ] Pilot annotation completed with at least 2 annotators per example
@@ -87,11 +92,13 @@ dataset using the reference evaluator and extended metrics.
 
 ## Phase 5 — Adversarial Context-Swap and Minimal-Pair Benchmark
 
-**Goal:** Formalise and expand the context-swap and minimal-pair test concepts.
+**Goal:** Formalise and expand the context-swap and minimal-pair test concepts, including
+adversarial pragmatic structures identified during reference-corpus analysis.
 
 **Deliverables:**
 - Extended context-swap dataset (same utterance, different contexts)
 - Minimal-pair examples differing in speaker relationship, preceding event, or social setting
+- Authority-inversion, question-intent, persona, and institutional-frame swap families
 - Analysis of whether context-swap failures correlate with lexical shortcuts
 - Answers to RQ6 and RQ7
 
@@ -99,6 +106,7 @@ dataset using the reference evaluator and extended metrics.
 - [ ] Context-swap examples cover at least 10 distinct utterance types
 - [ ] Results show whether models use context beyond lexical content
 - [ ] Methodology is replicable without proprietary dependencies
+- [ ] Media-inspired benchmark items are independently authored or appropriately licensed
 
 ---
 
