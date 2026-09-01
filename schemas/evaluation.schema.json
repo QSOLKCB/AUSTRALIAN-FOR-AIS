@@ -1,13 +1,17 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/QSOLKCB/AUSTRALIAN-FOR-AIS/schemas/evaluation.schema.json",
+  "$id": "https://github.com/QSOLKCB/AUSTRALIAN-FOR-AIS/schemas/v0.1.0/evaluation.schema.json",
+  "x-project-schema-version": "0.1.0",
   "title": "Australian For AIs — Evaluation Prediction Record",
   "description": "Schema for a single model prediction record used in evaluation.",
   "type": "object",
   "required": [
     "example_id",
+    "predicted_literal",
     "predicted_pragmatic",
     "predicted_hostility",
+    "predicted_social_valence",
+    "predicted_ambiguity",
     "model_confidence"
   ],
   "additionalProperties": false,
@@ -19,6 +23,7 @@
     },
     "predicted_literal": {
       "type": "string",
+      "minLength": 1,
       "description": "Model's literal interpretation of the utterance."
     },
     "predicted_pragmatic": {
@@ -46,7 +51,7 @@
       "type": "number",
       "minimum": 0.0,
       "maximum": 1.0,
-      "description": "Model's reported confidence in its primary prediction (0.0–1.0)."
+      "description": "Model's reported confidence in its primary pragmatic prediction (0.0–1.0)."
     },
     "model_id": {
       "type": "string",
