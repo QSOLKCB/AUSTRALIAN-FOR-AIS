@@ -61,7 +61,7 @@ def _make_prediction(**kwargs) -> EvaluationRecord:
 
 class TestHelpers:
     def test_normalise(self):
-        assert _normalise("  Hello World  ") == "hello world"
+        assert _normalise("  Hello   World  ") == "hello world"
 
     def test_pragmatic_matches_multiple(self):
         assert _pragmatic_matches("READING B", ["Reading A", "Reading B"])
@@ -154,6 +154,22 @@ class TestScoring:
         assert result.pragmatic_match == 1
         assert result.ambiguity_recognised == 1
         assert result.as_dict()["confidence_brier_score"] == pytest.approx(0.01)
+
+    def test_noncanonical_insufficient_context_prediction_is_not_accepted(self):
+        ex = _make_example(
+            ambiguity=True,
+            confidence=0.3,
+            pragmatic_interpretations=["Sincere approval", "Sarcastic dismissal"],
+            primary_pragmatic_interpretation="insufficient_context",
+        )
+        pred = _make_prediction(
+            predicted_pragmatic="INSUFFICIENT_CONTEXT",
+            predicted_ambiguity=True,
+            model_confidence=0.9,
+        )
+        result = score({"t-001": ex}, {"t-001": pred})
+        assert result.pragmatic_match == 0
+        assert result.as_dict()["confidence_brier_score"] == pytest.approx(0.81)
 
     def test_uncertain_hostility_annotation_is_excluded_from_accuracy(self):
         ex = _make_example(hostility="uncertain")
@@ -262,7 +278,7 @@ class TestScoring:
         )
         ex_b = _make_example(
             id="cs-b",
-            context=" same context ",
+            context=" same   context ",
             context_swap_group="csw-1",
             pragmatic_interpretations=["Reading B"],
             primary_pragmatic_interpretation="Reading B",
