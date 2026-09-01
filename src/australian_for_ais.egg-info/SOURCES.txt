@@ -1,0 +1,16 @@
+LICENSE
+README.md
+pyproject.toml
+src/australian_for_ais/__init__.py
+src/australian_for_ais/cli.py
+src/australian_for_ais/models.py
+src/australian_for_ais/scoring.py
+src/australian_for_ais/validation.py
+src/australian_for_ais.egg-info/PKG-INFO
+src/australian_for_ais.egg-info/SOURCES.txt
+src/australian_for_ais.egg-info/dependency_links.txt
+src/australian_for_ais.egg-info/requires.txt
+src/australian_for_ais.egg-info/top_level.txt
+tests/test_schema.py
+tests/test_scoring.py
+tests/test_validation.py

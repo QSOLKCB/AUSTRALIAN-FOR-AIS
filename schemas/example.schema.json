@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/QSOLKCB/AUSTRALIAN-FOR-AIS/schemas/example.schema.json",
+  "title": "Australian For AIs — Benchmark Example",
+  "description": "Schema for a single benchmark example in the Australian For AIs dataset.",
+  "type": "object",
+  "required": [
+    "id",
+    "locale",
+    "utterance",
+    "context",
+    "speaker_relationship",
+    "literal_interpretation",
+    "pragmatic_interpretations",
+    "primary_pragmatic_interpretation",
+    "humour_mechanisms",
+    "social_valence",
+    "hostility",
+    "confidence",
+    "ambiguity",
+    "cultural_dependency",
+    "context_required",
+    "source_type",
+    "provenance",
+    "license"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable unique identifier for this example. Must not change after initial assignment."
+    },
+    "locale": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Language variety identifier, e.g. 'en-AU'."
+    },
+    "utterance": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The observed linguistic form of what was said."
+    },
+    "context": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Situational context required to interpret the utterance."
+    },
+    "speaker_relationship": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The social relationship between speaker and addressee."
+    },
+    "literal_interpretation": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The denotative, context-free semantic reading of the utterance."
+    },
+    "pragmatic_interpretations": {
+      "type": "array",
+      "minItems": 1,
+      "description": "List of plausible socially intended readings. Must contain at least one entry.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "primary_pragmatic_interpretation": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The annotator's best-estimate pragmatic reading. Not claimed to be ground truth. May be 'insufficient_context' when context does not permit a determination."
+    },
+    "humour_mechanisms": {
+      "type": "array",
+      "description": "Taxonomy tags for pragmatic devices in use.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "understatement",
+          "sarcasm",
+          "irony",
+          "deadpan",
+          "affectionate_insult",
+          "inverse_praise",
+          "profanity_non_hostile",
+          "discourse_marker",
+          "self_deprecation",
+          "absurdist_escalation",
+          "relational_teasing",
+          "tall_poppy_humour",
+          "ambiguous_address",
+          "literal",
+          "unknown"
+        ]
+      }
+    },
+    "social_valence": {
+      "type": "string",
+      "enum": ["friendly", "hostile", "neutral", "ambiguous", "unknown"],
+      "description": "The social register of this utterance in its given context."
+    },
+    "hostility": {
+      "description": "Whether aggressive social intent is present. Not to be inferred from lexical content alone (AU-HUMOUR-001).",
+      "oneOf": [
+        {"type": "boolean"},
+        {"type": "string", "enum": ["uncertain"]}
+      ]
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Annotator's confidence in the primary pragmatic interpretation (0.0–1.0)."
+    },
+    "ambiguity": {
+      "type": "boolean",
+      "description": "True if multiple substantially different pragmatic interpretations are plausible."
+    },
+    "cultural_dependency": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "unknown"],
+      "description": "Whether interpretation requires specific cultural knowledge."
+    },
+    "context_required": {
+      "type": "boolean",
+      "description": "Whether pragmatic interpretation is substantially context-dependent."
+    },
+    "alternative_interpretations": {
+      "type": "array",
+      "description": "Other plausible interpretations the annotator considered.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "annotation_notes": {
+      "type": "string",
+      "description": "Free-text documentation of annotation reasoning, uncertainty, or caveats."
+    },
+    "source_type": {
+      "type": "string",
+      "enum": ["synthetic", "naturalistic", "constructed"],
+      "description": "How this example originated."
+    },
+    "provenance": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Description of origin, licensing, and consent status."
+    },
+    "license": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Licence for this example."
+    },
+    "tags": {
+      "type": "array",
+      "description": "Arbitrary searchable tags.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "context_swap_group": {
+      "type": "string",
+      "description": "Optional. Links examples that share the same utterance but differ in context."
+    }
+  }
+}

@@ -1,3 +1,17 @@
+Metadata-Version: 2.4
+Name: australian_for_ais
+Version: 0.1.0
+Summary: A Cultural-Pragmatics Benchmark for Ethical Language Understanding
+License: Apache-2.0
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: jsonschema<5,>=4.21
+Provides-Extra: dev
+Requires-Dist: pytest<9,>=8.0; extra == "dev"
+Requires-Dist: pytest-cov<6,>=5.0; extra == "dev"
+Dynamic: license-file
+
 # Australian For AIs
 
 **A Cultural-Pragmatics Benchmark for Ethical Language Understanding**
@@ -110,7 +124,7 @@ data/
 
 src/australian_for_ais/
   __init__.py
-  models.py                — Data models (dataclasses)
+  models.py                — Data models (Pydantic)
   validation.py            — Record validation
   scoring.py               — Deterministic reference evaluator
   cli.py                   — Command-line interface
