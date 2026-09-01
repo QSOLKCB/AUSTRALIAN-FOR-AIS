@@ -41,16 +41,36 @@ See [README4AI.md](README4AI.md) for a machine-oriented description of this repo
 
 ## Why This Matters for AI Ethics
 
-When an AI system incorrectly classifies ordinary pragmatic language as hostile, abusive, or
-violating, real harms follow:
+If an AI system incorrectly classifies ordinary pragmatic language as hostile, abusive, or
+violating, several ethically important failure modes are possible:
 
-- Content moderation false positives suppress legitimate speech
-- Sentiment analysis misrepresents community opinion
-- Intent recognition systems produce misleading signals
-- Safety-tuned models develop blind spots toward non-dominant dialects and registers
-- Under-represented linguistic communities experience disproportionate friction
+- Content moderation false positives may suppress legitimate speech
+- Sentiment analysis may misrepresent community opinion
+- Intent recognition systems may produce misleading signals
+- Safety-tuned models may develop blind spots toward non-dominant dialects and registers
+- Linguistic communities may experience unequal friction from systems calibrated to other norms
 
-These are not hypothetical risks. They reflect documented failures in deployed systems.
+Phase 1 treats these as **researchable risks**, not measured prevalence claims. Later phases are
+intended to test them empirically rather than assume the conclusion in advance.
+
+---
+
+## Research Reference Corpus
+
+The project maintains a [research reference corpus](docs/RESEARCH-REFERENCE-CORPUS.md) for
+studying pragmatic mechanisms in Australian comedy and satire.
+
+Initial references include *Fast Forward*, *Full Frontal*, *skitHOUSE*, *The Eric Bana Show Live*,
+*Russell Coight's All Aussie Adventures*, *Hey Dad..!*, Col'n Carpenter, and The Chaser, with
+The Chaser treated as a particularly valuable source of adversarial institutional pragmatics.
+
+These works are **references, not benchmark data**. The project does not copy scripts, subtitles,
+or programme dialogue into the dataset merely because a work is useful to study. Instead, later
+benchmark items should use independently authored or appropriately licensed examples that isolate
+the relevant pragmatic mechanism.
+
+A theoretical preprint is also registered as a hypothesis source. Its preprint status is preserved
+explicitly rather than treating it as settled evidence.
 
 ---
 
@@ -62,6 +82,8 @@ These are not hypothetical risks. They reflect documented failures in deployed s
 - A high benchmark score does not mean a model is culturally competent.
 - This project does not claim the phenomena studied are unique to Australian English.
 - Findings are not assumed to generalise automatically to other dialects.
+- Comedy programmes are not treated as representative samples of Australian speakers.
+- A research reference does not automatically grant permission to redistribute its dialogue.
 
 ---
 
@@ -70,8 +92,8 @@ These are not hypothetical risks. They reflect documented failures in deployed s
 **Phase 1 — Research Substrate (current)**
 
 This repository contains the research contracts, schemas, methodology documentation,
-synthetic starter fixtures, reference evaluator, tests, and roadmap needed for later
-dataset expansion. Phase 1 is not scientifically validated. It is a scaffold for future work.
+synthetic starter fixtures, reference evaluator, tests, provenance boundaries, and roadmap needed
+for later dataset expansion. Phase 1 is not scientifically validated. It is a scaffold for future work.
 
 See [ROADMAP.md](ROADMAP.md) for planned phases.
 
@@ -96,6 +118,7 @@ docs/
   ANNOTATION-GUIDE.md      — How future human annotation should work
   BENCHMARK-DESIGN.md      — Benchmark design rationale
   DATA-GOVERNANCE.md       — Data provenance and governance
+  RESEARCH-REFERENCE-CORPUS.md — Reference works and source-use boundaries
   LIMITATIONS.md           — Known limitations
   GLOSSARY.md              — Terminology
 
@@ -187,10 +210,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines.
 Short version:
 
 1. Read [docs/INVARIANTS.md](docs/INVARIANTS.md) before touching data or evaluation code.
-2. Do not fabricate citations or annotations.
-3. Do not flatten ambiguity into false certainty.
-4. Preserve stable example IDs.
-5. Open an issue before making significant schema or methodology changes.
+2. Read [docs/RESEARCH-REFERENCE-CORPUS.md](docs/RESEARCH-REFERENCE-CORPUS.md) before deriving examples from media references.
+3. Do not fabricate citations or annotations.
+4. Do not flatten ambiguity into false certainty.
+5. Preserve stable example IDs.
+6. Open an issue before making significant schema or methodology changes.
 
 ---
 
