@@ -32,6 +32,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Glossary (`docs/GLOSSARY.md`)
 - Roadmap (`ROADMAP.md`)
 - Root `.gitignore` covering Python bytecode, packaging metadata, caches, virtual environments, and local evaluation output
+- Packaged JSON Schema resources for non-editable wheel installations
+- Prediction coverage and Brier confidence-calibration components
+- CI wheel smoke test proving packaged schemas remain available after installation
 
 ### Changed
 
@@ -40,6 +43,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added provenance rules for media-inspired benchmark design and noisy automatic transcripts
 - Removed an invented `date-released` value from `CITATION.cff`; unreleased metadata now remains explicitly pre-release
 - Added candidate future mechanism families for institutional satire, performed persona, unreliable authority, and frame switching without silently expanding the active schema
+- Required every advertised prediction dimension in evaluation records
+- Made accuracy denominators cover the complete benchmark so omitted predictions cannot inflate rates
+- Made context-swap success require correct context-specific answers, not merely different strings
+- Aligned every starter primary interpretation with an accepted scorable interpretation, except explicit `insufficient_context`
+- Enforced the annotation-guide confidence ceiling for `insufficient_context`
+- Reworked `yeah nah`, `nah yeah`, `old mate`, and related fixture notes to describe context-specific best estimates rather than fixed Australian-English rules
+- Replaced rural-context inference with an explicit delivery cue for the deadpan heat fixture
+- Replaced contradictory `literal` mechanism labels where pragmatic function differs from literal form
+- Added project schema version `0.1.0` to machine-readable schema metadata
+- Hardened dataset validation for duplicate IDs, non-object JSON, and whitespace-only provenance/licence metadata
+- Restricted the model hostility type to `bool | Literal["uncertain"]`
 
 ### Removed
 
