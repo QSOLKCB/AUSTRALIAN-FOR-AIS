@@ -14,6 +14,8 @@ You are operating within a research project. Epistemic precision is required.
 - **Benchmark performance** is not the same as **cultural competence**.
 - **Model confidence** must not substitute for evidence about cultural context.
 - **Ambiguity must be preserved**. Do not silently resolve uncertain cases into certainty.
+- **Research reference** is not the same as **redistributable benchmark data**.
+- **Comedic depiction** is not the same as **representative cultural ground truth**.
 
 ---
 
@@ -32,21 +34,23 @@ You are operating within a research project. Epistemic precision is required.
 | `ambiguity` | Whether multiple substantially different interpretations are plausible |
 | `humour_mechanisms` | Taxonomy labels for the pragmatic device being used |
 | `context_swap_group` | ID linking utterances that are identical but have different contexts |
+| `research_reference` | External work used to identify mechanisms or hypotheses; not benchmark data by default |
 
 ---
 
 ## File Layout
 
 ```
-schemas/example.schema.json        — Normative schema for every example record
-schemas/evaluation.schema.json     — Schema for evaluation prediction records
-data/starter/examples.jsonl        — Phase 1 synthetic fixtures (one JSON object per line)
-src/australian_for_ais/models.py   — Python data models
+schemas/example.schema.json          — Normative schema for every example record
+schemas/evaluation.schema.json       — Schema for evaluation prediction records
+data/starter/examples.jsonl          — Phase 1 synthetic fixtures (one JSON object per line)
+src/australian_for_ais/models.py     — Python data models
 src/australian_for_ais/validation.py — Validation logic
-src/australian_for_ais/scoring.py  — Deterministic reference evaluator
-src/australian_for_ais/cli.py      — CLI entry point
-tests/                             — pytest test suite
-docs/INVARIANTS.md                 — Core invariants. Read before modifying data.
+src/australian_for_ais/scoring.py    — Deterministic reference evaluator
+src/australian_for_ais/cli.py        — CLI entry point
+tests/                               — pytest test suite
+docs/INVARIANTS.md                   — Core invariants. Read before modifying data.
+docs/RESEARCH-REFERENCE-CORPUS.md    — External references and source-use boundaries.
 ```
 
 ---
@@ -63,6 +67,9 @@ If you modify a schema, you must:
 - Update `src/australian_for_ais/models.py` accordingly.
 - Update `docs/BENCHMARK-DESIGN.md` to document the change.
 - Re-run the full test suite.
+
+Candidate mechanism labels listed in `docs/RESEARCH-REFERENCE-CORPUS.md` are **not active schema
+values**. Do not insert them into dataset records unless the schema contract is deliberately revised.
 
 ---
 
@@ -94,7 +101,7 @@ You must not introduce logic that violates these invariants.
 
 ## What Agents Must Not Do
 
-- Fabricate citations, author names, DOIs, ORCID identifiers, or institutional affiliations.
+- Fabricate citations, author names, DOIs, ORCID identifiers, dates, release metadata, or institutional affiliations.
 - Convert uncertain or ambiguous annotations into categorical ground truth.
 - Assign a fixed social meaning to "mate", profanity, or context-dependent language.
 - Invent cultural rules and present them as established facts.
@@ -105,6 +112,26 @@ You must not introduce logic that violates these invariants.
 - Change an example's `id` once it has been committed to the dataset.
 - Mark future roadmap phases as complete.
 - Introduce network dependencies into the test suite.
+- Copy television scripts, subtitles, episode transcripts, or bulk dialogue into the benchmark without an independently established licence and documented justification.
+- Treat a web-accessible source as automatically redistributable.
+- Commit generated Python bytecode, cache directories, local packaging metadata, virtual environments, or editor artefacts.
+
+---
+
+## Research Reference Handling
+
+`docs/RESEARCH-REFERENCE-CORPUS.md` contains works used for research design, including Australian
+sketch comedy, sitcom, mockumentary, satire, and a theoretical preprint.
+
+When using those references:
+
+1. Extract the **pragmatic structure** or research hypothesis.
+2. Write a new synthetic example or use independently licensed material.
+3. Record the new example's own provenance and licence.
+4. Do not copy a joke merely to preserve the mechanism.
+5. Preserve source status. A preprint remains a preprint; a secondary summary remains secondary.
+6. Treat ASR transcripts as noisy research aids until human-verified.
+7. Do not infer that fictional or satirical depictions represent Australians generally.
 
 ---
 
@@ -136,7 +163,7 @@ The schema strictly separates:
 | `pragmatic_interpretations` | List of plausible socially intended meanings |
 | `primary_pragmatic_interpretation` | The annotator's best-estimate reading (not ground truth) |
 
-Do not conflate these. A utterance like "Yeah, nah." has a clear literal form and a pragmatic
+Do not conflate these. An utterance like "Yeah, nah." has a clear literal form and a pragmatic
 reading that requires discourse context.
 
 ---
@@ -174,5 +201,7 @@ You must not introduce statements such as:
 Such statements are false and harmful. Individual speakers vary. Context varies.
 
 Document cultural tendencies only when they are:
-1. Attributed to peer-reviewed sociolinguistic literature, OR
+1. Attributed to appropriate research literature, OR
 2. Hedged explicitly as hypotheses under investigation.
+
+A source appearing in the research reference corpus does not by itself establish a universal cultural tendency.
