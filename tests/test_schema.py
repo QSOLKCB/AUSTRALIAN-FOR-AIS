@@ -1,9 +1,8 @@
-"""
-Tests for JSON Schema validity and structure.
-"""
+"""Tests for JSON Schema validity, versioning, and packaged copies."""
 
 import json
 import pathlib
+from importlib import resources
 
 import jsonschema
 import pytest
@@ -21,39 +20,45 @@ def load_schema(path: pathlib.Path) -> dict:
 
 
 class TestSchemaFiles:
-    def test_example_schema_exists(self):
-        assert EXAMPLE_SCHEMA_PATH.exists(), "schemas/example.schema.json must exist"
+    def test_schema_files_exist(self):
+        assert EXAMPLE_SCHEMA_PATH.exists()
+        assert EVALUATION_SCHEMA_PATH.exists()
 
-    def test_evaluation_schema_exists(self):
-        assert EVALUATION_SCHEMA_PATH.exists(), "schemas/evaluation.schema.json must exist"
+    def test_schemas_are_valid_draft_2020_12(self):
+        jsonschema.Draft202012Validator.check_schema(load_schema(EXAMPLE_SCHEMA_PATH))
+        jsonschema.Draft202012Validator.check_schema(load_schema(EVALUATION_SCHEMA_PATH))
 
-    def test_example_schema_is_valid_json(self):
-        schema = load_schema(EXAMPLE_SCHEMA_PATH)
-        assert isinstance(schema, dict)
+    def test_project_schema_version_is_machine_readable(self):
+        for path in (EXAMPLE_SCHEMA_PATH, EVALUATION_SCHEMA_PATH):
+            schema = load_schema(path)
+            assert schema["x-project-schema-version"] == "0.1.0"
+            assert "/v0.1.0/" in schema["$id"]
 
-    def test_evaluation_schema_is_valid_json(self):
-        schema = load_schema(EVALUATION_SCHEMA_PATH)
-        assert isinstance(schema, dict)
+    def test_evaluation_schema_requires_all_advertised_dimensions(self):
+        required = set(load_schema(EVALUATION_SCHEMA_PATH)["required"])
+        assert {
+            "example_id",
+            "predicted_literal",
+            "predicted_pragmatic",
+            "predicted_hostility",
+            "predicted_social_valence",
+            "predicted_ambiguity",
+            "model_confidence",
+        } <= required
 
-    def test_example_schema_has_required_fields(self):
-        schema = load_schema(EXAMPLE_SCHEMA_PATH)
-        assert "id" in schema["required"]
-        assert "utterance" in schema["required"]
-        assert "pragmatic_interpretations" in schema["required"]
-        assert "confidence" in schema["required"]
-        assert "ambiguity" in schema["required"]
-        assert "hostility" in schema["required"]
-
-    def test_evaluation_schema_has_required_fields(self):
-        schema = load_schema(EVALUATION_SCHEMA_PATH)
-        assert "example_id" in schema["required"]
-        assert "predicted_pragmatic" in schema["required"]
-        assert "model_confidence" in schema["required"]
+    def test_packaged_schemas_match_root_contracts(self):
+        package_dir = resources.files("australian_for_ais").joinpath("schemas")
+        packaged_example = json.loads(
+            package_dir.joinpath("example.schema.json").read_text(encoding="utf-8")
+        )
+        packaged_evaluation = json.loads(
+            package_dir.joinpath("evaluation.schema.json").read_text(encoding="utf-8")
+        )
+        assert packaged_example == load_schema(EXAMPLE_SCHEMA_PATH)
+        assert packaged_evaluation == load_schema(EVALUATION_SCHEMA_PATH)
 
 
 class TestStarterDataAgainstSchema:
-    """Each starter example must validate against the example schema."""
-
     def _load_examples(self):
         records = []
         with DATA_PATH.open(encoding="utf-8") as fh:
@@ -63,38 +68,30 @@ class TestStarterDataAgainstSchema:
                     records.append((lineno, json.loads(line)))
         return records
 
-    def test_starter_data_exists(self):
-        assert DATA_PATH.exists(), "data/starter/examples.jsonl must exist"
-
     def test_all_records_valid(self):
         schema = load_schema(EXAMPLE_SCHEMA_PATH)
         records = self._load_examples()
-        assert len(records) > 0, "Starter dataset must be non-empty"
+        assert len(records) == 15
         for lineno, record in records:
             try:
                 jsonschema.validate(record, schema)
             except jsonschema.ValidationError as exc:
-                pytest.fail(
-                    f"Line {lineno} (id={record.get('id', '?')}): {exc.message}"
-                )
-
-    def test_all_records_have_ids(self):
-        records = self._load_examples()
-        for lineno, record in records:
-            assert record.get("id"), f"Line {lineno}: missing 'id'"
+                pytest.fail(f"Line {lineno} (id={record.get('id', '?')}): {exc.message}")
 
     def test_ids_are_unique(self):
         records = self._load_examples()
-        ids = [r["id"] for _, r in records]
-        assert len(ids) == len(set(ids)), "Example IDs must be unique"
+        ids = [record["id"] for _, record in records]
+        assert len(ids) == len(set(ids))
+
+    def test_primary_interpretations_are_scorable_or_insufficient(self):
+        for _, record in self._load_examples():
+            primary = record["primary_pragmatic_interpretation"]
+            assert primary == "insufficient_context" or primary in record["pragmatic_interpretations"]
 
     def test_context_swap_pairs_exist(self):
-        records = self._load_examples()
-        groups: dict[str, list] = {}
-        for _, record in records:
-            csg = record.get("context_swap_group")
-            if csg:
-                groups.setdefault(csg, []).append(record["id"])
-        # At least one context-swap group with at least two members
-        multi = {g: ids for g, ids in groups.items() if len(ids) >= 2}
-        assert multi, "Starter data must include at least one context-swap pair"
+        groups: dict[str, list[str]] = {}
+        for _, record in self._load_examples():
+            group = record.get("context_swap_group")
+            if group:
+                groups.setdefault(group, []).append(record["id"])
+        assert any(len(ids) >= 2 for ids in groups.values())
