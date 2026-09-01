@@ -1,0 +1,158 @@
+"""Regression tests for review-discovered contract edge cases."""
+
+import json
+
+import pytest
+
+from australian_for_ais.models import BenchmarkExample, EvaluationRecord
+from australian_for_ais.scoring import load_examples, score
+from australian_for_ais.validation import (
+    ValidationError,
+    validate_context_swap_groups,
+    validate_evaluation_record,
+    validate_example_record,
+    validate_jsonl_file,
+)
+
+
+def _example_record(**overrides) -> dict:
+    record = {
+        "id": "test-001",
+        "locale": "en-AU",
+        "utterance": "Good one, mate.",
+        "context": "A successful task has just been completed.",
+        "speaker_relationship": "Friends",
+        "literal_interpretation": "Positive evaluation.",
+        "pragmatic_interpretations": ["Sincere praise"],
+        "primary_pragmatic_interpretation": "Sincere praise",
+        "humour_mechanisms": ["literal"],
+        "social_valence": "friendly",
+        "hostility": False,
+        "confidence": 0.8,
+        "ambiguity": False,
+        "cultural_dependency": "medium",
+        "context_required": True,
+        "source_type": "synthetic",
+        "provenance": "Test fixture",
+        "license": "Apache-2.0",
+    }
+    record.update(overrides)
+    return record
+
+
+def _example_model(**overrides) -> BenchmarkExample:
+    return BenchmarkExample.from_dict(_example_record(**overrides))
+
+
+def _prediction_model(**overrides) -> EvaluationRecord:
+    record = {
+        "example_id": "test-001",
+        "predicted_literal": "Positive evaluation.",
+        "predicted_pragmatic": "Sincere praise",
+        "predicted_hostility": False,
+        "predicted_social_valence": "friendly",
+        "predicted_ambiguity": False,
+        "model_confidence": 0.8,
+    }
+    record.update(overrides)
+    return EvaluationRecord.from_dict(record)
+
+
+def test_sentinel_cannot_be_an_ordinary_accepted_reading():
+    record = _example_record(
+        pragmatic_interpretations=["Sincere praise", "insufficient_context"],
+        primary_pragmatic_interpretation="Sincere praise",
+    )
+    with pytest.raises(ValidationError, match="reserved"):
+        validate_example_record(record)
+
+
+def test_noncanonical_prediction_sentinel_is_rejected():
+    record = {
+        "example_id": "test-001",
+        "predicted_literal": "Positive evaluation.",
+        "predicted_pragmatic": " INSUFFICIENT_CONTEXT ",
+        "predicted_hostility": False,
+        "predicted_social_valence": "friendly",
+        "predicted_ambiguity": True,
+        "model_confidence": 0.3,
+    }
+    with pytest.raises(ValidationError, match="written exactly"):
+        validate_evaluation_record(record)
+
+
+def test_direct_scoring_filters_reserved_sentinel_from_ordinary_example():
+    example = _example_model(
+        pragmatic_interpretations=["Sincere praise", "insufficient_context"],
+        primary_pragmatic_interpretation="Sincere praise",
+    )
+    prediction = _prediction_model(predicted_pragmatic="insufficient_context")
+    result = score({"test-001": example}, {"test-001": prediction})
+    assert result.pragmatic_match == 0
+
+
+def test_context_swap_rejects_overlapping_accepted_directions():
+    first = _example_record(
+        id="swap-a",
+        context="A successful task has just been completed.",
+        pragmatic_interpretations=["Sincere praise", "Shared fallback"],
+        primary_pragmatic_interpretation="Sincere praise",
+        ambiguity=True,
+        context_swap_group="swap-1",
+    )
+    second = _example_record(
+        id="swap-b",
+        context="A careless mistake has just caused a problem.",
+        pragmatic_interpretations=["Sarcastic criticism", "Shared fallback"],
+        primary_pragmatic_interpretation="Sarcastic criticism",
+        ambiguity=True,
+        context_swap_group="swap-1",
+    )
+    with pytest.raises(ValidationError, match="disjoint accepted"):
+        validate_context_swap_groups([first, second])
+
+
+def test_empty_benchmark_validation_fails(tmp_path):
+    path = tmp_path / "empty.jsonl"
+    path.write_text("\n\n", encoding="utf-8")
+    errors = validate_jsonl_file(path)
+    assert any("at least one example" in error for error in errors)
+
+    with pytest.raises(ValidationError, match="at least one example"):
+        load_examples(path)
+
+
+def test_score_rejects_empty_example_mapping():
+    with pytest.raises(ValidationError, match="empty benchmark"):
+        score({}, {})
+
+
+def test_score_rejects_prediction_mapping_key_mismatch():
+    example = _example_model()
+    prediction = _prediction_model(example_id="other-id")
+    with pytest.raises(ValidationError, match="mapping key"):
+        score({"test-001": example}, {"test-001": prediction})
+
+
+def test_score_rejects_example_mapping_key_mismatch():
+    example = _example_model(id="other-id")
+    with pytest.raises(ValidationError, match="mapping key"):
+        score({"test-001": example}, {})
+
+
+def test_directory_jsonl_input_is_reported_cleanly(tmp_path):
+    directory = tmp_path / "dataset-dir"
+    directory.mkdir()
+
+    errors = validate_jsonl_file(directory)
+    assert any("not a regular file" in error for error in errors)
+
+    with pytest.raises(ValidationError, match="not a regular file"):
+        load_examples(directory)
+
+
+def test_file_loader_still_accepts_normal_record(tmp_path):
+    path = tmp_path / "one.jsonl"
+    path.write_text(json.dumps(_example_record()) + "\n", encoding="utf-8")
+    examples = load_examples(path)
+    assert list(examples) == ["test-001"]
