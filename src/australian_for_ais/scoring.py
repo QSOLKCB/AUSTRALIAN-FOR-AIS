@@ -96,12 +96,22 @@ class ComponentScores:
 
 
 def _normalise(s: str) -> str:
-    """Normalise a string for case-insensitive exact comparison."""
-    return s.strip().casefold()
+    """Case-fold text and collapse whitespace runs for deterministic comparison."""
+    return " ".join(s.split()).casefold()
 
 
 def _pragmatic_matches(predicted: str, annotated_interpretations: list[str]) -> bool:
-    """Return True when a prediction exactly matches one accepted interpretation."""
+    """Return True when a prediction exactly matches one accepted interpretation.
+
+    Ordinary readings are compared using the transparent Phase 1 text
+    normalisation. The ``insufficient_context`` sentinel is different: it is a
+    control value and is accepted only in its exact canonical spelling.
+    """
+    if "insufficient_context" in annotated_interpretations and _normalise(
+        predicted
+    ) == "insufficient_context":
+        return predicted == "insufficient_context"
+
     pred_norm = _normalise(predicted)
     return any(_normalise(a) == pred_norm for a in annotated_interpretations)
 
@@ -111,11 +121,11 @@ def _accepted_pragmatic_interpretations(ex: BenchmarkExample) -> list[str]:
     Return the accepted pragmatic answers for one example.
 
     ``insufficient_context`` is an explicit accepted answer only when it is the
-    example's declared primary interpretation. This preserves uncertainty rather
-    than rewarding a forced choice between unresolved readings.
+    example's exact declared primary interpretation. This preserves uncertainty
+    without allowing case/padding variants to bypass the sentinel contract.
     """
     accepted = list(ex.pragmatic_interpretations)
-    if _normalise(ex.primary_pragmatic_interpretation) == "insufficient_context":
+    if ex.primary_pragmatic_interpretation == "insufficient_context":
         accepted.append("insufficient_context")
     return accepted
 
