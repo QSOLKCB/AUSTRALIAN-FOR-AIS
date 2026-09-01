@@ -23,6 +23,8 @@ from .validation import (
     validate_example_record,
 )
 
+_INSUFFICIENT_CONTEXT = "insufficient_context"
+
 
 @dataclass
 class ComponentScores:
@@ -103,30 +105,34 @@ def _normalise(s: str) -> str:
 def _pragmatic_matches(predicted: str, annotated_interpretations: list[str]) -> bool:
     """Return True when a prediction exactly matches one accepted interpretation.
 
-    Ordinary readings are compared using the transparent Phase 1 text
-    normalisation. The ``insufficient_context`` sentinel is different: it is a
-    control value and is accepted only in its exact canonical spelling.
+    Ordinary readings use transparent Phase 1 text normalisation. The
+    ``insufficient_context`` sentinel is a reserved control value: it is matched
+    only in exact canonical spelling and only when explicitly present in the
+    accepted list supplied by the caller.
     """
-    if "insufficient_context" in annotated_interpretations and _normalise(
-        predicted
-    ) == "insufficient_context":
-        return predicted == "insufficient_context"
+    predicted_normalised = _normalise(predicted)
+    if predicted_normalised == _INSUFFICIENT_CONTEXT:
+        return (
+            predicted == _INSUFFICIENT_CONTEXT
+            and _INSUFFICIENT_CONTEXT in annotated_interpretations
+        )
 
-    pred_norm = _normalise(predicted)
-    return any(_normalise(a) == pred_norm for a in annotated_interpretations)
+    return any(
+        _normalise(answer) != _INSUFFICIENT_CONTEXT
+        and _normalise(answer) == predicted_normalised
+        for answer in annotated_interpretations
+    )
 
 
 def _accepted_pragmatic_interpretations(ex: BenchmarkExample) -> list[str]:
-    """
-    Return the accepted pragmatic answers for one example.
-
-    ``insufficient_context`` is an explicit accepted answer only when it is the
-    example's exact declared primary interpretation. This preserves uncertainty
-    without allowing case/padding variants to bypass the sentinel contract.
-    """
-    accepted = list(ex.pragmatic_interpretations)
-    if ex.primary_pragmatic_interpretation == "insufficient_context":
-        accepted.append("insufficient_context")
+    """Return accepted pragmatic answers while enforcing sentinel reservation."""
+    accepted = [
+        value
+        for value in ex.pragmatic_interpretations
+        if _normalise(value) != _INSUFFICIENT_CONTEXT
+    ]
+    if ex.primary_pragmatic_interpretation == _INSUFFICIENT_CONTEXT:
+        accepted.append(_INSUFFICIENT_CONTEXT)
     return accepted
 
 
@@ -163,11 +169,12 @@ def _context_swap_sensitive(
     pred_a: EvaluationRecord,
     pred_b: EvaluationRecord,
 ) -> bool:
-    """
-    Return True only when both context-specific answers are accepted and differ.
+    """Return True only for two accepted, directionally distinct predictions.
 
-    Merely producing two different strings is not sufficient: swapped or otherwise
-    incorrect answers do not demonstrate successful context use.
+    Dataset validation requires context-swap members to have disjoint accepted
+    pragmatic direction sets. Therefore an answer accepted for one context
+    cannot also be an accepted answer for its partner, preventing overlapping
+    ambiguity sets from granting credit to swapped answers.
     """
     outputs_differ = _normalise(pred_a.predicted_pragmatic) != _normalise(
         pred_b.predicted_pragmatic
@@ -184,7 +191,7 @@ def _context_swap_sensitive(
 
 
 def load_examples(path: pathlib.Path) -> dict[str, BenchmarkExample]:
-    """Load and validate benchmark examples, rejecting dataset-level violations."""
+    """Load and validate a non-empty benchmark example dataset."""
     examples: dict[str, BenchmarkExample] = {}
     raw_records = []
 
@@ -195,6 +202,9 @@ def load_examples(path: pathlib.Path) -> dict[str, BenchmarkExample]:
         if ex.id in examples:
             raise ValidationError(f"Line {lineno}: duplicate example id '{ex.id}'.")
         examples[ex.id] = ex
+
+    if not raw_records:
+        raise ValidationError("Benchmark dataset must contain at least one example record.")
 
     validate_context_swap_groups(raw_records)
     return examples
@@ -214,11 +224,35 @@ def load_predictions(path: pathlib.Path) -> dict[str, EvaluationRecord]:
     return predictions
 
 
+def _validate_mapping_contracts(
+    examples: dict[str, BenchmarkExample],
+    predictions: dict[str, EvaluationRecord],
+) -> None:
+    """Reject malformed direct-call mappings before any metric is computed."""
+    if not examples:
+        raise ValidationError("Cannot score an empty benchmark dataset.")
+
+    for key, example in examples.items():
+        if key != example.id:
+            raise ValidationError(
+                f"Example mapping key '{key}' does not match record id '{example.id}'."
+            )
+
+    for key, prediction in predictions.items():
+        if key != prediction.example_id:
+            raise ValidationError(
+                f"Prediction mapping key '{key}' does not match record example_id "
+                f"'{prediction.example_id}'."
+            )
+
+
 def score(
     examples: dict[str, BenchmarkExample],
     predictions: dict[str, EvaluationRecord],
 ) -> ComponentScores:
     """Score predictions deterministically against the complete example set."""
+    _validate_mapping_contracts(examples, predictions)
+
     result = ComponentScores(
         n_examples=len(examples),
         n_predictions=len(predictions),
