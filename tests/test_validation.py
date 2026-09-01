@@ -2,9 +2,11 @@
 
 import json
 import pathlib
+from typing import get_args
 
 import pytest
 
+from australian_for_ais.models import SocialValence
 from australian_for_ais.validation import (
     ValidationError,
     validate_context_swap_groups,
@@ -114,6 +116,14 @@ class TestExampleValidation:
         with pytest.raises(ValidationError, match="distinct normalized"):
             validate_example_record(rec)
 
+    def test_ambiguous_internal_whitespace_does_not_create_distinct_reading(self):
+        rec = _minimal_valid_example()
+        rec["ambiguity"] = True
+        rec["pragmatic_interpretations"] = ["Sincere approval", "Sincere   approval"]
+        rec["primary_pragmatic_interpretation"] = "Sincere approval"
+        with pytest.raises(ValidationError, match="distinct normalized"):
+            validate_example_record(rec)
+
     def test_insufficient_context_still_requires_two_distinct_readings(self):
         rec = _minimal_valid_example()
         rec["ambiguity"] = True
@@ -138,6 +148,19 @@ class TestExampleValidation:
         rec["primary_pragmatic_interpretation"] = "insufficient_context"
         rec["confidence"] = 0.4
         validate_example_record(rec)
+
+    @pytest.mark.parametrize(
+        "variant",
+        ["INSUFFICIENT_CONTEXT", " insufficient_context ", "Insufficient_Context"],
+    )
+    def test_insufficient_context_sentinel_must_be_canonical(self, variant):
+        rec = _minimal_valid_example()
+        rec["ambiguity"] = True
+        rec["pragmatic_interpretations"] = [variant, "Another reading"]
+        rec["primary_pragmatic_interpretation"] = variant
+        rec["confidence"] = 0.3
+        with pytest.raises(ValidationError, match="must be written exactly"):
+            validate_example_record(rec)
 
     @pytest.mark.parametrize(
         "field",
@@ -183,6 +206,15 @@ class TestExampleValidation:
         with pytest.raises(ValidationError):
             validate_example_record(rec)
 
+    def test_social_valence_type_alias_matches_schema_enum(self):
+        assert set(get_args(SocialValence)) == {
+            "friendly",
+            "hostile",
+            "neutral",
+            "ambiguous",
+            "unknown",
+        }
+
 
 class TestContextSwapValidation:
     def test_valid_pair_passes(self):
@@ -204,10 +236,24 @@ class TestContextSwapValidation:
         with pytest.raises(ValidationError, match="distinct context"):
             validate_context_swap_groups(records)
 
+    def test_group_rejects_context_difference_that_is_only_internal_whitespace(self):
+        records = _context_swap_pair()
+        records[0]["context"] = "A successful task has just been completed."
+        records[1]["context"] = "A successful   task has just been completed."
+        with pytest.raises(ValidationError, match="distinct context"):
+            validate_context_swap_groups(records)
+
     def test_group_requires_distinct_primary_directions(self):
         records = _context_swap_pair()
         records[1]["primary_pragmatic_interpretation"] = "Sincere praise"
         records[1]["pragmatic_interpretations"] = ["Sincere praise"]
+        with pytest.raises(ValidationError, match="distinct primary"):
+            validate_context_swap_groups(records)
+
+    def test_group_rejects_primary_difference_that_is_only_internal_whitespace(self):
+        records = _context_swap_pair()
+        records[1]["primary_pragmatic_interpretation"] = "Sincere   praise"
+        records[1]["pragmatic_interpretations"] = ["Sincere   praise"]
         with pytest.raises(ValidationError, match="distinct primary"):
             validate_context_swap_groups(records)
 
