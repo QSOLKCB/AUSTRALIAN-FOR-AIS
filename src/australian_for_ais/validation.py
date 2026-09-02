@@ -56,6 +56,11 @@ def _normalise_text(value: str) -> str:
     return " ".join(value.split()).casefold()
 
 
+def _normalise_annotation_text(value: str) -> str:
+    """Mirror the browser's locale-independent lowercasing for Phase 2 free text."""
+    return " ".join(value.split()).lower()
+
+
 def _normalise_observed_utterance(value: str) -> str:
     """Collapse whitespace while preserving lexical case in observed utterances."""
     return " ".join(value.split())
@@ -171,7 +176,11 @@ def _validate_schema_safely(record: Mapping[str, Any], schema: dict) -> None:
         ) from exc
 
 
-def _validate_interpretation_contract(record: Mapping[str, Any]) -> None:
+def _validate_interpretation_contract(
+    record: Mapping[str, Any],
+    *,
+    normaliser: Callable[[str], str] = _normalise_text,
+) -> None:
     """Apply the shared ambiguity and insufficient-context annotation contract."""
     _require_non_whitespace_items(
         record.get("pragmatic_interpretations"), "pragmatic_interpretations"
@@ -187,7 +196,7 @@ def _validate_interpretation_contract(record: Mapping[str, Any]) -> None:
         )
 
     primary = record.get("primary_pragmatic_interpretation", "")
-    primary_normalised = _normalise_text(primary)
+    primary_normalised = normaliser(primary)
     if primary_normalised == _INSUFFICIENT_CONTEXT and primary != _INSUFFICIENT_CONTEXT:
         raise ValidationError(
             "The insufficient-context sentinel must be written exactly as "
@@ -197,7 +206,7 @@ def _validate_interpretation_contract(record: Mapping[str, Any]) -> None:
     for interpretation in interps:
         if (
             isinstance(interpretation, str)
-            and _normalise_text(interpretation) == _INSUFFICIENT_CONTEXT
+            and normaliser(interpretation) == _INSUFFICIENT_CONTEXT
         ):
             raise ValidationError(
                 "'insufficient_context' is reserved for "
@@ -205,7 +214,7 @@ def _validate_interpretation_contract(record: Mapping[str, Any]) -> None:
                 "'pragmatic_interpretations'."
             )
 
-    accepted = {_normalise_text(v) for v in interps if isinstance(v, str)}
+    accepted = {normaliser(v) for v in interps if isinstance(v, str)}
     if primary != _INSUFFICIENT_CONTEXT and primary_normalised not in accepted:
         raise ValidationError(
             "'primary_pragmatic_interpretation' must be present in "
@@ -313,7 +322,10 @@ def validate_annotation_record(record: Any) -> None:
     ):
         _require_non_whitespace_text(record, field_name)
 
-    _validate_interpretation_contract(record)
+    _validate_interpretation_contract(
+        record,
+        normaliser=_normalise_annotation_text,
+    )
 
     hostility = record.get("hostility")
     if not isinstance(hostility, bool) and hostility != "uncertain":
