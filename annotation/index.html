@@ -29,7 +29,7 @@ nav { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 <body>
 <main>
 <h1>Australian For AIs — Phase 2 Annotation</h1>
-<p class="small">Offline human-annotation tool. No network requests are made. Use a pseudonymous annotator ID, not a real name or email address.</p>
+<p class="small">Offline human-annotation tool. No network requests are made. The browser generates a local pseudonymous annotator ID so names, emails, and account handles are not exported.</p>
 
 <section class="panel">
 <div class="grid">
@@ -38,8 +38,9 @@ nav { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 <input id="itemsFile" type="file" accept=".jsonl,.txt,application/json">
 </div>
 <div>
-<label for="annotatorId">Pseudonymous annotator ID</label>
-<input id="annotatorId" type="text" placeholder="e.g. annotator-07">
+<label for="annotatorId">Local pseudonymous annotator ID</label>
+<input id="annotatorId" type="text" readonly aria-readonly="true">
+<button id="newPseudonym" type="button">Use a new local pseudonym</button>
 </div>
 <div>
 <label for="exposure">Australian English exposure</label>
@@ -135,7 +136,7 @@ nav { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 </section>
 
 <section class="panel small">
-<strong>Epistemic contract:</strong> individual annotations are interpretations, not objective ground truth. Disagreement is retained as data. Stable IDs, pilot tags, and context-swap group IDs are intentionally hidden while annotating.
+<strong>Epistemic contract:</strong> individual annotations are interpretations, not objective ground truth. Disagreement is retained as data. Stable IDs, pilot tags, and context-swap group IDs are intentionally hidden while annotating. Pair order is pseudonym-specific so counterpart positions do not follow a fixed offset.
 </section>
 </main>
 <script>
@@ -146,6 +147,9 @@ const mechanisms = [
   "absurdist_escalation","relational_teasing","tall_poppy_humour",
   "ambiguous_address","literal","unknown"
 ];
+const PSEUDONYM_STORAGE_KEY = "afa-phase2:local-pseudonym";
+const PSEUDONYM_PATTERN = /^annotator-[0-9a-f]{12}$/;
+let rawItems = [];
 let items = [];
 let index = 0;
 const $ = id => document.getElementById(id);
@@ -156,13 +160,41 @@ for (const mechanism of mechanisms) {
   input.type = "checkbox";
   input.value = mechanism;
   input.name = "mechanism";
+  input.addEventListener("change", () => {
+    if (!input.checked) return;
+    if (mechanism === "unknown") {
+      for (const other of document.querySelectorAll('input[name="mechanism"]')) {
+        if (other !== input) other.checked = false;
+      }
+    } else {
+      const unknown = document.querySelector('input[name="mechanism"][value="unknown"]');
+      if (unknown) unknown.checked = false;
+    }
+  });
   label.append(input, " " + mechanism);
   $("mechanisms").append(label);
 }
 
+function createLocalPseudonym() {
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  return "annotator-" + [...bytes].map(value => value.toString(16).padStart(2, "0")).join("");
+}
+
+function ensurePseudonym() {
+  let id = null;
+  try { id = localStorage.getItem(PSEUDONYM_STORAGE_KEY); } catch (_) {}
+  if (!PSEUDONYM_PATTERN.test(id || "")) {
+    id = createLocalPseudonym();
+    try { localStorage.setItem(PSEUDONYM_STORAGE_KEY, id); } catch (_) {}
+  }
+  $("annotatorId").value = id;
+  return id;
+}
+
 function annotatorKey() {
-  const id = $("annotatorId").value.trim();
-  if (!id) throw new Error("Enter a pseudonymous annotator ID first.");
+  const id = ensurePseudonym();
+  if (!PSEUDONYM_PATTERN.test(id)) throw new Error("Could not create a valid local pseudonym.");
   return id;
 }
 function storageKey(itemId) { return `afa-phase2:${annotatorKey()}:${itemId}`; }
@@ -175,7 +207,29 @@ function setMechanisms(values) {
 }
 function parseHostility(value) { return value === "true" ? true : value === "false" ? false : "uncertain"; }
 
-function separatePairedVariants(records) {
+function hash32(text) {
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function seededShuffle(values, seedText) {
+  const result = [...values];
+  let state = hash32(seedText) || 0x9e3779b9;
+  for (let i = result.length - 1; i > 0; i--) {
+    state ^= state << 13;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    const j = (state >>> 0) % (i + 1);
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
+function orderPilotItems(records, pseudonym) {
   const groups = new Map();
   const ungrouped = [];
   for (const item of records) {
@@ -183,13 +237,34 @@ function separatePairedVariants(records) {
     if (!groups.has(item.context_swap_group)) groups.set(item.context_swap_group, []);
     groups.get(item.context_swap_group).push(item);
   }
+
+  const groupNames = [...groups.keys()];
+  const firstOrder = seededShuffle(groupNames, `${pseudonym}:first-pass`);
+  const laterOrder = seededShuffle(groupNames, `${pseudonym}:later-pass`);
+  const firstChoice = new Map();
   const firstPass = [];
-  const laterPasses = [];
-  for (const members of groups.values()) {
-    firstPass.push(members[0]);
-    laterPasses.push(...members.slice(1));
+
+  for (const groupName of firstOrder) {
+    const members = groups.get(groupName);
+    const choice = hash32(`${pseudonym}:${groupName}:variant`) % members.length;
+    firstChoice.set(groupName, choice);
+    firstPass.push(members[choice]);
   }
-  return [...firstPass, ...ungrouped, ...laterPasses];
+
+  const laterPass = [];
+  for (const groupName of laterOrder) {
+    const members = groups.get(groupName);
+    const firstIndex = firstChoice.get(groupName);
+    for (let offset = 1; offset < members.length; offset++) {
+      laterPass.push(members[(firstIndex + offset) % members.length]);
+    }
+  }
+
+  return [
+    ...firstPass,
+    ...seededShuffle(ungrouped, `${pseudonym}:ungrouped`),
+    ...laterPass
+  ];
 }
 
 function blankForm() {
@@ -239,9 +314,12 @@ function buildAnnotation() {
   if (!pragmatic.length) throw new Error("Provide at least one plausible pragmatic interpretation.");
   if (!primary) throw new Error("Primary pragmatic interpretation is required.");
   if (!insufficient && !pragmatic.includes(primary)) throw new Error("Primary interpretation must also appear in the plausible pragmatic interpretations list.");
-  if (ambiguity && new Set(pragmatic.map(x => x.toLocaleLowerCase().replace(/\s+/g," "))).size < 2) throw new Error("Ambiguity requires at least two distinct pragmatic readings.");
+  const distinctReadings = new Set(pragmatic.map(x => x.toLocaleLowerCase().replace(/\s+/g, " "))).size;
+  if (ambiguity && distinctReadings < 2) throw new Error("Ambiguity requires at least two distinct pragmatic readings.");
+  if (!ambiguity && distinctReadings > 1) throw new Error("Multiple retained pragmatic readings require ambiguity=true.");
   if (insufficient && (!ambiguity || confidence > 0.4)) throw new Error("insufficient_context requires ambiguity=true and confidence <= 0.4.");
   const selected = selectedMechanisms();
+  if (selected.includes("unknown") && selected.length > 1) throw new Error("The unknown mechanism cannot be combined with a specific mechanism.");
   return {
     annotation_id: `${annotator}::${item.id}`,
     example_id: item.id,
@@ -274,9 +352,9 @@ function saveCurrent() {
 $("itemsFile").addEventListener("change", async event => {
   try {
     const text = await event.target.files[0].text();
-    const parsed = text.split(/\r?\n/).filter(line => line.trim()).map(line => JSON.parse(line));
-    items = separatePairedVariants(parsed);
-    if (!items.length) throw new Error("No pilot items found.");
+    rawItems = text.split(/\r?\n/).filter(line => line.trim()).map(line => JSON.parse(line));
+    if (!rawItems.length) throw new Error("No pilot items found.");
+    items = orderPilotItems(rawItems, annotatorKey());
     index = 0; $("workspace").classList.remove("hidden"); showItem();
   } catch (err) { alert(`Could not load pilot items: ${err.message}`); }
 });
@@ -284,6 +362,20 @@ $("confidence").addEventListener("input", () => $("confidenceValue").textContent
 $("insufficient").addEventListener("change", () => {
   if ($("insufficient").checked) { $("primary").value = "insufficient_context"; $("ambiguity").checked = true; if (Number($("confidence").value) > .4) $("confidence").value = .4; }
   $("confidenceValue").textContent = Number($("confidence").value).toFixed(2);
+});
+$("newPseudonym").addEventListener("click", () => {
+  if (!confirm("Switch to a new local pseudonym? Unsaved form values will be cleared and saved annotations under the current pseudonym will remain separate.")) return;
+  const next = createLocalPseudonym();
+  try { localStorage.setItem(PSEUDONYM_STORAGE_KEY, next); } catch (_) {}
+  $("annotatorId").value = next;
+  $("exposure").value = "unspecified";
+  if (rawItems.length) {
+    items = orderPilotItems(rawItems, next);
+    index = 0;
+    showItem();
+  } else {
+    blankForm();
+  }
 });
 $("save").addEventListener("click", saveCurrent);
 $("prev").addEventListener("click", () => { if (index > 0) { index--; showItem(); } });
@@ -297,6 +389,8 @@ $("export").addEventListener("click", () => {
     const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `${annotator}-annotations.jsonl`; a.click(); URL.revokeObjectURL(url);
   } catch (err) { alert(err.message); }
 });
+
+ensurePseudonym();
 </script>
 </body>
 </html>
