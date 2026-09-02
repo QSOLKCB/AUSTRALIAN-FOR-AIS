@@ -33,6 +33,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Updated `README.md` with the offline pilot workflow and commands
 - Updated `ROADMAP.md` to record Phase 2 tooling implementation while leaving real human annotation, ethical review, agreement reporting, and guide revision as incomplete graduation requirements
 - Added tall-poppy/status-calibration context families to the future Phase 5 roadmap without encoding "Australians dislike success" as a universal rule
+- Replaced editable annotator identifiers with locally generated read-only pseudonyms in the form `annotator-<12 lowercase hexadecimal characters>` so names, email addresses, and account handles are not exported as annotation identities
+- Made Phase 2 ambiguity representation two-way: multiple retained pragmatic readings require `ambiguity: true`, while `ambiguity: true` continues to require at least two distinct normalized readings
+- Made the `unknown` mechanism mutually exclusive with specific mechanism labels in both the annotation schema and browser interface
+- Replaced pair-wide relationship disjunctions with the actual speaker relationship for each individual pilot item
+- Replaced the fixed `+30` context-pair presentation pattern with pseudonym-specific deterministic first/later ordering and pseudonym-specific choice of which pair member appears first
+- Made shared-browser pseudonym changes switch storage namespaces and reload annotator-specific state so one annotator's visible form cannot silently become another annotator's record
 
 ### Notes
 
