@@ -5,16 +5,30 @@
   "title": "Australian For AIs — Human Annotation",
   "description": "Schema for one independent human annotation of a Phase 2 pilot item.",
   "type": "object",
-  "required": ["annotation_id", "example_id", "annotator_id", "literal_interpretation", "pragmatic_interpretations", "primary_pragmatic_interpretation", "humour_mechanisms", "social_valence", "hostility", "confidence", "ambiguity", "cultural_dependency", "context_required"],
+  "required": [
+    "annotation_id",
+    "example_id",
+    "annotator_id",
+    "literal_interpretation",
+    "pragmatic_interpretations",
+    "primary_pragmatic_interpretation",
+    "humour_mechanisms",
+    "social_valence",
+    "hostility",
+    "confidence",
+    "ambiguity",
+    "cultural_dependency",
+    "context_required"
+  ],
   "additionalProperties": false,
   "properties": {
-    "annotation_id": {"type": "string", "minLength": 1, "pattern": "\\S"},
-    "example_id": {"type": "string", "minLength": 1, "pattern": "\\S"},
-    "annotator_id": {"type": "string", "minLength": 1, "pattern": "\\S"},
+    "annotation_id": {"type": "string", "minLength": 1, "pattern": "\\S", "description": "Stable identifier for this annotation record."},
+    "example_id": {"type": "string", "minLength": 1, "pattern": "\\S", "description": "Pilot item identifier."},
+    "annotator_id": {"type": "string", "minLength": 1, "pattern": "\\S", "description": "Pseudonymous annotator identifier. Do not store names or contact details here."},
     "literal_interpretation": {"type": "string", "minLength": 1, "pattern": "\\S"},
     "pragmatic_interpretations": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1, "pattern": "\\S"}},
     "primary_pragmatic_interpretation": {"type": "string", "minLength": 1, "pattern": "\\S"},
-    "humour_mechanisms": {"type": "array", "items": {"type": "string", "enum": ["understatement", "sarcasm", "irony", "deadpan", "affectionate_insult", "inverse_praise", "profanity_non_hostile", "discourse_marker", "self_deprecation", "absurdist_escalation", "relational_teasing", "tall_poppy_humour", "ambiguous_address", "literal", "unknown"]}},
+    "humour_mechanisms": {"type": "array", "minItems": 1, "uniqueItems": true, "description": "One or more active taxonomy labels. Use 'unknown' when no more specific label is justified.", "items": {"type": "string", "enum": ["understatement", "sarcasm", "irony", "deadpan", "affectionate_insult", "inverse_praise", "profanity_non_hostile", "discourse_marker", "self_deprecation", "absurdist_escalation", "relational_teasing", "tall_poppy_humour", "ambiguous_address", "literal", "unknown"]}},
     "social_valence": {"type": "string", "enum": ["friendly", "hostile", "neutral", "ambiguous", "unknown"]},
     "hostility": {"oneOf": [{"type": "boolean"}, {"type": "string", "enum": ["uncertain"]}]},
     "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
@@ -23,6 +37,6 @@
     "context_required": {"type": "boolean"},
     "alternative_interpretations": {"type": "array", "items": {"type": "string", "minLength": 1, "pattern": "\\S"}},
     "annotation_notes": {"type": "string"},
-    "australian_english_exposure": {"type": "string", "enum": ["low", "medium", "high", "unspecified"]}
+    "australian_english_exposure": {"type": "string", "enum": ["low", "medium", "high", "unspecified"], "description": "Optional non-identifying self-report of familiarity with Australian English."}
   }
 }
