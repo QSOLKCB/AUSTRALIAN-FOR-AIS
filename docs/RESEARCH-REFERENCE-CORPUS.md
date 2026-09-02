@@ -285,6 +285,43 @@ Relevant project mappings:
 
 ---
 
+### Slade, *Australian Sketch Comedy Field Theory* (ASCFT)
+
+**Registered source:** https://doi.org/10.5281/zenodo.17781653
+
+**Source type:** Project-authored formal-analysis paper supplied to the project by Trent Slade / QSOL-IMC. The supplied paper is titled *Australian Sketch Comedy Field Theory: A Formal Analysis of Epistemic Deformation, Ternary Logic, and Cultural Signal Dynamics* and defines ASCFT's ternary analytic basis, perturbation/collapse framing, and later field-theoretic extensions.
+
+**Rights and provenance boundary:** The DOI is recorded as the project's attributable source link for the ASCFT work. The supplied PDF identifies the author and framework, but this registration does not invent a licence or peer-review status that the supplied paper does not establish. Registration does not place the full paper, its distinctive wording, equations, source-derived examples, transcripts, or referenced comedy material under the repository licence. Benchmark items must remain independently authored or otherwise appropriately licensed.
+
+**Epistemic status:** Project-authored theoretical and formal-analytic framework. ASCFT defines source-specific qutrit coordinates for Informal Larrikin Compression, Bureaucratic Recursive Formalism, and Hyper-Formal Surreal Narration, plus semantic-drift, recursion, contradiction, collapse, attractor, field, and Lagrangian language. These constructs may generate testable hypotheses about authority, coherence, competence, frame stability, and sequence-level degradation. They do not by themselves establish literal physical ontology, empirically validated mechanisms, universal laws of Australian humour, or population-level cultural ground truth.
+
+**Community-specific governance:** not-required: The registered use is limited to a project-authored analytic framework for structural experiment design, not to manufacture speech or pragmatic ground truth for a demographic or cultural subgroup. Any later community-specific application remains subject to the relevant consultation and governance requirements elsewhere in this registry.
+
+Research mappings:
+
+- authority register versus evidential support
+- formal coherence versus epistemic coherence
+- asserted versus demonstrated competence
+- frame stability versus semantic stability
+- semantic drift and contradiction accumulation across turns
+- source-specific `|0>`, `|1>`, and `|2>` mode transitions
+- source-specific attractor and collapse motifs as hypotheses only
+
+Relevant project mappings:
+
+- Workstream F: ASCFT-derived adversarial pragmatics
+- AUTHORITATIVE REGISTER != SINCERE ASSERTION
+- FORMAL COHERENCE != EPISTEMIC COHERENCE
+- ASSERTED COMPETENCE != DEMONSTRATED COMPETENCE
+- NARRATIVE STABILITY != SEMANTIC STABILITY
+- FORMAL ANALOGY != PHYSICAL ONTOLOGY
+- MATHEMATICAL MODEL != EMPIRICALLY VALIDATED MECHANISM
+- Phase 5 authority, persona, frame, and sequence-level adversarial families
+
+**Safe benchmark abstraction:** Use ASCFT only to define controlled, independently authored experiments that vary authority register, evidential support, coherence, demonstrated competence, semantic drift, contradiction accumulation, frame stability, or source-specific mode transitions. Do not copy source dialogue, transcript wording, distinctive jokes, equations as benchmark labels, or source-derived media expression. Treat qutrit, field, collapse, attractor, Lagrangian, and cultural-stress terminology as analytic coordinates and hypotheses rather than physical or cultural ground truth.
+
+---
+
 ### Trans-Tasman constitutional and federation context
 
 **Registered sources:**
