@@ -57,7 +57,7 @@ Documentation improvements are welcome. Please:
 
 ## Code Style
 
-- Python 3.11+
+- Python 3.11 or 3.12 is currently supported and CI-tested. Python 3.13/3.14 support is planned only after compatibility is established in CI.
 - Type annotations on all public functions
 - Docstrings on all public modules and functions
 - No new dependencies without discussion
