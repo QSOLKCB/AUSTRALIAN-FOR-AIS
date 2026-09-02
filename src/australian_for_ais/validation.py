@@ -8,6 +8,7 @@ packaged JSON Schemas, then applies project-level semantic invariants.
 from __future__ import annotations
 
 import json
+import math
 import pathlib
 from collections.abc import Iterator, Mapping, Sequence
 from importlib import resources
@@ -19,6 +20,7 @@ _SCHEMA_PACKAGE_ROOT = resources.files("australian_for_ais").joinpath("schemas")
 _EXAMPLE_SCHEMA_RESOURCE = _SCHEMA_PACKAGE_ROOT.joinpath("example.schema.json")
 _EVALUATION_SCHEMA_RESOURCE = _SCHEMA_PACKAGE_ROOT.joinpath("evaluation.schema.json")
 _INSUFFICIENT_CONTEXT = "insufficient_context"
+_MAX_SAFE_INTEGER_BITS = 12_000
 
 
 class ValidationError(Exception):
@@ -41,6 +43,11 @@ def _get_evaluation_schema() -> dict:
 def _normalise_text(value: str) -> str:
     """Case-fold text and collapse all whitespace runs for semantic comparison."""
     return " ".join(value.split()).casefold()
+
+
+def _normalise_observed_utterance(value: str) -> str:
+    """Collapse whitespace while preserving lexical case in observed utterances."""
+    return " ".join(value.split())
 
 
 def _require_non_whitespace_text(record: Mapping[str, Any], field_name: str) -> None:
@@ -78,6 +85,38 @@ def _require_unit_interval_number(
         )
 
 
+def _preflight_json_structure(value: Any) -> None:
+    """Reject values that can make schema diagnostics recurse or stringify unsafely."""
+    stack = [value]
+    while stack:
+        current = stack.pop()
+
+        if isinstance(current, bool) or current is None:
+            continue
+        if isinstance(current, int):
+            if current.bit_length() > _MAX_SAFE_INTEGER_BITS:
+                raise ValidationError(
+                    "Record contains an integer too large to validate safely."
+                )
+            continue
+        if isinstance(current, float):
+            if not math.isfinite(current):
+                raise ValidationError(
+                    "Record contains a non-finite numeric value, which is not valid JSON data."
+                )
+            continue
+        if isinstance(current, str):
+            continue
+        if isinstance(current, Mapping):
+            for key, item in current.items():
+                if not isinstance(key, str):
+                    raise ValidationError("JSON object keys must be strings.")
+                stack.append(item)
+            continue
+        if isinstance(current, Sequence) and not isinstance(current, (str, bytes)):
+            stack.extend(current)
+
+
 def _reject_duplicate_object_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     """Build a JSON object while rejecting parser-dependent duplicate keys."""
     record: dict[str, Any] = {}
@@ -88,20 +127,29 @@ def _reject_duplicate_object_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any
     return record
 
 
+def _validate_schema_safely(record: Mapping[str, Any], schema: dict) -> None:
+    """Run jsonschema while translating input-induced diagnostic failures."""
+    try:
+        jsonschema.validate(record, schema)
+    except jsonschema.ValidationError as exc:
+        raise ValidationError(f"Schema validation failed: {exc.message}") from exc
+    except (ValueError, OverflowError, RecursionError) as exc:
+        raise ValidationError(
+            "Schema validation could not safely inspect the supplied record."
+        ) from exc
+
+
 def validate_example_record(record: Any) -> None:
     """Validate a single benchmark example record."""
     if not isinstance(record, Mapping):
         raise ValidationError("Example record must be a JSON object.")
 
-    # Preflight bounded numerics before jsonschema constructs diagnostics. This
-    # keeps giant integers, NaN, and infinities on a controlled failure path.
+    # Preflight the complete structure before jsonschema constructs diagnostics.
+    # This prevents malformed direct-call values in any field from turning a
+    # validation failure into an integer-formatting or recursion traceback.
+    _preflight_json_structure(record)
     _require_unit_interval_number(record, "confidence")
-
-    try:
-        jsonschema.validate(record, _get_example_schema())
-    except jsonschema.ValidationError as exc:
-        raise ValidationError(f"Schema validation failed: {exc.message}") from exc
-
+    _validate_schema_safely(record, _get_example_schema())
     _semantic_validate_example(record)
 
 
@@ -212,8 +260,9 @@ def validate_context_swap_groups(records: Sequence[Mapping[str, Any]]) -> None:
     Validate dataset-level context-swap contracts.
 
     Every group must contain at least two records, preserve the same observed
-    utterance, use distinct contexts, encode distinct primary pragmatic
-    directions, and keep accepted direction sets disjoint between members.
+    utterance including lexical case, use distinct contexts, encode distinct
+    primary pragmatic directions, and keep accepted direction sets disjoint
+    between members.
     """
     groups: dict[str, list[Mapping[str, Any]]] = {}
     for record in records:
@@ -227,11 +276,14 @@ def validate_context_swap_groups(records: Sequence[Mapping[str, Any]]) -> None:
                 f"context_swap_group '{group_name}' must contain at least two records."
             )
 
-        utterances = {_normalise_text(str(member["utterance"])) for member in members}
+        utterances = {
+            _normalise_observed_utterance(str(member["utterance"]))
+            for member in members
+        }
         if len(utterances) != 1:
             raise ValidationError(
                 f"context_swap_group '{group_name}' must use the same utterance "
-                "for every member."
+                "for every member, preserving lexical case."
             )
 
         contexts = {_normalise_text(str(member["context"])) for member in members}
@@ -268,13 +320,9 @@ def validate_evaluation_record(record: Any) -> None:
     if not isinstance(record, Mapping):
         raise ValidationError("Evaluation record must be a JSON object.")
 
-    # Preflight for the same reason as example confidence above.
+    _preflight_json_structure(record)
     _require_unit_interval_number(record, "model_confidence")
-
-    try:
-        jsonschema.validate(record, _get_evaluation_schema())
-    except jsonschema.ValidationError as exc:
-        raise ValidationError(f"Schema validation failed: {exc.message}") from exc
+    _validate_schema_safely(record, _get_evaluation_schema())
 
     for field_name in ("example_id", "predicted_literal", "predicted_pragmatic"):
         _require_non_whitespace_text(record, field_name)
@@ -331,6 +379,10 @@ def iter_jsonl(path: pathlib.Path) -> Iterator[tuple[int, Any]]:
                     # a numeric token exceeds the interpreter's safe digit limit.
                     raise ValidationError(
                         f"Line {lineno}: JSON value could not be parsed safely — {exc}"
+                    ) from exc
+                except RecursionError as exc:
+                    raise ValidationError(
+                        f"Line {lineno}: JSON nesting is too deep to parse safely."
                     ) from exc
     except ValidationError:
         raise
