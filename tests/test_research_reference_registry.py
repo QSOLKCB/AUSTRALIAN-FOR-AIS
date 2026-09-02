@@ -98,7 +98,7 @@ def _require_scalar_value(entry: str, section: str, field: str) -> None:
 
 
 def _has_non_heading_content(block: str) -> bool:
-    """Return whether a mapping block contains content beyond headings/separators."""
+    """Return whether a mapping block contains substantive non-heading content."""
     for raw_line in block.splitlines():
         line = raw_line.strip()
         if not line:
@@ -110,6 +110,8 @@ def _has_non_heading_content(block: str) -> bool:
         if re.fullmatch(r"#{1,6}[ \t]+.+", line):
             continue
         if re.fullmatch(r"-{3,}", line):
+            continue
+        if re.fullmatch(r"(?:[-+*]|\d+[.)])", line):
             continue
         if re.fullmatch(r"\*\*[^*]+:\*\*(?:[ \t].*)?", line):
             continue
@@ -152,7 +154,7 @@ def _require_mapping_block(entry: str, section: str) -> None:
 
 
 def _require_registered_source_link(entry: str, section: str) -> None:
-    """Require exactly one registered-source field with at least one HTTPS link."""
+    """Require exactly one rendered registered-source field with an HTTPS link."""
     source_fields = list(REGISTERED_SOURCE_FIELD_PATTERN.finditer(section))
     assert len(source_fields) == 1, (
         f"{entry} must contain exactly one registered-source field"
@@ -163,10 +165,10 @@ def _require_registered_source_link(entry: str, section: str) -> None:
         r"(?=^\*\*[^*\n]+:\*\*)",
         section,
     )
-    assert source_block and source_block.group(1).strip(), (
-        f"{entry} has an empty registered-source field"
-    )
-    urls = re.findall(r"https://[^\s)]+", source_block.group(1))
+    assert source_block, f"{entry} has an empty registered-source field"
+    rendered_source = re.sub(r"<!--.*?-->", "", source_block.group(1), flags=re.S)
+    assert rendered_source.strip(), f"{entry} has an empty registered-source field"
+    urls = re.findall(r"https://[^\s)]+", rendered_source)
     assert urls, f"{entry} has no HTTPS link in its registered-source field"
 
 
@@ -244,6 +246,16 @@ def test_registered_source_rejects_duplicate_singular_plural_fields():
         _require_registered_source_link("### Example", section)
 
 
+def test_registered_source_ignores_commented_out_url():
+    section = (
+        "### Example\n\n"
+        "**Registered source:** <!-- https://example.com/source -->\n\n"
+        "**Source type:** example\n"
+    )
+    with pytest.raises(AssertionError, match="empty registered-source field"):
+        _require_registered_source_link("### Example", section)
+
+
 def test_mapping_blocks_reject_duplicate_headings_without_content():
     section = (
         "### Example\n\n"
@@ -254,6 +266,17 @@ def test_mapping_blocks_reject_duplicate_headings_without_content():
         "**Safe benchmark abstraction:** example\n"
     )
     with pytest.raises(AssertionError, match="exactly one research mappings heading"):
+        _require_mapping_block("### Example", section)
+
+
+def test_mapping_blocks_reject_empty_list_markers():
+    section = (
+        "### Example\n\n"
+        "Research mappings:\n-\n\n"
+        "Relevant project mappings:\n-\n\n"
+        "**Safe benchmark abstraction:** example\n"
+    )
+    with pytest.raises(AssertionError, match="empty research mappings"):
         _require_mapping_block("### Example", section)
 
 
