@@ -145,6 +145,49 @@ Candidate work includes:
 - an explicit dataset-split contract before Phase 3/4 train/dev/test use becomes necessary;
 - glossary expansion for culturally important research terms such as larrikin, Tall Poppy Syndrome, taking the piss, cultural cringe, and carefully scoped class-marked terminology.
 
+### F. ASCFT-derived adversarial pragmatics
+
+**Goal:** Operationalise Australian Sketch Comedy Field Theory (ASCFT) as a theory-derived source of adversarial pragmatic experiments without treating its qutrit, field, collapse, or attractor language as established physical ontology or as representative cultural ground truth.
+
+ASCFT is a candidate theoretical source and must pass the same source-registration contract as other post-Phase-2 research inputs before a benchmark family depends on it. Its useful starting structure is a three-state analytic basis:
+- `|0>` Informal Larrikin Compression;
+- `|1>` Bureaucratic Recursive Formalism;
+- `|2>` Hyper-Formal Surreal Narration.
+
+The project should treat these states as operational representations for experiment design. They may motivate controlled variables such as frame stability, authority register, semantic drift, recursive contradiction, category instability, demonstrated competence, abrupt pragmatic reframing, and collapse/termination structure. They do not by themselves establish that humour is governed by quantum mechanics, physical field dynamics, or a literal cultural vacuum state.
+
+Candidate adversarial experiment families include:
+- authority-register pairs holding confident formal delivery constant while varying whether the speaker is a competent expert, a recursively incoherent bureaucrat, or a deadpan surreal narrator;
+- formal-coherence versus epistemic-coherence pairs where syntax and register remain polished while factual or inferential coherence changes;
+- claimed-versus-demonstrated-competence pairs that separate authoritative performance from evidence of successful reasoning or action;
+- frame-stability versus semantic-stability pairs in which a scene preserves its institutional or documentary frame while meaning progressively destabilises;
+- deadpan literal-intent pairs separating delivery style from sincere assertion;
+- semantic-drift and contradiction-accumulation sequences that test whether a model notices degradation across turns rather than scoring each utterance in isolation;
+- mode-transition families that move between informal compression, bureaucratic recursion, and hyper-formal narration while holding topic or surface vocabulary as constant as practical;
+- source-specific attractor motifs, including ASCFT's proposed "goat attractor", as hypotheses to test against documented source material rather than universal Australian-comedy rules.
+
+Candidate invariants for review include:
+- **AUTHORITATIVE REGISTER != SINCERE ASSERTION**
+- **FORMAL COHERENCE != EPISTEMIC COHERENCE**
+- **ASSERTED COMPETENCE != DEMONSTRATED COMPETENCE**
+- **NARRATIVE STABILITY != SEMANTIC STABILITY**
+- **DEADPAN DELIVERY != LITERAL INTENT**
+- **FORMAL ANALOGY != PHYSICAL ONTOLOGY**
+- **MATHEMATICAL MODEL != EMPIRICALLY VALIDATED MECHANISM**
+
+These are candidate invariants, not additions to the canonical AU-HUMOUR set. Any promotion requires explicit invariant review and coordinated documentation changes.
+
+A focused follow-up PR should:
+- formally register ASCFT with provenance, rights, epistemic status, community-governance classification, project mappings, and a safe abstraction path;
+- create an ASCFT operational crosswalk mapping source terminology to observable benchmark manipulations without claiming literal physical equivalence;
+- define independently authored synthetic minimal pairs and context swaps for the strongest testable mechanisms;
+- keep source dialogue, transcript wording, and distinctive copyrighted expression out of redistributable benchmark data;
+- separate source-specific motifs from general claims about Australian humour;
+- identify which candidate mechanisms can be expressed using the current taxonomy and which, if any, require later provisional trial coding under Workstream B;
+- add deterministic regressions for any new machine-readable contract introduced by the crosswalk or synthetic-family format.
+
+The epistemic boundary for this workstream is explicit: ASCFT may be used as a formal analytic framework and hypothesis generator. Stronger claims that its field equations, qutrit states, collapse operators, attractors, Lagrangian, or cultural-stress observables constitute empirically validated physical mechanisms require independent evidence and are not assumed by this benchmark.
+
 ---
 
 ## Phase 3 — Multi-Annotator Culturally Contextualised Dataset
