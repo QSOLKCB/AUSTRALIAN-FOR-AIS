@@ -4,6 +4,8 @@ from collections import Counter
 from pathlib import Path
 import re
 
+import pytest
+
 
 CORPUS = Path(__file__).parent.parent / "docs" / "RESEARCH-REFERENCE-CORPUS.md"
 
@@ -59,10 +61,19 @@ def _registered_sections(corpus: str) -> dict[str, str]:
     return sections
 
 
+def _scalar_value(entry: str, section: str, field: str) -> str:
+    """Return non-whitespace content from a mandatory single-line field."""
+    match = re.search(
+        rf"(?m)^{re.escape(field)}[ \t]*([^\r\n]*\S[^\r\n]*)[ \t]*$",
+        section,
+    )
+    assert match, f"{entry} has an empty mandatory field {field}"
+    return match.group(1).strip()
+
+
 def _require_scalar_value(entry: str, section: str, field: str) -> None:
     """Require non-whitespace content on a mandatory single-line field."""
-    match = re.search(rf"(?m)^{re.escape(field)}\s*(.+?)\s*$", section)
-    assert match and match.group(1).strip(), f"{entry} has an empty mandatory field {field}"
+    _scalar_value(entry, section, field)
 
 
 def _require_mapping_block(entry: str, section: str) -> None:
@@ -85,7 +96,7 @@ def _require_mapping_block(entry: str, section: str) -> None:
 def _require_registered_source_link(entry: str, section: str) -> None:
     """Require at least one HTTPS link in the registered-source field only."""
     source_block = re.search(
-        r"(?ms)^\*\*Registered sources?:\*\*\s*(.*?)"
+        r"(?ms)^\*\*Registered sources?:\*\*[ \t]*(.*?)"
         r"(?=^\*\*[^*\n]+:\*\*)",
         section,
     )
@@ -99,16 +110,18 @@ def _require_registered_source_link(entry: str, section: str) -> None:
 def _require_community_governance(entry: str, section: str) -> None:
     """Validate the per-entry community-governance classification and gate."""
     classification = re.search(
-        r"(?m)^\*\*Community-specific governance:\*\*\s*"
-        r"(required|not-required):\s*(.+?)\s*$",
+        r"(?m)^\*\*Community-specific governance:\*\*[ \t]*"
+        r"(required|not-required):[ \t]*([^\r\n]*\S[^\r\n]*)[ \t]*$",
         section,
     )
-    assert classification and classification.group(2).strip(), (
+    assert classification, (
         f"{entry} is missing a valid community-specific governance classification"
     )
     if classification.group(1) == "required":
-        assert CONSULTATION_BOUNDARY in section, (
-            f"{entry} is missing its community-specific consultation boundary"
+        safe_use = _scalar_value(entry, section, "**Safe benchmark abstraction:**")
+        assert CONSULTATION_BOUNDARY in safe_use, (
+            f"{entry} is missing its community-specific consultation boundary "
+            "from the safe benchmark abstraction field"
         )
 
 
@@ -131,3 +144,35 @@ def test_post_phase2_registry_batch_preserves_governance_contract():
             _require_scalar_value(entry, section, field)
         _require_community_governance(entry, section)
         _require_mapping_block(entry, section)
+
+
+def test_scalar_field_cannot_borrow_next_metadata_line():
+    section = (
+        "### Example\n\n"
+        "**Source type:**\n\n"
+        "**Rights and provenance boundary:** value\n"
+    )
+    with pytest.raises(AssertionError, match="empty mandatory field"):
+        _require_scalar_value("### Example", section, "**Source type:**")
+
+
+def test_community_governance_requires_same_line_rationale():
+    section = (
+        "### Example\n\n"
+        "**Community-specific governance:** not-required:\n\n"
+        "Candidate research mappings:\n- example\n"
+    )
+    with pytest.raises(AssertionError, match="valid community-specific governance"):
+        _require_community_governance("### Example", section)
+
+
+def test_required_consultation_boundary_must_be_in_safe_abstraction():
+    section = (
+        "### Example\n\n"
+        "**Rights and provenance boundary:** "
+        f"{CONSULTATION_BOUNDARY}.\n\n"
+        "**Community-specific governance:** required: community-specific source.\n\n"
+        "**Safe benchmark abstraction:** Use only structural research questions.\n"
+    )
+    with pytest.raises(AssertionError, match="safe benchmark abstraction field"):
+        _require_community_governance("### Example", section)
