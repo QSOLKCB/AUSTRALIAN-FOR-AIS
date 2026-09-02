@@ -121,7 +121,10 @@ def _semantic_validate_example(record: Mapping[str, Any]) -> None:
     # admitted only through the exact primary field and is injected by scoring
     # only for that case.
     for interpretation in interps:
-        if isinstance(interpretation, str) and _normalise_text(interpretation) == _INSUFFICIENT_CONTEXT:
+        if (
+            isinstance(interpretation, str)
+            and _normalise_text(interpretation) == _INSUFFICIENT_CONTEXT
+        ):
             raise ValidationError(
                 "'insufficient_context' is reserved for "
                 "'primary_pragmatic_interpretation' and must not appear in "
@@ -282,7 +285,7 @@ def validate_evaluation_record(record: Any) -> None:
 
 
 def iter_jsonl(path: pathlib.Path) -> Iterator[tuple[int, Any]]:
-    """Iterate over a regular JSONL file, yielding ``(line_number, value)`` tuples."""
+    """Iterate over a regular UTF-8 JSONL file, yielding line-numbered values."""
     if not path.is_file():
         raise ValidationError(f"JSONL input is not a regular file: {path}")
 
@@ -300,6 +303,10 @@ def iter_jsonl(path: pathlib.Path) -> Iterator[tuple[int, Any]]:
                     ) from exc
     except ValidationError:
         raise
+    except UnicodeError as exc:
+        raise ValidationError(
+            f"Could not decode JSONL input '{path}' as UTF-8: {exc}"
+        ) from exc
     except OSError as exc:
         detail = exc.strerror or str(exc)
         raise ValidationError(f"Could not read JSONL input '{path}': {detail}") from exc
