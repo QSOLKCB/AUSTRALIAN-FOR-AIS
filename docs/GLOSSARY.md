@@ -44,7 +44,9 @@ The utterance is delivered "straight", requiring the listener to recognise humou
 
 **Discourse marker**
 A word or phrase that indicates the speaker's communicative stance or organises the structure
-of discourse. Example: "yeah nah" in Australian English signals polite rejection.
+of discourse. In some Australian contexts, a sequence such as "yeah nah" can function as a
+softened rejection, but its interpretation depends on discourse position, relationship, prosody,
+and other contextual cues rather than a fixed phrase-to-intent rule.
 
 **Hostility** (annotation field)
 Whether an utterance expresses aggressive social intent toward the addressee. A ternary value:
