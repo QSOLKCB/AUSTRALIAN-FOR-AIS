@@ -56,7 +56,10 @@ def load_pilot_items(path: pathlib.Path) -> dict[str, PilotItem]:
     """Load a non-empty pilot item file and validate duplicate/group contracts."""
     items: dict[str, PilotItem] = {}
     for lineno, record in iter_jsonl(path):
-        validate_pilot_item_record(record)
+        try:
+            validate_pilot_item_record(record)
+        except ValidationError as exc:
+            raise ValidationError(f"Line {lineno}: {exc}") from exc
         item = PilotItem.from_dict(record)
         if item.id in items:
             raise ValidationError(f"Line {lineno}: duplicate pilot item id '{item.id}'.")
