@@ -1,6 +1,7 @@
 """Regression checks for governed research-reference registration."""
 
 from collections import Counter
+import ipaddress
 from pathlib import Path
 import re
 from urllib.parse import urlparse
@@ -19,6 +20,7 @@ EXPECTED_GOVERNED_ENTRIES = (
     "### *Acropolis Now*",
     "### Chey (2021), *Overcoming awkwardness: some interpretations of Australian humour*",
     "### Hurley (2025), *Laughter with purpose: how First Nations Australian comedians use humour to engage, educate, and empower audiences*",
+    "### Slade, *Australian Sketch Comedy Field Theory* (ASCFT)",
     "### Trans-Tasman constitutional and federation context",
     "### ABC Language, *From rooting to bonking: a history of Australian sex terms*",
     "### Victoria University, *Australian slang dictionary*",
@@ -70,6 +72,9 @@ BARE_HTTPS_LINE_PATTERN = re.compile(
 )
 AUTOLINK_PATTERN = re.compile(r"<(?P<url>https://[^>\s]+)>")
 HOST_LABEL_PATTERN = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?")
+THEMATIC_BREAK_PATTERN = re.compile(
+    r"(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|(?:-[ \t]*){3,}"
+)
 
 
 def _strip_html_comments(text: str) -> str:
@@ -91,6 +96,13 @@ def _is_usable_https_destination(candidate: str) -> bool:
         return False
     if not any(character.isalnum() for character in hostname):
         return False
+
+    try:
+        address = ipaddress.ip_address(hostname)
+    except ValueError:
+        address = None
+    if address is not None:
+        return address.is_global
 
     labels = hostname.split(".")
     if hostname.lower() == "localhost" or len(labels) < 2:
@@ -185,7 +197,7 @@ def _has_non_heading_content(block: str) -> bool:
             continue
         if re.fullmatch(r"#{1,6}[ \t]+.+", line):
             continue
-        if re.fullmatch(r"-{3,}", line):
+        if THEMATIC_BREAK_PATTERN.fullmatch(line):
             continue
         if re.fullmatch(r"(?:[-+*]|\d+[.)])", line):
             continue
@@ -397,6 +409,25 @@ def test_registered_source_rejects_single_label_host():
         _require_registered_source_link("### Example", section)
 
 
+@pytest.mark.parametrize(
+    "destination",
+    (
+        "https://127.0.0.1",
+        "https://10.0.0.1",
+        "https://192.168.1.1",
+        "https://[::1]",
+    ),
+)
+def test_registered_source_rejects_non_global_ip_hosts(destination: str):
+    section = (
+        "### Example\n\n"
+        f"**Registered source:** {destination}\n\n"
+        "**Source type:** example\n"
+    )
+    with pytest.raises(AssertionError, match="no usable HTTPS destination"):
+        _require_registered_source_link("### Example", section)
+
+
 def test_mapping_blocks_reject_duplicate_headings_without_content():
     section = (
         "### Example\n\n"
@@ -415,6 +446,18 @@ def test_mapping_blocks_reject_empty_list_markers():
         "### Example\n\n"
         "Research mappings:\n-\n\n"
         "Relevant project mappings:\n-\n\n"
+        "**Safe benchmark abstraction:** example\n"
+    )
+    with pytest.raises(AssertionError, match="empty research mappings"):
+        _require_mapping_block("### Example", section)
+
+
+@pytest.mark.parametrize("marker", ("***", "___", "* * *", "_ _ _", "---", "- - -"))
+def test_mapping_blocks_reject_thematic_breaks(marker: str):
+    section = (
+        "### Example\n\n"
+        f"Research mappings:\n{marker}\n\n"
+        f"Relevant project mappings:\n{marker}\n\n"
         "**Safe benchmark abstraction:** example\n"
     )
     with pytest.raises(AssertionError, match="empty research mappings"):
