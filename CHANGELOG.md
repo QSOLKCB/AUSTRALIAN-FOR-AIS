@@ -13,6 +13,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Expanded canonical RQ5 in `docs/METHODOLOGY.md` to match the Phase 6 moderation-fairness design: disparate false-positive and false-negative rates are studied against explicitly defined matched non-Australian or comparison-register counterparts, while benign hostile-looking language versus genuine hostility is treated as a separate discrimination axis within the same study
 - Temporarily constrained the advertised Python support range to CI-verified Python 3.11 and 3.12; Python 3.13/3.14 support remains a runtime-hardening target and must be established in CI before the upper bound is removed
 - Expanded `ROADMAP.md` with post-Phase-2 research workstreams while preserving Phase 2 human-pilot graduation requirements and source/taxonomy governance gates
+- Expanded `docs/RESEARCH-REFERENCE-CORPUS.md` with a formal source-registration contract and a first governed post-Phase-2 batch covering media and scholarship, including explicit source links, rights/provenance boundaries, epistemic status, project mappings, and safe benchmark-abstraction rules
+- Added a regression that checks the governed research-reference batch retains its required rights, epistemic, consultation, and non-redistribution boundaries
 
 ---
 
