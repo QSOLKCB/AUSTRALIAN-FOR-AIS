@@ -28,6 +28,14 @@ def _normalise_context(value: str) -> str:
     return " ".join(value.split()).casefold()
 
 
+def _normalise_context_observation(item: PilotItem) -> tuple[str, str]:
+    """Normalize the supplied context and relationship as one experimental observation."""
+    return (
+        _normalise_context(item.context),
+        _normalise_context(item.speaker_relationship),
+    )
+
+
 def _pilot_group_line_suffix(
     members: list[PilotItem], source_lines: dict[str, int] | None
 ) -> str:
@@ -60,10 +68,10 @@ def validate_pilot_context_swap_groups(
             raise ValidationError(
                 f"Pilot context_swap_group '{group_name}'{line_suffix} must preserve the same utterance."
             )
-        contexts = {_normalise_context(item.context) for item in members}
-        if len(contexts) != len(members):
+        observations = {_normalise_context_observation(item) for item in members}
+        if len(observations) != len(members):
             raise ValidationError(
-                f"Pilot context_swap_group '{group_name}'{line_suffix} must use distinct contexts."
+                f"Pilot context_swap_group '{group_name}'{line_suffix} must use distinct context/relationship observations."
             )
 
 
