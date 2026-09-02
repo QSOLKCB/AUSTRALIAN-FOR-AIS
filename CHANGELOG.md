@@ -15,6 +15,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Expanded `ROADMAP.md` with post-Phase-2 research workstreams while preserving Phase 2 human-pilot graduation requirements and source/taxonomy governance gates
 - Expanded `docs/RESEARCH-REFERENCE-CORPUS.md` with a formal source-registration contract and a first governed post-Phase-2 batch covering media and scholarship, including explicit source links, rights/provenance boundaries, epistemic status, project mappings, and safe benchmark-abstraction rules
 - Added a regression that checks the governed research-reference batch retains its required rights, epistemic, consultation, and non-redistribution boundaries
+- Synchronized `docs/METHODOLOGY.md` with the new trans-Tasman relational-pragmatics and slang/operational-intelligibility experiment families, including explicit relationship, reciprocity, mention/use, listener-background, slang-density, and task-criticality controls
+- Replaced explicit nationality-stereotype wording in `ROADMAP.md` with abstract research placeholders and marked the New Zealand sexual sense of `root` as unestablished until an attributable New Zealand source is registered
+- Pinned all newly adopted Workstream G/H registry entries in the governance regression and tightened source-link validation to reject localhost and other single-label HTTPS hosts
 
 ---
 
