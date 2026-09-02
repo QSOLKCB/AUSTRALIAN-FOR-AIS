@@ -231,6 +231,47 @@ A focused follow-up PR should:
 - map candidate items to the existing `relational_teasing`, `affectionate_insult`, `cultural_dependency`, `context_required`, ambiguity, social-valence, and hostility contracts before proposing any new mechanism label;
 - connect suitable families to Phase 5 context-swap evaluation, Phase 6 moderation fairness, and Phase 7 cross-dialect comparison.
 
+### H. Slang density, register compression, and operational intelligibility
+
+**Goal:** Study Australian slang as a context-sensitive, compositional register that can support efficient in-group communication while becoming difficult for unfamiliar listeners, especially when multiple colloquialisms, abbreviations, pragmatic inversions, and local references are packed into the same exchange.
+
+This workstream must distinguish evidence levels. Victoria University's [Australian slang dictionary](https://www.vu.edu.au/about-vu/news-events/vu-blog/australian-slang-dictionary) is a public educational glossary and is useful for attested examples such as `arvo`, `heaps`, `mate`, `old mate`, `smoko`, and `cactus`, including the explicit observation that `mate` and `old mate` are not always friendly. The Reddit thread [Best Aussie slang](https://www.reddit.com/r/australia/comments/1g73mue/best_aussie_slang/) is community-attestation material only: it is useful for discovering candidate expressions, speaker judgements, disagreement about currency or origin, and naturally occurring metalinguistic commentary, but it is not lexicographic authority or representative population evidence.
+
+Official Defence reporting provides a higher-stakes intelligibility case. During Exercise Predators Run in the Northern Territory, an Australian Army linguist stated that the Australian accent and use of slang could be particularly challenging for Filipino soldiers participating in the multinational exercise. See Defence, [Communication key on combined exercise](https://www.defence.gov.au/news-events/news/2022-09-08/communication-key-combined-exercise). A 2026 joint-training report also records terminology and language hurdles between partner forces and the use of visual models to build shared understanding. See Defence, [Partner nations rehearse for war](https://www.defence.gov.au/news-events/news/2026-06-11/partner-nations-rehearse-war). These sources support the narrower claim that local language, terminology, accent, and slang can create cross-force communication friction. They do **not** establish that Australian troops intentionally used slang as encryption or that Allied codebreakers were defeated by ordinary Australian conversation.
+
+There is also historical evidence that visiting American servicemen were explicitly briefed on Australian language and culture. The Australian War Memorial catalogues the circa-1942 booklet [Welcome to Australia](https://www.awm.gov.au/collection/LIB100000077), designed for American troops in Australia, and a United States Army pocket guide to Australia included a dedicated Australian-slang section. This supports **HISTORICAL NEED FOR LANGUAGE BRIEFING != EVIDENCE OF INTENTIONAL OBFUSCATION**.
+
+The project has not yet found reliable support for two stronger research leads supplied during planning: that Allied codebreakers trained on foreign ciphers could not parse Australian conversational slang, or that the ADF formally restricted slang specifically for Australian-American exercises in Darwin to prevent fatal misunderstandings. Those claims must remain unadopted unless attributable evidence is found.
+
+Candidate adversarial experiment families include:
+- slang-density ladders that preserve propositional content while progressively replacing standard phrasing with colloquialisms, abbreviations, discourse markers, and local idioms;
+- compositional tests where each slang item is individually familiar but the combined utterance requires resolving several context-dependent meanings at once;
+- `mate` and `old mate` social-valence swaps separating friendly address, neutral reference, distancing, criticism, and hostility;
+- diachronic and regional uncertainty cases where speakers disagree about whether an expression is current, local, borrowed, dated, or widespread;
+- glossary-versus-context tests where a model is given correct dictionary meanings but must still infer implicature, tone, relationship, and intended force;
+- military or emergency-style clarity contrasts separating informal barracks banter from safety-critical instructions where conventional terminology and explicitness matter;
+- cross-national listener cases testing Australian slang with familiar Australian speakers, other English-speaking partners, and speakers using English as an additional language;
+- ASCFT `|0>` bridge tests treating Informal Larrikin Compression as a hypothesis about information compression rather than a licence to equate slang density with semantic degradation.
+
+Candidate invariants for review include:
+- **SLANG TOKEN != FIXED PRAGMATIC MEANING**
+- **SLANG GLOSSARY != PRAGMATIC UNDERSTANDING**
+- **COMMUNITY ATTESTATION != LEXICOGRAPHIC AUTHORITY**
+- **IN-GROUP FLUENCY != CROSS-GROUP INTELLIGIBILITY**
+- **DENSE COLLOQUIAL REGISTER != SECRET CODE**
+- **INFORMAL COMPRESSION != INTENTIONAL ENCRYPTION**
+- **FAMILIAR REGISTER != OPERATIONAL CLARITY**
+- **HISTORICAL LANGUAGE BRIEFING != PROOF OF COMMUNICATION FAILURE**
+
+A focused follow-up PR should:
+- register the Victoria University glossary, relevant Defence reports, Australian War Memorial records, and any stronger linguistic scholarship under the governed source contract;
+- retain Reddit and similar community discussions as orientation/community-attestation sources with explicit non-representative status;
+- build independently authored slang-density and context-swap items instead of converting crowd-sourced examples directly into benchmark data;
+- distinguish lexical recognition, compositional interpretation, pragmatic interpretation, and safety-critical operational clarity as separate evaluation targets;
+- document regional, generational, occupational, and temporal variation rather than treating an Australian slang dictionary as a timeless national lookup table;
+- connect suitable tests to Phase 5 adversarial context swaps and Phase 7 cross-dialect/cross-register comparison;
+- keep any military claims limited to what official or archival evidence actually demonstrates.
+
 ---
 
 ## Phase 3 — Multi-Annotator Culturally Contextualised Dataset
@@ -299,6 +340,7 @@ First Nations/Blak, migrant, multicultural, regional, class-marked, or other com
 - Self-deprecation families separating conventional humility, genuine low confidence, irony, and defensive status management
 - Absurdist-escalation families separating literal improbability, deadpan delivery, understatement, and surreal frame shifts
 - Trans-Tasman relationship-swap families separating reciprocal Australian/New Zealand banter from one-sided hostility, harassment, quotation/analysis, and uncertain cases
+- Slang-density and compositional-register families separating lexical recognition from context-sensitive pragmatic interpretation
 - Analysis of whether context-swap failures correlate with lexical shortcuts or authority/prestige shortcuts
 - Answers to RQ6 and RQ7
 
@@ -343,6 +385,7 @@ First Nations/Blak, migrant, multicultural, regional, class-marked, or other com
 **Deliverables:**
 - Comparative framework for at least one additional dialect or culturally situated pragmatic register
 - New Zealand English and trans-Tasman pragmatics as a candidate comparison family, contingent on appropriate New Zealand cultural/linguistic consultation and explicit separation of shared vocabulary from divergent pragmatic context
+- Australian slang-density and operational-intelligibility comparisons as a candidate cross-register family, with listener background and task criticality treated as explicit variables
 - Analysis of shared and divergent pragmatic mechanisms
 - Use of published cross-cultural humour research as hypothesis-generation material, not as a lookup table for national character
 - Answer to RQ8
