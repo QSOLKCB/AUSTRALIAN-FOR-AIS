@@ -41,13 +41,14 @@ Post-Phase-2 additions are not considered adopted project references merely beca
 - the source type and why it is relevant to pragmatic research;
 - the rights and provenance boundary for repository use;
 - an explicit epistemic status stating what the source can and cannot establish;
+- an explicit `Community-specific governance` classification of `required` or `not-required`, with a rationale;
 - candidate mechanisms or research mappings without silently changing the active taxonomy;
 - relevant benchmark invariants or research questions;
 - a safe abstraction path for independently authored or appropriately licensed benchmark work.
 
 A required field must not be omitted merely because no strong value is available. When a field genuinely has no applicable mapping or no stronger source can be identified, the entry must say so explicitly and explain the limitation. Singular and plural source-link headings may differ when an entry needs more than one source, but the source-link field itself is mandatory.
 
-Community-specific material requires an additional governance boundary inside that source's own registry entry. Registering a First Nations, migrant, multicultural, regional, or class-marked source does **not** grant the project authority to manufacture community-specific benchmark ground truth. Where later benchmark claims depend on such knowledge, appropriate consultation, provenance, permissions, and scope limitations are required.
+Community-specific material requires an additional governance boundary inside that source's own registry entry. Registering a First Nations, migrant, multicultural, regional, or class-marked source does **not** grant the project authority to manufacture community-specific benchmark ground truth. An entry classified `required` must retain the consultation, provenance, permissions, and scope-limitations boundary in its safe-abstraction path. An entry classified `not-required` must explain why the registered research use is not being treated as a community-specific benchmark claim.
 
 ---
 
@@ -62,6 +63,8 @@ Community-specific material requires an additional governance boundary inside th
 **Rights and provenance boundary:** The ABC programme page establishes the work as a research reference. No programme dialogue, subtitles, scripts, episode transcripts, audiovisual material, character material, or other copyrighted expression is licensed to this repository by registration. Availability through ABC iview is not permission to redistribute content.
 
 **Epistemic status:** Performed comedy created by Indigenous writers and performers. It is valuable for mechanism discovery and for identifying questions that dominant-culture annotation schemes may miss. It is **not** a representative corpus of Aboriginal or Torres Strait Islander speech, and the programme alone cannot establish community-wide pragmatic rules.
+
+**Community-specific governance:** required: The source is explicitly First Nations cultural material, so any community-specific benchmark use requires the stronger consultation and governance boundary.
 
 Candidate research mappings:
 
@@ -93,6 +96,8 @@ Relevant project mappings:
 **Rights and provenance boundary:** Screen Australia metadata is used to identify the production and research context. The programme itself remains copyrighted material. Registration does not authorise copying dialogue, scripts, subtitles, character catchphrases, or audiovisual material into benchmark data.
 
 **Epistemic status:** Performed suburban character comedy. It can motivate controlled hypotheses about status, aspiration, self-presentation, class-marked persona, malapropism, and relational meaning. It does not establish how suburban Australians, women, working-class speakers, or any other social category generally speak.
+
+**Community-specific governance:** required: The proposed research mappings include class-marked register and social-position hypotheses, so any community-specific claims require consultation and explicit scope limits.
 
 Candidate research mappings:
 
@@ -127,6 +132,8 @@ Relevant project mappings:
 
 **Epistemic status:** Fictional feature comedy centred on family, institutional conflict, status, and everyday register. It is useful for identifying controlled hypotheses around understatement, anti-authority framing, institutional language, and ordinary-versus-expert register. It is not evidence that its characters or dialogue represent Australians generally.
 
+**Community-specific governance:** required: The film's status and ordinary-versus-expert portrayals can become class-marked hypotheses, so community-level claims require consultation and explicit scope limits.
+
 Candidate research mappings:
 
 - understatement
@@ -155,6 +162,8 @@ Relevant project mappings:
 **Rights and provenance boundary:** The ABC page is used as a research reference only. Programme dialogue, sketches, subtitles, transcripts, characters, and audiovisual material remain third-party copyrighted expression and must not be redistributed as benchmark data.
 
 **Epistemic status:** Performed political and news-format satire. It is useful for studying deadpan delivery, authority-register parody, frame collision, satirical question form, and persona separation. Political satire is analysed structurally; registration does not endorse the political position of any sketch or turn satire into factual evidence about its targets.
+
+**Community-specific governance:** not-required: This registration is scoped to structural political and institutional satire mechanisms rather than claims about a demographic or cultural community.
 
 Candidate research mappings:
 
@@ -186,6 +195,8 @@ Relevant project mappings:
 **Rights and provenance boundary:** Screen Australia metadata establishes the production as a research reference. Registration does not permit copying scripts, dialogue, subtitles, accents-as-text, catchphrases, character material, or audiovisual content.
 
 **Epistemic status:** Historical performed comedy involving migrant and multicultural identity. It may help identify research questions about code-switching, identity performance, stereotype recognition, character-speaker separation, and historical register. It must not be treated as representative evidence of Greek-Australian, migrant, or multicultural speech, and historical portrayals must not be projected onto contemporary communities.
+
+**Community-specific governance:** required: The source directly portrays migrant, multicultural, and Greek-Australian identity, so any community-specific benchmark use requires consultation and historically bounded scope.
 
 Candidate research mappings:
 
@@ -219,6 +230,8 @@ Relevant project mappings:
 
 **Epistemic status:** Exploratory cross-cultural textual analysis concerned with interpretation, cultural bias, face, politeness, and Anglo-centric assumptions. It is useful evidence that cross-cultural humour interpretation can support multiple readings and that analysts' cultural assumptions matter. It does not provide a national-character lookup table or individual-level ground truth.
 
+**Community-specific governance:** not-required: This registration is used for cross-cultural methodology and interpretive-uncertainty design, not to create a benchmark family representing a particular community.
+
 Research mappings:
 
 - cross-cultural interpretive uncertainty
@@ -249,6 +262,8 @@ Relevant project mappings:
 **Rights and provenance boundary:** The article is registered as scholarship, not as redistributable benchmark content. Publisher access does not license this repository to reproduce the article, interview material, quoted performances, or community-specific language.
 
 **Epistemic status:** Culturally grounded scholarship directly relevant to First Nations/Blak humour, audience engagement, education, empowerment, sovereignty, resistance, and cultural specificity. It is a stronger basis for understanding research-governance requirements than outsider summaries, but it still does not authorise this project to create First Nations benchmark ground truth without appropriate community involvement.
+
+**Community-specific governance:** required: The scholarship is explicitly First Nations and culturally grounded, so any First Nations-specific protocol or benchmark family requires appropriate community involvement and the stronger governance boundary.
 
 Research mappings:
 
