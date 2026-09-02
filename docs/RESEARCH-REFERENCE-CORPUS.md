@@ -142,7 +142,7 @@ Relevant project mappings:
 - AU-HUMOUR-005: MODEL CONFIDENCE SHALL NOT SUBSTITUTE FOR CULTURAL CONTEXT
 - AU-HUMOUR-007: A CULTURAL HEURISTIC MUST NOT BE TREATED AS A UNIVERSAL RULE
 
-**Safe benchmark abstraction:** Construct original minimal pairs that vary institutional setting, authority status, evidential support, or degree of understatement. Do not reuse iconic lines or film-specific wording.
+**Safe benchmark abstraction:** Construct original minimal pairs that vary institutional setting, authority status, evidential support, or degree of understatement without reusing iconic lines or film-specific wording. Because the film's portrayal is class-marked, any later class-register or community-specific benchmark family derived from these hypotheses requires appropriate consultation, provenance, permissions, and scope limitations before it can support claims about a community.
 
 ---
 
