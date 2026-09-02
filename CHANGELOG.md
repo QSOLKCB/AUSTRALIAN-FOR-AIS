@@ -23,6 +23,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Hardened research-reference validation to reject private, loopback, and other non-global IP-literal source destinations and to prevent all supported Markdown thematic-break forms from masquerading as substantive research or project mappings
 - Centralized the ASCFT deadpan delivery-versus-intent construction rule with matched literal and nonliteral controls, and hardened mapping validation so bare blockquote markers and empty fenced-code containers cannot satisfy mandatory mapping content
 - Strengthened delivery-versus-intent experiments to require the complete deadpan/non-deadpan × literal/nonliteral 2×2 crossing whenever a family claims to estimate delivery effects, and normalized registry validation around rendered Markdown semantics so commented-out entries, one-to-three-space-indented duplicate fields, nested empty block containers, and noncanonical numeric loopback host spellings fail closed
+- Hardened governed-registry discovery and source contracts so fenced-code-wrapped entries or metadata, list-nested empty fences, reserved hostname suffixes, mutable community-governance downgrades, and arbitrary replacement of source-specific rights, epistemic, or safe-abstraction boundaries fail closed
 
 ---
 
