@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/QSOLKCB/AUSTRALIAN-FOR-AIS/schemas/v0.1.0/pilot-item.schema.json",
+  "x-project-schema-version": "0.1.0",
+  "title": "Australian For AIs — Pilot Annotation Item",
+  "description": "Schema for an unannotated Phase 2 item presented independently to human annotators.",
+  "type": "object",
+  "required": [
+    "id",
+    "locale",
+    "utterance",
+    "context",
+    "speaker_relationship",
+    "source_type",
+    "provenance",
+    "license"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {"type": "string", "minLength": 1, "pattern": "\\S"},
+    "locale": {"type": "string", "minLength": 1, "pattern": "\\S"},
+    "utterance": {"type": "string", "minLength": 1, "pattern": "\\S"},
+    "context": {"type": "string", "minLength": 1, "pattern": "\\S"},
+    "speaker_relationship": {"type": "string", "minLength": 1, "pattern": "\\S"},
+    "source_type": {"type": "string", "enum": ["synthetic", "naturalistic", "constructed"]},
+    "provenance": {"type": "string", "minLength": 1, "pattern": "\\S"},
+    "license": {"type": "string", "minLength": 1, "pattern": "\\S"},
+    "tags": {"type": "array", "items": {"type": "string", "minLength": 1, "pattern": "\\S"}},
+    "context_swap_group": {"type": "string", "minLength": 1, "pattern": "\\S"}
+  }
+}
