@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import math
 import pathlib
+import re
 from collections.abc import Iterator, Mapping, Sequence
 from importlib import resources
 from typing import Any, Callable
@@ -24,6 +25,10 @@ _PILOT_ITEM_SCHEMA_RESOURCE = _SCHEMA_PACKAGE_ROOT.joinpath("pilot-item.schema.j
 _ANNOTATION_SCHEMA_RESOURCE = _SCHEMA_PACKAGE_ROOT.joinpath("annotation.schema.json")
 _INSUFFICIENT_CONTEXT = "insufficient_context"
 _MAX_SAFE_INTEGER_BITS = 12_000
+_PHASE2_ANNOTATION_WHITESPACE_RE = re.compile(
+    r"[\u0009-\u000D\u001C-\u0020\u0085\u00A0\u1680"
+    r"\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]+"
+)
 
 
 class ValidationError(Exception):
@@ -57,8 +62,9 @@ def _normalise_text(value: str) -> str:
 
 
 def _normalise_annotation_text(value: str) -> str:
-    """Mirror the browser's locale-independent lowercasing for Phase 2 free text."""
-    return " ".join(value.split()).lower()
+    """Mirror the browser's explicit Phase 2 lowercase/whitespace contract."""
+    collapsed = _PHASE2_ANNOTATION_WHITESPACE_RE.sub(" ", value)
+    return collapsed.strip(" ").lower()
 
 
 def _normalise_observed_utterance(value: str) -> str:
