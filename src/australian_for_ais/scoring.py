@@ -267,19 +267,9 @@ def _validate_mapping_contracts(
                 f"'{prediction.example_id}'."
             )
 
-        confidence = prediction.model_confidence
-        if (
-            not isinstance(confidence, (int, float))
-            or isinstance(confidence, bool)
-            or not (0.0 <= confidence <= 1.0)
-        ):
-            raise ValidationError(
-                "Direct score() prediction model_confidence must be a number "
-                f"between 0.0 and 1.0, got {confidence!r}."
-            )
-
-        # Once the overflow-safe range gate above passes, validate every other
-        # prediction field through the same schema/semantic path as file input.
+        # The validator preflights model_confidence before jsonschema diagnostic
+        # formatting, so huge integers, NaN and infinities fail as ValidationError
+        # without float conversion or value stringification.
         validate_evaluation_record(_prediction_to_dict(prediction))
 
 
