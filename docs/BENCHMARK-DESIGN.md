@@ -75,25 +75,32 @@ Phase 2 separates the material shown to annotators from the annotations they pro
 
 A pilot item deliberately contains **no gold pragmatic interpretation, mechanism label, social valence, hostility label, confidence, or ambiguity label**. Those are outputs of the human pilot rather than hints supplied to the annotator.
 
+Each `speaker_relationship` describes the relationship in that individual item. It must not contain a disjunction that merely summarizes both members of a context pair, because relationship itself may be part of the pragmatic evidence being tested.
+
 `data/pilot/items.jsonl` currently contains 60 independently authored synthetic pilot items arranged as 30 same-utterance context contrasts. These are pilot prompts, not a validated benchmark release.
 
 ---
 
 ## Phase 2 Human Annotation Records
 
-`schemas/annotation.schema.json` stores one independent human annotation per record. It carries a pseudonymous `annotator_id` and the annotation fields required by the project methodology.
+`schemas/annotation.schema.json` stores one independent human annotation per record. The Phase 2 browser generates a local pseudonymous `annotator_id` in the exact form `annotator-<12 lowercase hexadecimal characters>` and does not accept names, email addresses, account handles, or other direct identifiers as annotation IDs.
 
-The annotation schema preserves the same uncertainty contract as benchmark examples:
+The annotation schema preserves the uncertainty contract while making retained human readings explicit:
 
 - the primary pragmatic interpretation must be retained among the annotator's plausible readings unless it is exactly `insufficient_context`;
+- retaining two or more pragmatic interpretations requires `ambiguity: true`;
+- `ambiguity: true` requires at least two distinct normalized retained readings;
 - `insufficient_context` requires at least two distinct retained readings, `ambiguity: true`, and confidence at or below `0.4`;
 - `insufficient_context` is not an ordinary pragmatic reading;
+- `unknown` is a fallback mechanism and is mutually exclusive with every specific mechanism label;
 - hostility may be `true`, `false`, or `uncertain`;
 - social valence may be `friendly`, `hostile`, `neutral`, `ambiguous`, or `unknown`.
 
 The optional `australian_english_exposure` field is a coarse, non-identifying self-report (`low`, `medium`, `high`, `unspecified`). It is not a nationality or demographic label.
 
 One annotator may submit only one annotation for a given pilot item within an annotation file. Duplicate `(example_id, annotator_id)` assignments fail validation rather than being allowed to inflate annotation coverage.
+
+When a browser profile is shared by more than one human annotator, the interface requires an explicit switch to a newly generated local pseudonym. That switch changes the storage namespace and reloads annotator-specific state so one person's visible form contents cannot silently become another person's independent record.
 
 ---
 
@@ -120,6 +127,8 @@ A pair passes only when:
 Merely producing two different strings is not sufficient. Swapped answers or two different wrong answers are failures.
 
 Phase 2 pilot context contrasts are weaker experimental objects because they are intentionally unannotated. Their validation requires only that the group has at least two items, preserves the exact observed utterance, and changes context. Human annotation may later show that a proposed contrast is ambiguous or unsuitable. The pilot must not manufacture a directional target merely to preserve the design hypothesis.
+
+During human annotation, stable pilot IDs, tags, and `context_swap_group` metadata are hidden. Pair presentation order is derived deterministically from the locally generated pseudonym, with independently shuffled first- and later-pass group orders and a pseudonym-specific choice of which member appears first. A shared fixed counterpart offset such as `+30` is therefore not part of the annotation protocol.
 
 ---
 
