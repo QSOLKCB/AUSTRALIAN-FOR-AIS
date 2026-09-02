@@ -11,7 +11,7 @@ import pytest
 CORPUS = Path(__file__).parent.parent / "docs" / "RESEARCH-REFERENCE-CORPUS.md"
 
 
-EXPECTED_INITIAL_ENTRIES = (
+EXPECTED_GOVERNED_ENTRIES = (
     "### *Black Comedy* (ABC, 2014-2020)",
     "### *Kath & Kim*",
     "### *The Castle* (1997)",
@@ -19,6 +19,12 @@ EXPECTED_INITIAL_ENTRIES = (
     "### *Acropolis Now*",
     "### Chey (2021), *Overcoming awkwardness: some interpretations of Australian humour*",
     "### Hurley (2025), *Laughter with purpose: how First Nations Australian comedians use humour to engage, educate, and empower audiences*",
+    "### Trans-Tasman constitutional and federation context",
+    "### ABC Language, *From rooting to bonking: a history of Australian sex terms*",
+    "### Victoria University, *Australian slang dictionary*",
+    "### r/australia, *Best Aussie slang* community thread",
+    "### Australian Defence multinational communication reports (2022 and 2026)",
+    "### WWII American-serviceman Australia language guides",
 )
 
 SCALAR_FIELDS = (
@@ -87,6 +93,8 @@ def _is_usable_https_destination(candidate: str) -> bool:
         return False
 
     labels = hostname.split(".")
+    if hostname.lower() == "localhost" or len(labels) < 2:
+        return False
     return all(label and HOST_LABEL_PATTERN.fullmatch(label) for label in labels)
 
 
@@ -274,8 +282,8 @@ def test_post_phase2_registry_batch_preserves_governance_contract():
 
     sections = _registered_sections(corpus)
 
-    for expected in EXPECTED_INITIAL_ENTRIES:
-        assert expected in sections, f"expected initial registration {expected!r} is missing"
+    for expected in EXPECTED_GOVERNED_ENTRIES:
+        assert expected in sections, f"expected governed registration {expected!r} is missing"
 
     for entry, section in sections.items():
         _require_registered_source_link(entry, section)
@@ -363,6 +371,26 @@ def test_registered_source_rejects_malformed_https_host():
     section = (
         "### Example\n\n"
         "**Registered source:** https://.\n\n"
+        "**Source type:** example\n"
+    )
+    with pytest.raises(AssertionError, match="no usable HTTPS destination"):
+        _require_registered_source_link("### Example", section)
+
+
+def test_registered_source_rejects_localhost_host():
+    section = (
+        "### Example\n\n"
+        "**Registered source:** https://localhost\n\n"
+        "**Source type:** example\n"
+    )
+    with pytest.raises(AssertionError, match="no usable HTTPS destination"):
+        _require_registered_source_link("### Example", section)
+
+
+def test_registered_source_rejects_single_label_host():
+    section = (
+        "### Example\n\n"
+        "**Registered source:** https://example\n\n"
         "**Source type:** example\n"
     )
     with pytest.raises(AssertionError, match="no usable HTTPS destination"):
