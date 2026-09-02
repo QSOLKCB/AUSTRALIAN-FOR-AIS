@@ -6,6 +6,49 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased] — Phase 2 Pilot Human Annotation
+
+### Added
+
+- `schemas/pilot-item.schema.json` for unannotated Phase 2 pilot prompts
+- `schemas/annotation.schema.json` for independent pseudonymous human annotations
+- Packaged copies of both Phase 2 schemas for installed-wheel validation
+- `PilotItem` and `HumanAnnotation` data models
+- Phase 2 pilot/annotation semantic validation using the existing uncertainty contract
+- `src/australian_for_ais/annotation.py` with pilot loading, annotation loading, coverage reporting, categorical pairwise agreement, pairwise Cohen's kappa, mechanism-set overlap, and confidence-difference summaries
+- CLI commands: `validate-pilot`, `validate-annotations`, and `agreement`
+- `scripts/analyse_annotations.py` wrapper for deterministic annotation analysis
+- Self-contained offline browser annotation interface at `annotation/index.html`
+- 60 independently authored synthetic pilot items in `data/pilot/items.jsonl`, arranged as 30 same-utterance context contrasts and containing no gold pragmatic labels
+- `docs/PHASE2-PILOT-PROTOCOL.md` with annotation procedure, independence requirements, privacy boundaries, validation commands, and ethical-review checklist
+- `docs/PHASE2-MECHANISM-REVIEW.md` recording the active taxonomy review and tall-poppy/status-calibration hypothesis without promoting new labels
+- Phase 2 schema, annotation, agreement, duplicate-assignment, and committed-pilot regression tests
+- CI validation of the Phase 2 pilot pack and installed Phase 2 schema resources
+
+### Changed
+
+- Activated `docs/ANNOTATION-GUIDE.md` for Phase 2 while preserving the rule that annotations are interpretations rather than objective ground truth
+- Extended `docs/BENCHMARK-DESIGN.md` with separate pilot-item and human-annotation contracts and transparent Phase 2 agreement reporting
+- Extended `docs/METHODOLOGY.md` with the Phase 2 pilot procedure and IAA limitations
+- Updated `README.md` with the offline pilot workflow and commands
+- Updated `ROADMAP.md` to record Phase 2 tooling implementation while leaving real human annotation, ethical review, agreement reporting, and guide revision as incomplete graduation requirements
+- Added tall-poppy/status-calibration context families to the future Phase 5 roadmap without encoding "Australians dislike success" as a universal rule
+- Replaced editable annotator identifiers with locally generated read-only pseudonyms in the form `annotator-<12 lowercase hexadecimal characters>` so names, email addresses, and account handles are not exported as annotation identities
+- Made Phase 2 ambiguity representation two-way: multiple retained pragmatic readings require `ambiguity: true`, while `ambiguity: true` continues to require at least two distinct normalized readings
+- Made the `unknown` mechanism mutually exclusive with specific mechanism labels in both the annotation schema and browser interface
+- Replaced pair-wide relationship disjunctions with the actual speaker relationship for each individual pilot item
+- Replaced the fixed `+30` context-pair presentation pattern with pseudonym-specific deterministic first/later ordering and pseudonym-specific choice of which pair member appears first
+- Made shared-browser pseudonym changes switch storage namespaces and reload annotator-specific state so one annotator's visible form cannot silently become another annotator's record
+- Aligned Phase 2 retained-reading normalization between browser and Python validation using locale-independent lowercase plus collapsed whitespace while preserving Phase 1 case-folded scoring semantics
+- Made `scripts/analyse_annotations.py` bootstrap the repository `src/` path so the documented command runs directly from a source checkout without an editable install
+
+### Notes
+
+Phase 2 tooling does not constitute a completed human pilot. No annotators or annotation results are fabricated by this implementation.
+Free-text pragmatic interpretations remain qualitative evidence and are not assigned a misleading exact-string IAA score.
+
+---
+
 ## [Unreleased] — Phase 1 Research Substrate
 
 ### Added

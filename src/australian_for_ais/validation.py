@@ -1,8 +1,9 @@
 """
 Validation module for Australian For AIs.
 
-Validates benchmark example records and evaluation prediction records against
-packaged JSON Schemas, then applies project-level semantic invariants.
+Validates benchmark examples, evaluation predictions, Phase 2 pilot items,
+and independent human annotations against packaged JSON Schemas, then applies
+project-level semantic invariants.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ from __future__ import annotations
 import json
 import math
 import pathlib
+import re
 from collections.abc import Iterator, Mapping, Sequence
 from importlib import resources
 from typing import Any, Callable
@@ -19,8 +21,14 @@ import jsonschema
 _SCHEMA_PACKAGE_ROOT = resources.files("australian_for_ais").joinpath("schemas")
 _EXAMPLE_SCHEMA_RESOURCE = _SCHEMA_PACKAGE_ROOT.joinpath("example.schema.json")
 _EVALUATION_SCHEMA_RESOURCE = _SCHEMA_PACKAGE_ROOT.joinpath("evaluation.schema.json")
+_PILOT_ITEM_SCHEMA_RESOURCE = _SCHEMA_PACKAGE_ROOT.joinpath("pilot-item.schema.json")
+_ANNOTATION_SCHEMA_RESOURCE = _SCHEMA_PACKAGE_ROOT.joinpath("annotation.schema.json")
 _INSUFFICIENT_CONTEXT = "insufficient_context"
 _MAX_SAFE_INTEGER_BITS = 12_000
+_PHASE2_ANNOTATION_WHITESPACE_RE = re.compile(
+    r"[\u0009-\u000D\u001C-\u0020\u0085\u00A0\u1680"
+    r"\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]+"
+)
 
 
 class ValidationError(Exception):
@@ -40,9 +48,23 @@ def _get_evaluation_schema() -> dict:
     return _load_schema(_EVALUATION_SCHEMA_RESOURCE)
 
 
+def _get_pilot_item_schema() -> dict:
+    return _load_schema(_PILOT_ITEM_SCHEMA_RESOURCE)
+
+
+def _get_annotation_schema() -> dict:
+    return _load_schema(_ANNOTATION_SCHEMA_RESOURCE)
+
+
 def _normalise_text(value: str) -> str:
     """Case-fold text and collapse all whitespace runs for semantic comparison."""
     return " ".join(value.split()).casefold()
+
+
+def _normalise_annotation_text(value: str) -> str:
+    """Mirror the browser's explicit Phase 2 lowercase/whitespace contract."""
+    collapsed = _PHASE2_ANNOTATION_WHITESPACE_RE.sub(" ", value)
+    return collapsed.strip(" ").lower()
 
 
 def _normalise_observed_utterance(value: str) -> str:
@@ -78,8 +100,6 @@ def _require_unit_interval_number(
         or isinstance(value, bool)
         or not (0.0 <= value <= 1.0)
     ):
-        # Do not interpolate ``value`` here: arbitrarily large integers can raise
-        # during repr/str conversion before the intended ValidationError is built.
         raise ValidationError(
             f"'{field_name}' must be a number between 0.0 and 1.0."
         )
@@ -162,13 +182,74 @@ def _validate_schema_safely(record: Mapping[str, Any], schema: dict) -> None:
         ) from exc
 
 
+def _validate_interpretation_contract(
+    record: Mapping[str, Any],
+    *,
+    normaliser: Callable[[str], str] = _normalise_text,
+) -> None:
+    """Apply the shared ambiguity and insufficient-context annotation contract."""
+    _require_non_whitespace_items(
+        record.get("pragmatic_interpretations"), "pragmatic_interpretations"
+    )
+    _require_non_whitespace_items(
+        record.get("alternative_interpretations", []), "alternative_interpretations"
+    )
+
+    interps = record.get("pragmatic_interpretations", [])
+    if not isinstance(interps, list) or len(interps) < 1:
+        raise ValidationError(
+            "'pragmatic_interpretations' must contain at least one entry."
+        )
+
+    primary = record.get("primary_pragmatic_interpretation", "")
+    primary_normalised = normaliser(primary)
+    if primary_normalised == _INSUFFICIENT_CONTEXT and primary != _INSUFFICIENT_CONTEXT:
+        raise ValidationError(
+            "The insufficient-context sentinel must be written exactly as "
+            "'insufficient_context'."
+        )
+
+    for interpretation in interps:
+        if (
+            isinstance(interpretation, str)
+            and normaliser(interpretation) == _INSUFFICIENT_CONTEXT
+        ):
+            raise ValidationError(
+                "'insufficient_context' is reserved for "
+                "'primary_pragmatic_interpretation' and must not appear in "
+                "'pragmatic_interpretations'."
+            )
+
+    accepted = {normaliser(v) for v in interps if isinstance(v, str)}
+    if primary != _INSUFFICIENT_CONTEXT and primary_normalised not in accepted:
+        raise ValidationError(
+            "'primary_pragmatic_interpretation' must be present in "
+            "'pragmatic_interpretations', unless it is 'insufficient_context'."
+        )
+
+    if record.get("ambiguity") is True and len(accepted) < 2:
+        raise ValidationError(
+            "If 'ambiguity' is true, 'pragmatic_interpretations' must contain "
+            "at least two distinct normalized readings."
+        )
+
+    confidence = record.get("confidence")
+    if primary == _INSUFFICIENT_CONTEXT:
+        if record.get("ambiguity") is not True:
+            raise ValidationError(
+                "'insufficient_context' requires 'ambiguity' to be true."
+            )
+        if confidence > 0.4:
+            raise ValidationError(
+                "'insufficient_context' requires confidence at or below 0.4."
+            )
+
+
 def validate_example_record(record: Any) -> None:
     """Validate a single benchmark example record."""
     if not isinstance(record, Mapping):
         raise ValidationError("Example record must be a JSON object.")
 
-    # Preserve the field-specific confidence contract before the generic
-    # structure preflight handles pathological values elsewhere in the record.
     _require_unit_interval_number(record, "confidence")
     _preflight_json_structure(record)
     _validate_schema_safely(record, _get_example_schema())
@@ -189,66 +270,8 @@ def _semantic_validate_example(record: Mapping[str, Any]) -> None:
     ):
         _require_non_whitespace_text(record, field_name)
 
-    _require_non_whitespace_items(
-        record.get("pragmatic_interpretations"), "pragmatic_interpretations"
-    )
-    _require_non_whitespace_items(
-        record.get("alternative_interpretations", []), "alternative_interpretations"
-    )
-
-    confidence = record.get("confidence")
     _require_unit_interval_number(record, "confidence")
-
-    interps = record.get("pragmatic_interpretations", [])
-    if not isinstance(interps, list) or len(interps) < 1:
-        raise ValidationError(
-            "'pragmatic_interpretations' must contain at least one entry."
-        )
-
-    primary = record.get("primary_pragmatic_interpretation", "")
-    primary_normalised = _normalise_text(primary)
-    if primary_normalised == _INSUFFICIENT_CONTEXT and primary != _INSUFFICIENT_CONTEXT:
-        raise ValidationError(
-            "The insufficient-context sentinel must be written exactly as "
-            "'insufficient_context'."
-        )
-
-    # The sentinel is a control value, not an ordinary accepted reading. It is
-    # admitted only through the exact primary field and is injected by scoring
-    # only for that case.
-    for interpretation in interps:
-        if (
-            isinstance(interpretation, str)
-            and _normalise_text(interpretation) == _INSUFFICIENT_CONTEXT
-        ):
-            raise ValidationError(
-                "'insufficient_context' is reserved for "
-                "'primary_pragmatic_interpretation' and must not appear in "
-                "'pragmatic_interpretations'."
-            )
-
-    accepted = {_normalise_text(v) for v in interps if isinstance(v, str)}
-    if primary != _INSUFFICIENT_CONTEXT and primary_normalised not in accepted:
-        raise ValidationError(
-            "'primary_pragmatic_interpretation' must be present in "
-            "'pragmatic_interpretations', unless it is 'insufficient_context'."
-        )
-
-    if record.get("ambiguity") is True and len(accepted) < 2:
-        raise ValidationError(
-            "If 'ambiguity' is true, 'pragmatic_interpretations' must contain "
-            "at least two distinct normalized readings."
-        )
-
-    if primary == _INSUFFICIENT_CONTEXT:
-        if record.get("ambiguity") is not True:
-            raise ValidationError(
-                "'insufficient_context' requires 'ambiguity' to be true."
-            )
-        if confidence > 0.4:
-            raise ValidationError(
-                "'insufficient_context' requires confidence at or below 0.4."
-            )
+    _validate_interpretation_contract(record)
 
     hostility = record.get("hostility")
     if not isinstance(hostility, bool) and hostility != "uncertain":
@@ -262,6 +285,58 @@ def _semantic_validate_example(record: Mapping[str, Any]) -> None:
     ):
         raise ValidationError(
             "'context_swap_group' must contain non-whitespace text when present."
+        )
+
+
+def validate_pilot_item_record(record: Any) -> None:
+    """Validate one unannotated Phase 2 pilot item."""
+    if not isinstance(record, Mapping):
+        raise ValidationError("Pilot item must be a JSON object.")
+
+    _preflight_json_structure(record)
+    _validate_schema_safely(record, _get_pilot_item_schema())
+
+    for field_name in (
+        "id",
+        "locale",
+        "utterance",
+        "context",
+        "speaker_relationship",
+        "provenance",
+        "license",
+    ):
+        _require_non_whitespace_text(record, field_name)
+
+    _require_non_whitespace_items(record.get("tags", []), "tags")
+
+
+def validate_annotation_record(record: Any) -> None:
+    """Validate one independent Phase 2 human annotation."""
+    if not isinstance(record, Mapping):
+        raise ValidationError("Human annotation must be a JSON object.")
+
+    _require_unit_interval_number(record, "confidence")
+    _preflight_json_structure(record)
+    _validate_schema_safely(record, _get_annotation_schema())
+
+    for field_name in (
+        "annotation_id",
+        "example_id",
+        "annotator_id",
+        "literal_interpretation",
+        "primary_pragmatic_interpretation",
+    ):
+        _require_non_whitespace_text(record, field_name)
+
+    _validate_interpretation_contract(
+        record,
+        normaliser=_normalise_annotation_text,
+    )
+
+    hostility = record.get("hostility")
+    if not isinstance(hostility, bool) and hostility != "uncertain":
+        raise ValidationError(
+            f"'hostility' must be true, false, or 'uncertain', got {hostility!r}."
         )
 
 
@@ -397,8 +472,6 @@ def iter_jsonl(path: pathlib.Path) -> Iterator[tuple[int, Any]]:
                 except ValidationError as exc:
                     raise ValidationError(f"Line {lineno}: {exc}") from exc
                 except ValueError as exc:
-                    # CPython may raise ValueError before producing an integer when
-                    # a numeric token exceeds the interpreter's safe digit limit.
                     raise ValidationError(
                         f"Line {lineno}: JSON value could not be parsed safely — {exc}"
                     ) from exc

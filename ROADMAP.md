@@ -2,15 +2,13 @@
 
 This roadmap describes planned phases for the Australian For AIs project.
 
-Phases are listed in order. No phase is marked complete until its graduation criteria are
-explicitly satisfied and documented. Future phases are not complete.
+Phases are listed in order. No phase is marked complete until its graduation criteria are explicitly satisfied and documented. Future phases are not complete.
 
 ---
 
-## Phase 1 — Research Substrate *(current)*
+## Phase 1 — Research Substrate *(merged; external-researcher invariant review still pending)*
 
-**Goal:** Establish the contracts, schemas, methodology, documentation, starter fixtures,
-reference evaluator, and tests needed for later dataset expansion.
+**Goal:** Establish the contracts, schemas, methodology, documentation, starter fixtures, reference evaluator, and tests needed for later dataset expansion.
 
 **Deliverables:**
 - Core invariants document (AU-HUMOUR-001 through AU-HUMOUR-010)
@@ -24,18 +22,22 @@ reference evaluator, and tests needed for later dataset expansion.
 - Repository hygiene rules preventing generated local artefacts from entering the research record
 
 **Graduation Criteria:**
-- [ ] All tests pass in CI
-- [ ] All starter examples validate against the schema
-- [ ] Research references are explicitly separated from redistributable benchmark data
-- [ ] No fabricated release/citation metadata remains in the Phase 1 branch
+- [x] All tests pass in CI
+- [x] All starter examples validate against the schema
+- [x] Research references are explicitly separated from redistributable benchmark data
+- [x] No fabricated release/citation metadata remains in the Phase 1 branch
 - [ ] Invariants reviewed by at least one researcher outside the initial author
-- [ ] PR reviewed and merged
+- [x] PR reviewed and merged
+
+Phase 1 code and documentation are merged, but the phase is not marked complete because the explicit external-researcher invariant review criterion remains open.
 
 ---
 
-## Phase 2 — Pilot Human Annotation
+## Phase 2 — Pilot Human Annotation *(tooling implementation in PR #2; human collection pending)*
 
 **Goal:** Develop annotation tooling and conduct a small-scale pilot with real human annotators.
+
+**Implementation status:** PR #2 provides a 60-item unannotated synthetic pilot pack, a self-contained offline annotation interface, strict per-annotator validation, pseudonymous annotation records, deterministic agreement analysis, a pilot protocol, and a mechanism-selection review. This does **not** claim that real human annotation or ethical review has already occurred.
 
 **Deliverables:**
 - Annotation interface or workflow
@@ -47,15 +49,14 @@ reference evaluator, and tests needed for later dataset expansion.
 **Graduation Criteria:**
 - [ ] Pilot annotation completed with at least 2 annotators per example
 - [ ] Inter-annotator agreement measured and reported
-- [ ] Annotation guide updated to reflect lessons learned
+- [ ] Annotation guide updated to reflect lessons learned from actual pilot use
 - [ ] Ethical review of annotation process completed
 
 ---
 
 ## Phase 3 — Multi-Annotator Culturally Contextualised Dataset
 
-**Goal:** Produce a dataset with genuine human annotations, multiple interpretations per
-example, explicit confidence ratings, and documented inter-annotator disagreement.
+**Goal:** Produce a dataset with genuine human annotations, multiple interpretations per example, explicit confidence ratings, and documented inter-annotator disagreement.
 
 **Deliverables:**
 - Dataset of 200–500 examples with multi-annotator labels
@@ -73,8 +74,7 @@ example, explicit confidence ratings, and documented inter-annotator disagreemen
 
 ## Phase 4 — Baseline Evaluation
 
-**Goal:** Evaluate a selection of publicly available language models against the Phase 3
-dataset using the reference evaluator and extended metrics.
+**Goal:** Evaluate a selection of publicly available language models against the Phase 3 dataset using the reference evaluator and extended metrics.
 
 **Deliverables:**
 - Evaluation pipeline for local and API-accessible models
@@ -92,13 +92,13 @@ dataset using the reference evaluator and extended metrics.
 
 ## Phase 5 — Adversarial Context-Swap and Minimal-Pair Benchmark
 
-**Goal:** Formalise and expand the context-swap and minimal-pair test concepts, including
-adversarial pragmatic structures identified during reference-corpus analysis.
+**Goal:** Formalise and expand the context-swap and minimal-pair test concepts, including adversarial pragmatic structures identified during reference-corpus analysis.
 
 **Deliverables:**
 - Extended context-swap dataset (same utterance, different contexts)
 - Minimal-pair examples differing in speaker relationship, preceding event, or social setting
 - Authority-inversion, question-intent, persona, and institutional-frame swap families
+- Tall-poppy/status-calibration families separating playful status deflation, scepticism toward unsupported self-promotion, and unfair suppression of demonstrated competence
 - Analysis of whether context-swap failures correlate with lexical shortcuts
 - Answers to RQ6 and RQ7
 
@@ -107,13 +107,13 @@ adversarial pragmatic structures identified during reference-corpus analysis.
 - [ ] Results show whether models use context beyond lexical content
 - [ ] Methodology is replicable without proprietary dependencies
 - [ ] Media-inspired benchmark items are independently authored or appropriately licensed
+- [ ] Tall-poppy/status items do not encode "Australians dislike success" as a universal cultural rule
 
 ---
 
 ## Phase 6 — Moderation-Fairness Evaluation
 
-**Goal:** Investigate whether content moderation systems produce disparate false-positive rates
-for Australian pragmatic language compared to denotatively similar non-Australian language.
+**Goal:** Investigate whether content moderation systems produce disparate false-positive rates for Australian pragmatic language compared to denotatively similar non-Australian language.
 
 **Deliverables:**
 - Moderation-fairness evaluation methodology
@@ -130,8 +130,7 @@ for Australian pragmatic language compared to denotatively similar non-Australia
 
 ## Phase 7 — Cross-Dialect Comparison
 
-**Goal:** Investigate whether methods and findings from Australian English generalise
-to other dialects or culturally dependent pragmatic registers, without assuming they do.
+**Goal:** Investigate whether methods and findings from Australian English generalise to other dialects or culturally dependent pragmatic registers, without assuming they do.
 
 **Deliverables:**
 - Comparative framework for at least one additional dialect
@@ -148,8 +147,7 @@ to other dialects or culturally dependent pragmatic registers, without assuming 
 
 ## Phase 8 — Research Paper and Archival Release
 
-**Goal:** Produce a citable, peer-reviewed research publication and an archivally deposited
-benchmark release.
+**Goal:** Produce a citable, peer-reviewed research publication and an archivally deposited benchmark release.
 
 **Deliverables:**
 - Research paper submitted to a peer-reviewed venue

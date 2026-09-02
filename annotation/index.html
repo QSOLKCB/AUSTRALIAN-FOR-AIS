@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Australian For AIs — Phase 2 Annotation</title>
+<style>
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+body { margin: 0; background: Canvas; color: CanvasText; }
+main { max-width: 980px; margin: 0 auto; padding: 24px; }
+h1 { margin-bottom: .25rem; }
+.small { opacity: .75; font-size: .92rem; }
+.panel { border: 1px solid color-mix(in srgb, CanvasText 22%, transparent); border-radius: 12px; padding: 18px; margin: 16px 0; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+label { display: block; font-weight: 650; margin-top: 12px; }
+input[type=text], textarea, select { width: 100%; box-sizing: border-box; padding: 9px; margin-top: 5px; }
+textarea { min-height: 86px; resize: vertical; }
+fieldset { margin: 14px 0; border-radius: 8px; }
+.mechanisms { columns: 2 260px; }
+.mechanisms label { font-weight: 400; margin: 4px 0; break-inside: avoid; }
+button { padding: 9px 14px; margin: 4px; cursor: pointer; }
+nav { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+#utterance { font-size: 1.35rem; font-weight: 700; }
+#status { font-weight: 650; }
+.warning { border-left: 4px solid currentColor; padding-left: 12px; }
+.hidden { display: none; }
+</style>
+</head>
+<body>
+<main>
+<h1>Australian For AIs — Phase 2 Annotation</h1>
+<p class="small">Offline human-annotation tool. No network requests are made. The browser generates a local pseudonymous annotator ID so names, emails, and account handles are not exported.</p>
+
+<section class="panel">
+<div class="grid">
+<div>
+<label for="itemsFile">Pilot items JSONL</label>
+<input id="itemsFile" type="file" accept=".jsonl,.txt,application/json">
+</div>
+<div>
+<label for="annotatorId">Local pseudonymous annotator ID</label>
+<input id="annotatorId" type="text" readonly aria-readonly="true">
+<button id="newPseudonym" type="button">Use a new local pseudonym</button>
+</div>
+<div>
+<label for="exposure">Australian English exposure</label>
+<select id="exposure">
+<option value="unspecified">unspecified</option>
+<option value="low">low</option>
+<option value="medium">medium</option>
+<option value="high">high</option>
+</select>
+</div>
+</div>
+<p class="small warning">Do not invent context. Annotate only what the item supplies. If the context cannot support one best pragmatic reading, use <code>insufficient_context</code>, set ambiguity true, and keep confidence at or below 0.4.</p>
+</section>
+
+<section id="workspace" class="hidden">
+<nav class="panel">
+<button id="prev" type="button">← Previous</button>
+<button id="next" type="button">Next →</button>
+<span id="status"></span>
+<button id="save" type="button">Save annotation</button>
+<button id="export" type="button">Export saved JSONL</button>
+</nav>
+
+<section class="panel">
+<div class="small" id="itemLabel"></div>
+<div id="utterance"></div>
+<p><strong>Context:</strong> <span id="context"></span></p>
+<p><strong>Speaker relationship:</strong> <span id="relationship"></span></p>
+</section>
+
+<form id="annotationForm" class="panel" onsubmit="return false">
+<label for="literal">Literal interpretation</label>
+<textarea id="literal" required></textarea>
+
+<label for="pragmatics">Plausible pragmatic interpretations, one per line</label>
+<textarea id="pragmatics" required></textarea>
+
+<div class="grid">
+<div>
+<label for="primary">Primary pragmatic interpretation</label>
+<input id="primary" type="text" required>
+</div>
+<div>
+<label><input id="insufficient" type="checkbox"> Context is insufficient to select a primary reading</label>
+</div>
+</div>
+
+<fieldset>
+<legend>Pragmatic mechanisms</legend>
+<p class="small">Select at least one mechanism. If no specific taxonomy label is justified, select <code>unknown</code> explicitly.</p>
+<div id="mechanisms" class="mechanisms"></div>
+</fieldset>
+
+<div class="grid">
+<div>
+<label for="socialValence">Social valence</label>
+<select id="socialValence">
+<option>friendly</option><option>hostile</option><option selected>neutral</option><option>ambiguous</option><option>unknown</option>
+</select>
+</div>
+<div>
+<label for="hostility">Hostility</label>
+<select id="hostility">
+<option value="false" selected>false</option><option value="true">true</option><option value="uncertain">uncertain</option>
+</select>
+</div>
+<div>
+<label for="culturalDependency">Cultural dependency</label>
+<select id="culturalDependency">
+<option>low</option><option selected>medium</option><option>high</option><option>unknown</option>
+</select>
+</div>
+</div>
+
+<div class="grid">
+<div>
+<label for="confidence">Confidence: <span id="confidenceValue">0.70</span></label>
+<input id="confidence" type="range" min="0" max="1" step="0.01" value="0.70">
+</div>
+<div>
+<label><input id="ambiguity" type="checkbox"> Multiple substantially different readings remain plausible</label>
+</div>
+<div>
+<label><input id="contextRequired" type="checkbox" checked> Supplied context materially affects interpretation</label>
+</div>
+</div>
+
+<label for="alternatives">Other alternatives considered, one per line</label>
+<textarea id="alternatives"></textarea>
+
+<label for="notes">Annotation notes and contextual cues used</label>
+<textarea id="notes"></textarea>
+</form>
+</section>
+
+<section class="panel small">
+<strong>Epistemic contract:</strong> individual annotations are interpretations, not objective ground truth. Disagreement is retained as data. Stable IDs, pilot tags, and context-swap group IDs are intentionally hidden while annotating. Pair order is pseudonym-specific so counterpart positions do not follow a fixed offset.
+</section>
+</main>
+<script>
+"use strict";
+const mechanisms = [
+  "understatement","sarcasm","irony","deadpan","affectionate_insult",
+  "inverse_praise","profanity_non_hostile","discourse_marker","self_deprecation",
+  "absurdist_escalation","relational_teasing","tall_poppy_humour",
+  "ambiguous_address","literal","unknown"
+];
+const PSEUDONYM_STORAGE_KEY = "afa-phase2:local-pseudonym";
+const PSEUDONYM_PATTERN = /^annotator-[0-9a-f]{12}$/;
+const PHASE2_ANNOTATION_WHITESPACE = /[\u0009-\u000D\u001C-\u0020\u0085\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]+/g;
+let rawItems = [];
+let items = [];
+let index = 0;
+const $ = id => document.getElementById(id);
+
+for (const mechanism of mechanisms) {
+  const label = document.createElement("label");
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.value = mechanism;
+  input.name = "mechanism";
+  input.addEventListener("change", () => {
+    if (!input.checked) return;
+    if (mechanism === "unknown") {
+      for (const other of document.querySelectorAll('input[name="mechanism"]')) {
+        if (other !== input) other.checked = false;
+      }
+    } else {
+      const unknown = document.querySelector('input[name="mechanism"][value="unknown"]');
+      if (unknown) unknown.checked = false;
+    }
+  });
+  label.append(input, " " + mechanism);
+  $("mechanisms").append(label);
+}
+
+function createLocalPseudonym() {
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  return "annotator-" + [...bytes].map(value => value.toString(16).padStart(2, "0")).join("");
+}
+
+function ensurePseudonym() {
+  let id = null;
+  try { id = localStorage.getItem(PSEUDONYM_STORAGE_KEY); } catch (_) {}
+  if (!PSEUDONYM_PATTERN.test(id || "")) {
+    id = createLocalPseudonym();
+    try { localStorage.setItem(PSEUDONYM_STORAGE_KEY, id); } catch (_) {}
+  }
+  $("annotatorId").value = id;
+  return id;
+}
+
+function annotatorKey() {
+  const id = ensurePseudonym();
+  if (!PSEUDONYM_PATTERN.test(id)) throw new Error("Could not create a valid local pseudonym.");
+  return id;
+}
+function storageKey(itemId) { return `afa-phase2:${annotatorKey()}:${itemId}`; }
+function itemObservationKey(item) {
+  return JSON.stringify({
+    id: item.id,
+    locale: item.locale,
+    utterance: item.utterance,
+    context: item.context,
+    speaker_relationship: item.speaker_relationship,
+    source_type: item.source_type,
+    provenance: item.provenance,
+    license: item.license,
+    tags: item.tags || [],
+    context_swap_group: item.context_swap_group || null
+  });
+}
+function unpackStoredAnnotation(item, raw) {
+  const saved = JSON.parse(raw);
+  if (!saved || saved.item_observation_key !== itemObservationKey(item)) return null;
+  if (!saved.annotation || saved.annotation.example_id !== item.id) return null;
+  return saved.annotation;
+}
+function normaliseReading(value) {
+  return value.toLowerCase().replace(PHASE2_ANNOTATION_WHITESPACE, " ").replace(/^ +| +$/g, "");
+}
+function lines(id) {
+  return $(id).value.split(/\r?\n/).map(x => x.trim()).filter(x => normaliseReading(x).length > 0);
+}
+function setLines(id, values) { $(id).value = (values || []).join("\n"); }
+function selectedMechanisms() { return [...document.querySelectorAll('input[name="mechanism"]:checked')].map(x => x.value); }
+function setMechanisms(values) {
+  const selected = new Set(values || []);
+  for (const input of document.querySelectorAll('input[name="mechanism"]')) input.checked = selected.has(input.value);
+}
+function parseHostility(value) { return value === "true" ? true : value === "false" ? false : "uncertain"; }
+
+function hash32(text) {
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function seededShuffle(values, seedText) {
+  const result = [...values];
+  let state = hash32(seedText) || 0x9e3779b9;
+  for (let i = result.length - 1; i > 0; i--) {
+    state ^= state << 13;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    const j = (state >>> 0) % (i + 1);
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
+function orderPilotItems(records, pseudonym) {
+  const groups = new Map();
+  const ungrouped = [];
+  for (const item of records) {
+    if (!item.context_swap_group) { ungrouped.push(item); continue; }
+    if (!groups.has(item.context_swap_group)) groups.set(item.context_swap_group, []);
+    groups.get(item.context_swap_group).push(item);
+  }
+
+  const groupNames = [...groups.keys()];
+  const firstOrder = seededShuffle(groupNames, `${pseudonym}:first-pass`);
+  const laterOrder = seededShuffle(groupNames, `${pseudonym}:later-pass`);
+  const firstChoice = new Map();
+  const firstPass = [];
+
+  for (const groupName of firstOrder) {
+    const members = groups.get(groupName);
+    const choice = hash32(`${pseudonym}:${groupName}:variant`) % members.length;
+    firstChoice.set(groupName, choice);
+    firstPass.push(members[choice]);
+  }
+
+  const laterPass = [];
+  for (const groupName of laterOrder) {
+    const members = groups.get(groupName);
+    const firstIndex = firstChoice.get(groupName);
+    for (let offset = 1; offset < members.length; offset++) {
+      laterPass.push(members[(firstIndex + offset) % members.length]);
+    }
+  }
+
+  return [
+    ...firstPass,
+    ...seededShuffle(ungrouped, `${pseudonym}:ungrouped`),
+    ...laterPass
+  ];
+}
+
+function blankForm() {
+  $("literal").value = ""; $("pragmatics").value = ""; $("primary").value = "";
+  $("insufficient").checked = false; setMechanisms([]); $("socialValence").value = "neutral";
+  $("hostility").value = "false"; $("confidence").value = "0.70"; $("confidenceValue").textContent = "0.70";
+  $("ambiguity").checked = false; $("culturalDependency").value = "medium"; $("contextRequired").checked = true;
+  $("alternatives").value = ""; $("notes").value = "";
+}
+
+function loadSaved(item) {
+  blankForm();
+  let raw;
+  try { raw = localStorage.getItem(storageKey(item.id)); } catch (_) { return; }
+  if (!raw) return;
+  const a = unpackStoredAnnotation(item, raw);
+  if (!a) return;
+  $("literal").value = a.literal_interpretation || "";
+  setLines("pragmatics", a.pragmatic_interpretations);
+  $("primary").value = a.primary_pragmatic_interpretation || "";
+  $("insufficient").checked = a.primary_pragmatic_interpretation === "insufficient_context";
+  setMechanisms(a.humour_mechanisms); $("socialValence").value = a.social_valence;
+  $("hostility").value = String(a.hostility); $("confidence").value = a.confidence;
+  $("confidenceValue").textContent = Number(a.confidence).toFixed(2); $("ambiguity").checked = a.ambiguity;
+  $("culturalDependency").value = a.cultural_dependency; $("contextRequired").checked = a.context_required;
+  setLines("alternatives", a.alternative_interpretations); $("notes").value = a.annotation_notes || "";
+  $("exposure").value = a.australian_english_exposure || "unspecified";
+}
+
+function showItem() {
+  const item = items[index]; if (!item) return;
+  $("itemLabel").textContent = `Pilot item ${index + 1}`;
+  $("utterance").textContent = item.utterance;
+  $("context").textContent = item.context; $("relationship").textContent = item.speaker_relationship;
+  $("status").textContent = `${index + 1} / ${items.length}`;
+  $("prev").disabled = index === 0; $("next").disabled = index === items.length - 1;
+  loadSaved(item);
+}
+
+function buildAnnotation() {
+  const item = items[index];
+  const annotator = annotatorKey();
+  const pragmatic = lines("pragmatics");
+  const insufficient = $("insufficient").checked;
+  const primary = insufficient ? "insufficient_context" : $("primary").value.trim();
+  const normalisedPrimary = normaliseReading(primary);
+  const literal = $("literal").value;
+  const confidence = Number($("confidence").value);
+  const ambiguity = $("ambiguity").checked;
+  if (!normaliseReading(literal)) throw new Error("Literal interpretation is required.");
+  if (!pragmatic.length) throw new Error("Provide at least one plausible pragmatic interpretation.");
+  const normalisedReadings = pragmatic.map(normaliseReading);
+  const distinctReadings = new Set(normalisedReadings).size;
+  if (distinctReadings !== pragmatic.length) throw new Error("Duplicate or equivalent pragmatic readings are not allowed.");
+  if (normalisedReadings.includes("insufficient_context")) throw new Error("insufficient_context is reserved for the primary field and must not appear among retained pragmatic readings.");
+  if (!normalisedPrimary) throw new Error("Primary pragmatic interpretation is required.");
+  if (!insufficient && !normalisedReadings.includes(normalisedPrimary)) throw new Error("Primary interpretation must also appear in the plausible pragmatic interpretations list.");
+  if (ambiguity && pragmatic.length < 2) throw new Error("Ambiguity requires at least two distinct pragmatic readings.");
+  if (!ambiguity && pragmatic.length > 1) throw new Error("Multiple retained pragmatic readings require ambiguity=true.");
+  if (insufficient && (!ambiguity || confidence > 0.4)) throw new Error("insufficient_context requires ambiguity=true and confidence <= 0.4.");
+  const selected = selectedMechanisms();
+  if (!selected.length) throw new Error("Select at least one pragmatic mechanism, or select unknown explicitly.");
+  if (selected.includes("unknown") && selected.length > 1) throw new Error("The unknown mechanism cannot be combined with a specific mechanism.");
+  return {
+    annotation_id: `${annotator}::${item.id}`,
+    example_id: item.id,
+    annotator_id: annotator,
+    literal_interpretation: literal,
+    pragmatic_interpretations: pragmatic,
+    primary_pragmatic_interpretation: primary,
+    humour_mechanisms: selected,
+    social_valence: $("socialValence").value,
+    hostility: parseHostility($("hostility").value),
+    confidence,
+    ambiguity,
+    cultural_dependency: $("culturalDependency").value,
+    context_required: $("contextRequired").checked,
+    alternative_interpretations: lines("alternatives"),
+    annotation_notes: $("notes").value.trim(),
+    australian_english_exposure: $("exposure").value
+  };
+}
+
+function saveCurrent() {
+  try {
+    const item = items[index];
+    const annotation = buildAnnotation();
+    const saved = {item_observation_key: itemObservationKey(item), annotation};
+    localStorage.setItem(storageKey(item.id), JSON.stringify(saved));
+    $("status").textContent = `${index + 1} / ${items.length} — saved`;
+    return true;
+  } catch (err) { alert(err.message); return false; }
+}
+
+$("itemsFile").addEventListener("change", async event => {
+  try {
+    const text = await event.target.files[0].text();
+    rawItems = text.split(/\r?\n/).filter(line => line.trim()).map(line => JSON.parse(line));
+    if (!rawItems.length) throw new Error("No pilot items found.");
+    items = orderPilotItems(rawItems, annotatorKey());
+    index = 0; $("workspace").classList.remove("hidden"); showItem();
+  } catch (err) { alert(`Could not load pilot items: ${err.message}`); }
+});
+$("confidence").addEventListener("input", () => $("confidenceValue").textContent = Number($("confidence").value).toFixed(2));
+$("insufficient").addEventListener("change", () => {
+  if ($("insufficient").checked) { $("primary").value = "insufficient_context"; $("ambiguity").checked = true; if (Number($("confidence").value) > .4) $("confidence").value = .4; }
+  $("confidenceValue").textContent = Number($("confidence").value).toFixed(2);
+});
+$("newPseudonym").addEventListener("click", () => {
+  if (!confirm("Switch to a new local pseudonym? Unsaved form values will be cleared and saved annotations under the current pseudonym will remain separate.")) return;
+  const next = createLocalPseudonym();
+  try { localStorage.setItem(PSEUDONYM_STORAGE_KEY, next); } catch (_) {}
+  $("annotatorId").value = next;
+  $("exposure").value = "unspecified";
+  if (rawItems.length) {
+    items = orderPilotItems(rawItems, next);
+    index = 0;
+    showItem();
+  } else {
+    blankForm();
+  }
+});
+$("save").addEventListener("click", saveCurrent);
+$("prev").addEventListener("click", () => { if (index > 0) { index--; showItem(); } });
+$("next").addEventListener("click", () => { if (index < items.length - 1) { index++; showItem(); } });
+$("export").addEventListener("click", () => {
+  try {
+    const annotator = annotatorKey(); const records = [];
+    for (const item of items) {
+      const raw = localStorage.getItem(`afa-phase2:${annotator}:${item.id}`);
+      if (!raw) continue;
+      const annotation = unpackStoredAnnotation(item, raw);
+      if (annotation) records.push(annotation);
+    }
+    if (!records.length) throw new Error("No saved annotations to export.");
+    const blob = new Blob([records.map(record => JSON.stringify(record)).join("\n") + "\n"], {type:"application/x-ndjson"});
+    const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `${annotator}-annotations.jsonl`; a.click(); URL.revokeObjectURL(url);
+  } catch (err) { alert(err.message); }
+});
+
+ensurePseudonym();
+</script>
+</body>
+</html>
