@@ -48,6 +48,19 @@ def _write_jsonl(path: pathlib.Path, records: list[dict]) -> None:
     )
 
 
+def _pilot_item(item_id: str) -> dict:
+    return {
+        "id": item_id,
+        "locale": "en-AU",
+        "utterance": "Good one.",
+        "context": f"Synthetic context for {item_id}.",
+        "speaker_relationship": "colleagues",
+        "source_type": "synthetic",
+        "provenance": "Test fixture",
+        "license": "Apache-2.0",
+    }
+
+
 def test_phase2_schemas_are_valid_and_packaged():
     package_dir = resources.files("australian_for_ais").joinpath("schemas")
     for name in ("pilot-item.schema.json", "annotation.schema.json"):
@@ -84,6 +97,24 @@ def test_multiple_retained_readings_require_ambiguity():
                 pragmatic_interpretations=["Reading A", "Reading B"],
                 primary_pragmatic_interpretation="Reading A",
                 ambiguity=False,
+            )
+        )
+
+
+def test_duplicate_or_equivalent_retained_readings_are_rejected():
+    with pytest.raises(ValidationError):
+        validate_annotation_record(
+            _annotation(
+                pragmatic_interpretations=["Reading A", "Reading A"],
+                ambiguity=True,
+            )
+        )
+
+    with pytest.raises(ValidationError, match="at least two distinct normalized readings"):
+        validate_annotation_record(
+            _annotation(
+                pragmatic_interpretations=["Reading A", " reading   a "],
+                ambiguity=True,
             )
         )
 
@@ -142,21 +173,7 @@ def test_unknown_annotation_example_is_rejected(tmp_path):
 
 def test_agreement_report_preserves_free_text_as_qualitative(tmp_path):
     items_path = tmp_path / "items.jsonl"
-    _write_jsonl(
-        items_path,
-        [
-            {
-                "id": "item-1",
-                "locale": "en-AU",
-                "utterance": "Good one.",
-                "context": "A task has just succeeded.",
-                "speaker_relationship": "colleagues",
-                "source_type": "synthetic",
-                "provenance": "Test fixture",
-                "license": "Apache-2.0",
-            }
-        ],
-    )
+    _write_jsonl(items_path, [_pilot_item("item-1")])
     annotations_path = tmp_path / "annotations.jsonl"
     _write_jsonl(
         annotations_path,
@@ -179,9 +196,27 @@ def test_agreement_report_preserves_free_text_as_qualitative(tmp_path):
     report = build_agreement_report(items, annotations)
 
     assert report["coverage"]["items_with_at_least_two_annotations"] == 1
+    assert report["coverage"]["annotations_per_item"] == {"item-1": 2}
     assert report["categorical_pairwise_agreement"]["hostility"]["agreement_rate"] == 1.0
     assert report["pragmatic_free_text_iaa"] is None
     assert "not scored" in report["pragmatic_free_text_note"]
+
+
+def test_coverage_report_includes_zero_and_one_annotation_counts(tmp_path):
+    items_path = tmp_path / "items.jsonl"
+    _write_jsonl(items_path, [_pilot_item("item-1"), _pilot_item("item-2")])
+    annotations_path = tmp_path / "annotations.jsonl"
+    _write_jsonl(annotations_path, [_annotation()])
+
+    items = load_pilot_items(items_path)
+    annotations = load_annotations(annotations_path, set(items))
+    report = build_agreement_report(items, annotations)
+
+    assert report["coverage"]["annotations_per_item"] == {
+        "item-1": 1,
+        "item-2": 0,
+    }
+    assert report["coverage"]["items_below_two_annotations"] == ["item-1", "item-2"]
 
 
 def test_committed_pilot_pack_has_60_unannotated_items_and_30_pairs():
@@ -213,4 +248,8 @@ def test_annotation_ui_enforces_privacy_and_independence_contracts():
     assert ":later-pass`" in html
     assert 'id="newPseudonym"' in html
     assert "Multiple retained pragmatic readings require ambiguity=true" in html
+    assert "Duplicate or equivalent pragmatic readings are not allowed" in html
+    assert "Select at least one pragmatic mechanism, or select unknown explicitly" in html
     assert "unknown mechanism cannot be combined" in html
+    assert '$("exposure").value = a.australian_english_exposure || "unspecified"' in html
+    assert 'humour_mechanisms: selected,' in html
