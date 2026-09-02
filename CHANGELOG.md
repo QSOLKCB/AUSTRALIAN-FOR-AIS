@@ -39,6 +39,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Replaced pair-wide relationship disjunctions with the actual speaker relationship for each individual pilot item
 - Replaced the fixed `+30` context-pair presentation pattern with pseudonym-specific deterministic first/later ordering and pseudonym-specific choice of which pair member appears first
 - Made shared-browser pseudonym changes switch storage namespaces and reload annotator-specific state so one annotator's visible form cannot silently become another annotator's record
+- Aligned Phase 2 retained-reading normalization between browser and Python validation using locale-independent lowercase plus collapsed whitespace while preserving Phase 1 case-folded scoring semantics
+- Made `scripts/analyse_annotations.py` bootstrap the repository `src/` path so the documented command runs directly from a source checkout without an editable install
 
 ### Notes
 
