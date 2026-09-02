@@ -224,7 +224,7 @@ pytest
 See [docs/METHODOLOGY.md](docs/METHODOLOGY.md) for the full list. Selected examples:
 
 - **RQ1**: Can language models distinguish lexical profanity from social aggression?
-- **RQ5**: Do safety or moderation systems disproportionately classify ordinary Australian discourse as hostile or abusive?
+- **RQ5**: Do safety or moderation systems show disparate false-positive or false-negative rates for Australian pragmatic language relative to explicitly defined matched non-Australian or comparison-register counterparts, and can they separately distinguish benign hostile-looking language from genuine hostility?
 - **RQ7**: Do context-swap examples expose reliance on lexical shortcuts?
 
 ---

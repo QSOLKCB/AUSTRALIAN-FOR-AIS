@@ -31,7 +31,7 @@ The project studies whether AI systems can:
 
 **RQ4:** Do models become overconfident when interpreting culturally dependent humour?
 
-**RQ5:** Do safety or moderation systems disproportionately classify ordinary Australian discourse as hostile or abusive?
+**RQ5:** Do safety or moderation systems show disparate false-positive or false-negative rates for Australian pragmatic language relative to explicitly defined, denotatively/pragmatically matched non-Australian or comparison-register counterparts, and, as a separate discrimination axis, can they distinguish benign hostile-looking language from genuine hostility?
 
 **RQ6:** Can models distinguish sincere praise from inverse praise when lexical content is identical?
 
