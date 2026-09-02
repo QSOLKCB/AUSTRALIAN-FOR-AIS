@@ -36,6 +36,9 @@ jobs:
       - name: Validate starter dataset
         run: python -m australian_for_ais.cli validate data/starter/examples.jsonl
 
+      - name: Validate Phase 2 pilot pack
+        run: python -m australian_for_ais.cli validate-pilot data/pilot/items.jsonl
+
       - name: Run tests
         run: pytest -q --disable-warnings --maxfail=1
 
@@ -66,4 +69,4 @@ jobs:
 
       - name: Verify packaged schema resources
         run: |
-          /tmp/afa-wheel-venv/bin/python -c "from australian_for_ais.validation import _get_example_schema, _get_evaluation_schema; assert _get_example_schema()['x-project-schema-version'] == '0.1.0'; assert _get_evaluation_schema()['x-project-schema-version'] == '0.1.0'"
+          /tmp/afa-wheel-venv/bin/python -c "from australian_for_ais.validation import _get_example_schema, _get_evaluation_schema, _get_pilot_item_schema, _get_annotation_schema; assert _get_example_schema()['x-project-schema-version'] == '0.1.0'; assert _get_evaluation_schema()['x-project-schema-version'] == '0.1.0'; assert _get_pilot_item_schema()['x-project-schema-version'] == '0.1.0'; assert _get_annotation_schema()['x-project-schema-version'] == '0.1.0'"
