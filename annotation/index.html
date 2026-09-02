@@ -64,7 +64,7 @@ nav { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 </nav>
 
 <section class="panel">
-<div class="small" id="exampleId"></div>
+<div class="small" id="itemLabel"></div>
 <div id="utterance"></div>
 <p><strong>Context:</strong> <span id="context"></span></p>
 <p><strong>Speaker relationship:</strong> <span id="relationship"></span></p>
@@ -135,7 +135,7 @@ nav { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 </section>
 
 <section class="panel small">
-<strong>Epistemic contract:</strong> individual annotations are interpretations, not objective ground truth. Disagreement is retained as data. This interface does not expose pilot tags or context-swap group IDs while annotating.
+<strong>Epistemic contract:</strong> individual annotations are interpretations, not objective ground truth. Disagreement is retained as data. Stable IDs, pilot tags, and context-swap group IDs are intentionally hidden while annotating.
 </section>
 </main>
 <script>
@@ -165,7 +165,6 @@ function annotatorKey() {
   if (!id) throw new Error("Enter a pseudonymous annotator ID first.");
   return id;
 }
-
 function storageKey(itemId) { return `afa-phase2:${annotatorKey()}:${itemId}`; }
 function lines(id) { return $(id).value.split(/\r?\n/).map(x => x.trim()).filter(Boolean); }
 function setLines(id, values) { $(id).value = (values || []).join("\n"); }
@@ -175,6 +174,23 @@ function setMechanisms(values) {
   for (const input of document.querySelectorAll('input[name="mechanism"]')) input.checked = selected.has(input.value);
 }
 function parseHostility(value) { return value === "true" ? true : value === "false" ? false : "uncertain"; }
+
+function separatePairedVariants(records) {
+  const groups = new Map();
+  const ungrouped = [];
+  for (const item of records) {
+    if (!item.context_swap_group) { ungrouped.push(item); continue; }
+    if (!groups.has(item.context_swap_group)) groups.set(item.context_swap_group, []);
+    groups.get(item.context_swap_group).push(item);
+  }
+  const firstPass = [];
+  const laterPasses = [];
+  for (const members of groups.values()) {
+    firstPass.push(members[0]);
+    laterPasses.push(...members.slice(1));
+  }
+  return [...firstPass, ...ungrouped, ...laterPasses];
+}
 
 function blankForm() {
   $("literal").value = ""; $("pragmatics").value = ""; $("primary").value = "";
@@ -203,7 +219,8 @@ function loadSaved(item) {
 
 function showItem() {
   const item = items[index]; if (!item) return;
-  $("exampleId").textContent = item.id; $("utterance").textContent = item.utterance;
+  $("itemLabel").textContent = `Pilot item ${index + 1}`;
+  $("utterance").textContent = item.utterance;
   $("context").textContent = item.context; $("relationship").textContent = item.speaker_relationship;
   $("status").textContent = `${index + 1} / ${items.length}`;
   $("prev").disabled = index === 0; $("next").disabled = index === items.length - 1;
@@ -257,7 +274,8 @@ function saveCurrent() {
 $("itemsFile").addEventListener("change", async event => {
   try {
     const text = await event.target.files[0].text();
-    items = text.split(/\r?\n/).filter(line => line.trim()).map(line => JSON.parse(line));
+    const parsed = text.split(/\r?\n/).filter(line => line.trim()).map(line => JSON.parse(line));
+    items = separatePairedVariants(parsed);
     if (!items.length) throw new Error("No pilot items found.");
     index = 0; $("workspace").classList.remove("hidden"); showItem();
   } catch (err) { alert(`Could not load pilot items: ${err.message}`); }
