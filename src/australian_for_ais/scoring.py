@@ -11,6 +11,7 @@ Key constraints:
 
 from __future__ import annotations
 
+import math
 import pathlib
 from dataclasses import dataclass, field
 
@@ -243,6 +244,18 @@ def _validate_mapping_contracts(
             raise ValidationError(
                 f"Prediction mapping key '{key}' does not match record example_id "
                 f"'{prediction.example_id}'."
+            )
+
+        confidence = prediction.model_confidence
+        if (
+            not isinstance(confidence, (int, float))
+            or isinstance(confidence, bool)
+            or not math.isfinite(confidence)
+            or not (0.0 <= confidence <= 1.0)
+        ):
+            raise ValidationError(
+                "Direct score() prediction model_confidence must be a finite number "
+                f"between 0.0 and 1.0, got {confidence!r}."
             )
 
 
