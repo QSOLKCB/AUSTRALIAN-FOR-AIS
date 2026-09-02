@@ -150,6 +150,7 @@ const mechanisms = [
 ];
 const PSEUDONYM_STORAGE_KEY = "afa-phase2:local-pseudonym";
 const PSEUDONYM_PATTERN = /^annotator-[0-9a-f]{12}$/;
+const PHASE2_ANNOTATION_WHITESPACE = /[\u0009-\u000D\u001C-\u0020\u0085\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]+/g;
 let rawItems = [];
 let items = [];
 let index = 0;
@@ -201,7 +202,9 @@ function annotatorKey() {
 function storageKey(itemId) { return `afa-phase2:${annotatorKey()}:${itemId}`; }
 function lines(id) { return $(id).value.split(/\r?\n/).map(x => x.trim()).filter(Boolean); }
 function setLines(id, values) { $(id).value = (values || []).join("\n"); }
-function normaliseReading(value) { return value.toLowerCase().replace(/\s+/g, " ").trim(); }
+function normaliseReading(value) {
+  return value.toLowerCase().replace(PHASE2_ANNOTATION_WHITESPACE, " ").replace(/^ +| +$/g, "");
+}
 function selectedMechanisms() { return [...document.querySelectorAll('input[name="mechanism"]:checked')].map(x => x.value); }
 function setMechanisms(values) {
   const selected = new Set(values || []);
@@ -318,6 +321,7 @@ function buildAnnotation() {
   const normalisedReadings = pragmatic.map(normaliseReading);
   const distinctReadings = new Set(normalisedReadings).size;
   if (distinctReadings !== pragmatic.length) throw new Error("Duplicate or equivalent pragmatic readings are not allowed.");
+  if (normalisedReadings.includes("insufficient_context")) throw new Error("insufficient_context is reserved for the primary field and must not appear among retained pragmatic readings.");
   if (!primary) throw new Error("Primary pragmatic interpretation is required.");
   if (!insufficient && !pragmatic.includes(primary)) throw new Error("Primary interpretation must also appear in the plausible pragmatic interpretations list.");
   if (ambiguity && pragmatic.length < 2) throw new Error("Ambiguity requires at least two distinct pragmatic readings.");
