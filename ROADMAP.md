@@ -188,6 +188,49 @@ A focused follow-up PR should:
 
 The epistemic boundary for this workstream is explicit: ASCFT may be used as a formal analytic framework and hypothesis generator. Stronger claims that its field equations, qutrit states, collapse operators, attractors, Lagrangian, or cultural-stress observables constitute empirically validated physical mechanisms require independent evidence and are not assumed by this benchmark.
 
+### G. Trans-Tasman relational pragmatics and lexical context
+
+**Goal:** Study how Australian and New Zealand speakers can use nationality-focused teasing, rivalry, profanity, stereotypes, and shared regional slang without assuming either that such language is inherently hostile or that trans-Tasman banter is automatically harmless.
+
+The historical relationship provides useful context but not modern pragmatic ground truth. New Zealand participated in the 1890 Australasian Federation Conference and later withdrew from the federation process. Covering clause 6 of the Commonwealth of Australia Constitution Act explicitly includes New Zealand in the historical definition of colonies that could be parts of the Commonwealth as States. See the Parliamentary Education Office's [Federation timeline](https://peo.gov.au/understand-our-parliament/history-of-parliament/federation/federation), its [Constitution introduction](https://peo.gov.au/understand-our-parliament/how-parliament-works/the-australian-constitution/introducing-the-australian-constitution), and the [Commonwealth of Australia Constitution Act](https://www.legislation.gov.au/C2004Q00685/asmade/1901-01-01/text/original/epub/OEBPS/document_1/document_1.html). This history may help explain why "cousin-like" or sibling-rivalry metaphors arise in contemporary discussion, but **HISTORICAL FEDERATION CONNECTION != SHARED NATIONAL IDENTITY** and historical proximity does not prove that any individual speaker experiences the relationship that way.
+
+The central benchmark problem is relational licence. A crude trans-Tasman stereotype may function as reciprocal teasing between close Australian and New Zealand friends who have an established history of such banter, while the same words from a stranger, workplace aggressor, or hostile online account may be harassment or genuine hostility. Quoting the same stereotype inside a linguistic or historical analysis is a third pragmatic frame again. The benchmark must therefore model speaker relationship, reciprocity, setting, target reaction where available, and discourse purpose rather than classifying nationality-focused language from lexical content alone.
+
+A historically circulated research lead supplied to the project is the crude sheep stereotype expressed in forms equivalent to **"New Zealanders root sheep"**. The phrase must be treated as stereotype-bearing research material, not as a factual statement about New Zealanders and not as evidence that Australians generally hold the belief. Before any exact historical wording is used as provenance-bearing research evidence, the project should document an attributable source. Redistributable benchmark items should instead use independently authored synthetic variants unless an exact source is appropriately licensed.
+
+The word `root` is also a useful lexical-pragmatic stress case. Australian English uses `root` as vulgar slang for sexual intercourse, and that sexual sense is also attested in New Zealand English; therefore this is not itself an Australia-versus-New-Zealand lexical contrast. The useful comparison is contextual polysemy across English and technical domains: Australian/New Zealand sexual slang, American expressions such as "root for the team", botanical senses, and computing uses of `root` for privileged access. ABC Language's [history of Australian slang terms for sex](https://www.abc.net.au/news/2018-03-01/from-rooting-to-bonking-a-history-of-australian-sex-terms/9492856) documents the Australian sexual sense. A prompt such as `Got root?` can therefore change pragmatic interpretation radically under a pub/dating context, a Unix administration context, or a non-Australian sports-support context.
+
+Candidate adversarial experiment families include:
+- same-utterance relationship swaps where a trans-Tasman stereotype is addressed by a close friend with established reciprocal banter versus a stranger, coworker, adversarial account, or authority figure;
+- sports-rivalry pairs separating playful pre/post-match needling from genuine national hostility;
+- mention-versus-use pairs separating quotation of a stereotype for linguistic, historical, moderation, or research analysis from directly targeting a New Zealander with it;
+- reciprocity pairs distinguishing two-way teasing from one-sided repeated degradation;
+- public/private setting swaps testing whether relational licence changes across a private friendship, group chat, workplace, classroom, broadcast, or public platform;
+- target-reaction/context pairs where the same surface joke is welcomed, reciprocated, rejected, or explicitly experienced as harassment;
+- `root` polysemy pairs spanning sexual slang, computing privilege, plant anatomy, and non-Australian sports-support senses;
+- moderation controls checking whether systems over-classify close-friend national teasing as hate/abuse or under-classify genuinely hostile nationality-targeted speech merely because similar language can occur in friendly banter.
+
+Candidate invariants for review include:
+- **TRANS-TASMAN TEASING != INTERGROUP HATRED**
+- **RELATIONAL LICENCE != UNIVERSAL LICENCE**
+- **STEREOTYPE JOKE != FACTUAL BELIEF**
+- **MENTIONED STEREOTYPE != ENDORSED STEREOTYPE**
+- **NATIONALITY REFERENCE != HOSTILE INTENT**
+- **CLOSE-MATE BANTER != STRANGER OR WORKPLACE LICENCE**
+- **DIALECT-SPECIFIC SENSE != GLOBAL ENGLISH SENSE**
+- **HISTORICAL FEDERATION CONNECTION != SHARED NATIONAL IDENTITY**
+
+These are candidate invariants and research hypotheses, not universal claims about Australians or New Zealanders. A friendly interpretation must never be inferred solely from nationality, and a hostile interpretation must never be inferred solely from the presence of a nationality stereotype. Any benchmark family making claims about New Zealand pragmatic norms should involve New Zealand cultural or linguistic consultation under the same governance principles used elsewhere in the project.
+
+A focused follow-up PR should:
+- register authoritative historical and linguistic sources for the trans-Tasman research family;
+- document the distinction between Australian observations about trans-Tasman banter and claims about New Zealand speakers themselves;
+- build independently authored minimal pairs spanning friendship, sports rivalry, workplace/public hostility, quotation/analysis, and uncertain cases;
+- include genuine-hostility controls so relational-teasing recognition cannot reward an always-benign classifier;
+- preserve `root` as a context-sensitive lexical family rather than a deterministic Australian phrase rule;
+- map candidate items to the existing `relational_teasing`, `affectionate_insult`, `cultural_dependency`, `context_required`, ambiguity, social-valence, and hostility contracts before proposing any new mechanism label;
+- connect suitable families to Phase 5 context-swap evaluation, Phase 6 moderation fairness, and Phase 7 cross-dialect comparison.
+
 ---
 
 ## Phase 3 — Multi-Annotator Culturally Contextualised Dataset
@@ -255,6 +298,7 @@ First Nations/Blak, migrant, multicultural, regional, class-marked, or other com
 - Tall-poppy/status-calibration families separating playful status deflation, scepticism toward unsupported self-promotion, ordinary congratulations with deflationary humour, and unfair suppression of demonstrated competence
 - Self-deprecation families separating conventional humility, genuine low confidence, irony, and defensive status management
 - Absurdist-escalation families separating literal improbability, deadpan delivery, understatement, and surreal frame shifts
+- Trans-Tasman relationship-swap families separating reciprocal Australian/New Zealand banter from one-sided hostility, harassment, quotation/analysis, and uncertain cases
 - Analysis of whether context-swap failures correlate with lexical shortcuts or authority/prestige shortcuts
 - Answers to RQ6 and RQ7
 
@@ -298,6 +342,7 @@ First Nations/Blak, migrant, multicultural, regional, class-marked, or other com
 
 **Deliverables:**
 - Comparative framework for at least one additional dialect or culturally situated pragmatic register
+- New Zealand English and trans-Tasman pragmatics as a candidate comparison family, contingent on appropriate New Zealand cultural/linguistic consultation and explicit separation of shared vocabulary from divergent pragmatic context
 - Analysis of shared and divergent pragmatic mechanisms
 - Use of published cross-cultural humour research as hypothesis-generation material, not as a lookup table for national character
 - Answer to RQ8
