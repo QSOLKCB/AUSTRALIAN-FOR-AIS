@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "A Cultural-Pragmatics Benchmark for Ethical Language Understanding"
 readme = "README.md"
 license = {text = "Apache-2.0"}
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.13"
 dependencies = [
     "jsonschema>=4.21,<5",
 ]
