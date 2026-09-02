@@ -16,6 +16,7 @@ from australian_for_ais.validation import ValidationError, validate_annotation_r
 
 REPO_ROOT = pathlib.Path(__file__).parent.parent
 PILOT_PATH = REPO_ROOT / "data" / "pilot" / "items.jsonl"
+ANNOTATION_UI_PATH = REPO_ROOT / "annotation" / "index.html"
 SCHEMAS_DIR = REPO_ROOT / "schemas"
 
 
@@ -23,7 +24,7 @@ def _annotation(**overrides):
     record = {
         "annotation_id": "ann-a-item-1",
         "example_id": "item-1",
-        "annotator_id": "annotator-a",
+        "annotator_id": "annotator-aaaaaaaaaaaa",
         "literal_interpretation": "Literal reading",
         "pragmatic_interpretations": ["Pragmatic reading"],
         "primary_pragmatic_interpretation": "Pragmatic reading",
@@ -69,6 +70,24 @@ def test_annotation_requires_at_least_one_unique_mechanism():
         )
 
 
+def test_unknown_mechanism_is_mutually_exclusive():
+    with pytest.raises(ValidationError, match="should not be valid"):
+        validate_annotation_record(
+            _annotation(humour_mechanisms=["unknown", "sarcasm"])
+        )
+
+
+def test_multiple_retained_readings_require_ambiguity():
+    with pytest.raises(ValidationError, match="True was expected"):
+        validate_annotation_record(
+            _annotation(
+                pragmatic_interpretations=["Reading A", "Reading B"],
+                primary_pragmatic_interpretation="Reading A",
+                ambiguity=False,
+            )
+        )
+
+
 def test_annotation_insufficient_context_contract_is_enforced():
     record = _annotation(
         pragmatic_interpretations=["Reading A", "Reading B"],
@@ -87,6 +106,11 @@ def test_annotation_primary_must_be_retained_as_a_reading():
     record = _annotation(primary_pragmatic_interpretation="Different reading")
     with pytest.raises(ValidationError, match="must be present"):
         validate_annotation_record(record)
+
+
+def test_annotation_id_must_be_generated_pseudonym_format():
+    with pytest.raises(ValidationError, match="does not match"):
+        validate_annotation_record(_annotation(annotator_id="person@example.com"))
 
 
 def test_empty_annotation_file_is_rejected(tmp_path):
@@ -137,10 +161,13 @@ def test_agreement_report_preserves_free_text_as_qualitative(tmp_path):
     _write_jsonl(
         annotations_path,
         [
-            _annotation(annotation_id="ann-a", annotator_id="a"),
+            _annotation(
+                annotation_id="ann-a",
+                annotator_id="annotator-aaaaaaaaaaaa",
+            ),
             _annotation(
                 annotation_id="ann-b",
-                annotator_id="b",
+                annotator_id="annotator-bbbbbbbbbbbb",
                 primary_pragmatic_interpretation="Positive approval",
                 pragmatic_interpretations=["Positive approval"],
             ),
@@ -164,7 +191,26 @@ def test_committed_pilot_pack_has_60_unannotated_items_and_30_pairs():
     for item in items.values():
         assert item.source_type == "synthetic"
         assert "not copied" in item.provenance
+        assert " or " not in item.speaker_relationship.casefold()
         if item.context_swap_group:
             groups.setdefault(item.context_swap_group, []).append(item.id)
     assert len(groups) == 30
     assert all(len(member_ids) == 2 for member_ids in groups.values())
+
+    assert items["pilot-005a"].speaker_relationship == "long-term friends"
+    assert items["pilot-005b"].speaker_relationship == "strangers"
+    assert items["pilot-026a"].speaker_relationship == "mechanic and customer"
+    assert items["pilot-026b"].speaker_relationship == "gardeners"
+
+
+def test_annotation_ui_enforces_privacy_and_independence_contracts():
+    html = ANNOTATION_UI_PATH.read_text(encoding="utf-8")
+    assert 'id="annotatorId" type="text" readonly' in html
+    assert "crypto.getRandomValues" in html
+    assert "PSEUDONYM_PATTERN" in html
+    assert "orderPilotItems" in html
+    assert ":first-pass`" in html
+    assert ":later-pass`" in html
+    assert 'id="newPseudonym"' in html
+    assert "Multiple retained pragmatic readings require ambiguity=true" in html
+    assert "unknown mechanism cannot be combined" in html
