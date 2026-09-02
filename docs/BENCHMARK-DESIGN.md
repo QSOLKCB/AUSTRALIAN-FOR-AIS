@@ -96,6 +96,8 @@ The annotation schema preserves the uncertainty contract while making retained h
 - hostility may be `true`, `false`, or `uncertain`;
 - social valence may be `friendly`, `hostile`, `neutral`, `ambiguous`, or `unknown`.
 
+For Phase 2 human annotations, duplicate/equivalent retained readings are compared using **locale-independent lowercase plus collapsed whitespace** in both the browser and Python validator. This deliberately uses the browser-compatible `toLowerCase()` / Python `lower()` contract rather than the broader Unicode `casefold()` rule used by Phase 1 scoring. Keeping those contracts separate prevents the browser from accepting an annotation that the backend later rejects solely because the two runtimes implement different case-fold semantics.
+
 The optional `australian_english_exposure` field is a coarse, non-identifying self-report (`low`, `medium`, `high`, `unspecified`). It is not a nationality or demographic label.
 
 One annotator may submit only one annotation for a given pilot item within an annotation file. Duplicate `(example_id, annotator_id)` assignments fail validation rather than being allowed to inflate annotation coverage.
