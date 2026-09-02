@@ -173,6 +173,23 @@ def test_unknown_annotation_example_is_rejected(tmp_path):
         load_annotations(path, {"item-1"})
 
 
+def test_annotation_validation_error_reports_jsonl_line(tmp_path):
+    path = tmp_path / "annotations.jsonl"
+    _write_jsonl(
+        path,
+        [
+            _annotation(annotation_id="ann-valid"),
+            _annotation(
+                annotation_id="ann-invalid",
+                annotator_id="annotator-bbbbbbbbbbbb",
+                confidence=2.0,
+            ),
+        ],
+    )
+    with pytest.raises(ValidationError, match=r"^Line 2:"):
+        load_annotations(path, {"item-1"})
+
+
 def test_agreement_report_preserves_free_text_as_qualitative(tmp_path):
     items_path = tmp_path / "items.jsonl"
     _write_jsonl(items_path, [_pilot_item("item-1")])
