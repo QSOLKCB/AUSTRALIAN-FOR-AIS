@@ -3,6 +3,7 @@
 from collections import Counter
 from pathlib import Path
 import re
+from urllib.parse import urlparse
 
 import pytest
 
@@ -52,11 +53,66 @@ RESEARCH_MAPPING_HEADING_PATTERN = re.compile(
 PROJECT_MAPPING_HEADING_PATTERN = re.compile(
     r"(?m)^Relevant project mappings:[ \t]*$"
 )
+MARKDOWN_LINK_PATTERN = re.compile(
+    r"\[[^\]\r\n]*\]\("
+    r"[ \t]*(?P<destination><[^>\r\n]+>|[^\s)\r\n]+)"
+    r"(?:[ \t]+(?:\"[^\"\r\n]*\"|'[^'\r\n]*'|\([^)]*\)))?"
+    r"[ \t]*\)"
+)
+BARE_HTTPS_LINE_PATTERN = re.compile(
+    r"(?m)^[ \t]*(?:[-+*][ \t]+)?(?P<url>https://\S+)[ \t]*$"
+)
+AUTOLINK_PATTERN = re.compile(r"<(?P<url>https://[^>\s]+)>")
+HOST_LABEL_PATTERN = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?")
 
 
 def _strip_html_comments(text: str) -> str:
     """Remove rendered-away HTML comments, including the HTML `--!>` close form."""
     return HTML_COMMENT_PATTERN.sub("", text)
+
+
+def _is_usable_https_destination(candidate: str) -> bool:
+    """Return whether candidate is a usable public-style HTTPS destination."""
+    value = candidate.strip().strip("<>").rstrip(".,;:!?")
+    try:
+        parsed = urlparse(value)
+        port = parsed.port
+    except ValueError:
+        return False
+
+    hostname = parsed.hostname
+    if parsed.scheme != "https" or not hostname or port is not None and port <= 0:
+        return False
+    if not any(character.isalnum() for character in hostname):
+        return False
+
+    labels = hostname.split(".")
+    return all(label and HOST_LABEL_PATTERN.fullmatch(label) for label in labels)
+
+
+def _usable_https_destinations(text: str) -> list[str]:
+    """Extract usable rendered HTTPS destinations, excluding link titles."""
+    rendered = _strip_html_comments(text)
+    destinations: list[str] = []
+
+    for match in MARKDOWN_LINK_PATTERN.finditer(rendered):
+        destination = match.group("destination").strip("<>")
+        if _is_usable_https_destination(destination):
+            destinations.append(destination)
+
+    without_links = MARKDOWN_LINK_PATTERN.sub("", rendered)
+    for match in AUTOLINK_PATTERN.finditer(without_links):
+        destination = match.group("url")
+        if _is_usable_https_destination(destination):
+            destinations.append(destination)
+
+    without_links = AUTOLINK_PATTERN.sub("", without_links)
+    for match in BARE_HTTPS_LINE_PATTERN.finditer(without_links):
+        destination = match.group("url")
+        if _is_usable_https_destination(destination):
+            destinations.append(destination)
+
+    return destinations
 
 
 def _registered_batch(corpus: str) -> str:
@@ -110,8 +166,9 @@ def _require_scalar_value(entry: str, section: str, field: str) -> None:
 
 def _has_non_heading_content(block: str) -> bool:
     """Return whether a mapping block contains substantive rendered content."""
-    for raw_line in block.splitlines():
-        line = _strip_html_comments(raw_line).strip()
+    rendered_block = _strip_html_comments(block)
+    for raw_line in rendered_block.splitlines():
+        line = raw_line.strip()
         if not line:
             continue
         if RESEARCH_MAPPING_HEADING_PATTERN.fullmatch(line):
@@ -165,7 +222,7 @@ def _require_mapping_block(entry: str, section: str) -> None:
 
 
 def _require_registered_source_link(entry: str, section: str) -> None:
-    """Require exactly one rendered registered-source field with an HTTPS link."""
+    """Require exactly one registered-source field with a usable HTTPS destination."""
     source_fields = list(REGISTERED_SOURCE_FIELD_PATTERN.finditer(section))
     assert len(source_fields) == 1, (
         f"{entry} must contain exactly one registered-source field"
@@ -179,8 +236,8 @@ def _require_registered_source_link(entry: str, section: str) -> None:
     assert source_block, f"{entry} has an empty registered-source field"
     rendered_source = _strip_html_comments(source_block.group(1))
     assert rendered_source.strip(), f"{entry} has an empty registered-source field"
-    urls = re.findall(r"https://[^\s)]+", rendered_source)
-    assert urls, f"{entry} has no HTTPS link in its registered-source field"
+    destinations = _usable_https_destinations(source_block.group(1))
+    assert destinations, f"{entry} has no usable HTTPS destination in its registered-source field"
 
 
 def _require_community_governance(entry: str, section: str) -> None:
@@ -292,6 +349,26 @@ def test_registered_source_ignores_alternate_comment_terminator():
         _require_registered_source_link("### Example", section)
 
 
+def test_registered_source_rejects_https_in_markdown_title():
+    section = (
+        "### Example\n\n"
+        "**Registered source:** [source](# \"https://example.com\")\n\n"
+        "**Source type:** example\n"
+    )
+    with pytest.raises(AssertionError, match="no usable HTTPS destination"):
+        _require_registered_source_link("### Example", section)
+
+
+def test_registered_source_rejects_malformed_https_host():
+    section = (
+        "### Example\n\n"
+        "**Registered source:** https://.\n\n"
+        "**Source type:** example\n"
+    )
+    with pytest.raises(AssertionError, match="no usable HTTPS destination"):
+        _require_registered_source_link("### Example", section)
+
+
 def test_mapping_blocks_reject_duplicate_headings_without_content():
     section = (
         "### Example\n\n"
@@ -321,6 +398,17 @@ def test_mapping_blocks_reject_commented_empty_list_markers():
         "### Example\n\n"
         "Research mappings:\n- <!-- placeholder -->\n\n"
         "Relevant project mappings:\n- <!-- placeholder -->\n\n"
+        "**Safe benchmark abstraction:** example\n"
+    )
+    with pytest.raises(AssertionError, match="empty research mappings"):
+        _require_mapping_block("### Example", section)
+
+
+def test_mapping_blocks_reject_multiline_commented_content():
+    section = (
+        "### Example\n\n"
+        "Research mappings:\n<!--\n- placeholder\n-->\n\n"
+        "Relevant project mappings:\n<!--\n- placeholder\n-->\n\n"
         "**Safe benchmark abstraction:** example\n"
     )
     with pytest.raises(AssertionError, match="empty research mappings"):
