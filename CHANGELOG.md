@@ -67,6 +67,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added finite `[0, 1]` confidence validation to direct `score()` calls before Brier arithmetic
 - Clarified `au-008` by explicitly establishing that the referenced supermarket person is unknown to both speakers, preserving the acquaintance reading only as a different-context possibility
 - Synchronized `docs/METHODOLOGY.md` with the hardened context-swap contract, including the sentinel/disjointness interaction
+- Hardened JSONL parsing against invalid UTF-8, oversized integer tokens, duplicate object keys, and excessive parser nesting
+- Added structure-wide validation preflight so pathological in-memory values outside confidence fields cannot trigger schema-diagnostic tracebacks
+- Excluded unresolved `social_valence: "unknown"` annotations from categorical social-valence accuracy and report their count separately
+- Required context-swap groups to preserve lexical case in the observed utterance, preventing case changes from masquerading as context-only swaps
 
 ### Removed
 
