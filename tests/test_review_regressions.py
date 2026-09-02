@@ -85,14 +85,57 @@ def test_noncanonical_prediction_sentinel_is_rejected():
         validate_evaluation_record(record)
 
 
-def test_direct_scoring_filters_reserved_sentinel_from_ordinary_example():
+def test_direct_scoring_rejects_reserved_sentinel_in_ordinary_example():
     example = _example_model(
         pragmatic_interpretations=["Sincere praise", "insufficient_context"],
         primary_pragmatic_interpretation="Sincere praise",
     )
     prediction = _prediction_model(predicted_pragmatic="insufficient_context")
-    result = score({"test-001": example}, {"test-001": prediction})
-    assert result.pragmatic_match == 0
+    with pytest.raises(ValidationError, match="reserved"):
+        score({"test-001": example}, {"test-001": prediction})
+
+
+@pytest.mark.parametrize(
+    "overrides, message",
+    [
+        (
+            {
+                "primary_pragmatic_interpretation": "insufficient_context",
+                "pragmatic_interpretations": ["Sincere praise", "Sarcastic criticism"],
+                "ambiguity": False,
+                "confidence": 0.3,
+            },
+            "ambiguity",
+        ),
+        (
+            {
+                "primary_pragmatic_interpretation": "insufficient_context",
+                "pragmatic_interpretations": ["Sincere praise", "Sarcastic criticism"],
+                "ambiguity": True,
+                "confidence": 0.9,
+            },
+            "at or below 0.4",
+        ),
+        (
+            {
+                "primary_pragmatic_interpretation": "insufficient_context",
+                "pragmatic_interpretations": ["Sincere praise"],
+                "ambiguity": True,
+                "confidence": 0.3,
+            },
+            "at least two distinct",
+        ),
+    ],
+)
+def test_direct_scoring_validates_sentinel_primary_example_contract(overrides, message):
+    example = _example_model(**overrides)
+    prediction = _prediction_model(
+        predicted_pragmatic="insufficient_context",
+        predicted_ambiguity=True,
+        model_confidence=0.3,
+    )
+    with pytest.raises(ValidationError, match=message):
+        score({"test-001": example}, {"test-001": prediction})
 
 
 def test_context_swap_rejects_overlapping_accepted_directions():
@@ -146,12 +189,12 @@ def test_score_rejects_example_mapping_key_mismatch():
 
 @pytest.mark.parametrize(
     "confidence",
-    [2.0, -0.1, float("nan"), float("inf"), float("-inf")],
+    [2.0, -0.1, float("nan"), float("inf"), float("-inf"), 10**10000],
 )
-def test_score_rejects_invalid_direct_confidence(confidence):
+def test_score_rejects_invalid_direct_confidence_without_overflow(confidence):
     example = _example_model()
     prediction = _prediction_model(model_confidence=confidence)
-    with pytest.raises(ValidationError, match="finite number"):
+    with pytest.raises(ValidationError, match="between 0.0 and 1.0"):
         score({"test-001": example}, {"test-001": prediction})
 
 
