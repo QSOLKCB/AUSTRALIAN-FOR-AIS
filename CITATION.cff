@@ -1,0 +1,30 @@
+cff-version: 1.2.0
+message: >-
+  This repository is currently a pre-release research substrate. If you use it,
+  cite the repository using this metadata and the exact commit or release you used.
+title: "Australian For AIs: A Cultural-Pragmatics Benchmark for Ethical Language Understanding"
+abstract: >-
+  Australian For AIs is a cultural-pragmatics research project and benchmark
+  for evaluating how artificial intelligence systems understand Australian English,
+  particularly humour, irony, understatement, profanity, affectionate insults,
+  social context, discourse markers, ambiguity, and intended meaning.
+type: software
+license: Apache-2.0
+version: "0.1.0"
+repository-code: "https://github.com/QSOLKCB/AUSTRALIAN-FOR-AIS"
+keywords:
+  - natural language processing
+  - pragmatics
+  - Australian English
+  - cultural bias
+  - AI ethics
+  - benchmark
+  - sociolinguistics
+  - humour
+  - intent recognition
+  - sentiment analysis
+authors:
+  - name: "Australian For AIs Contributors"
+# NOTE: No release date, DOI, ORCID identifiers, or institutional affiliations are
+# asserted here because they have not been established for this repository release.
+# Add them only when they are real and verifiable.
