@@ -35,9 +35,9 @@ Australian comedy is used here as a rich source of adversarial pragmatic structu
 
 ## Registration contract for new sources
 
-Post-Phase-2 additions are not considered adopted project references merely because they appear in a planning report. A new registry entry should record, where applicable:
+Post-Phase-2 additions are not considered adopted project references merely because they appear in a planning report. Every adopted post-Phase-2 registry entry must record all of the following fields:
 
-- an official, archival, creator, broadcaster, publisher, or peer-reviewed source link;
+- one or more official, archival, creator, broadcaster, publisher, or peer-reviewed source links;
 - the source type and why it is relevant to pragmatic research;
 - the rights and provenance boundary for repository use;
 - an explicit epistemic status stating what the source can and cannot establish;
@@ -45,7 +45,9 @@ Post-Phase-2 additions are not considered adopted project references merely beca
 - relevant benchmark invariants or research questions;
 - a safe abstraction path for independently authored or appropriately licensed benchmark work.
 
-Community-specific material requires an additional governance boundary. Registering a First Nations, migrant, multicultural, regional, or class-marked source does **not** grant the project authority to manufacture community-specific benchmark ground truth. Where later benchmark claims depend on such knowledge, appropriate consultation, provenance, permissions, and scope limitations are required.
+A required field must not be omitted merely because no strong value is available. When a field genuinely has no applicable mapping or no stronger source can be identified, the entry must say so explicitly and explain the limitation. Singular and plural source-link headings may differ when an entry needs more than one source, but the source-link field itself is mandatory.
+
+Community-specific material requires an additional governance boundary inside that source's own registry entry. Registering a First Nations, migrant, multicultural, regional, or class-marked source does **not** grant the project authority to manufacture community-specific benchmark ground truth. Where later benchmark claims depend on such knowledge, appropriate consultation, provenance, permissions, and scope limitations are required.
 
 ---
 
@@ -78,7 +80,7 @@ Relevant project mappings:
 - AU-HUMOUR-010: BENCHMARK PERFORMANCE != GENERAL CULTURAL UNDERSTANDING
 - RQ5 and RQ8 as hypothesis-generation targets only
 
-**Safe benchmark abstraction:** Use the source to identify structural questions such as role reversal, persona, context dependence, and moderation ambiguity. Do not derive First Nations-specific benchmark labels or synthetic community speech from the programme without appropriate cultural consultation and a documented governance basis.
+**Safe benchmark abstraction:** Use the source to identify structural questions such as role reversal, persona, context dependence, and moderation ambiguity. Do not derive First Nations-specific benchmark labels or synthetic community speech from the programme. Any later First Nations-specific benchmark family requires appropriate consultation, provenance, permissions, and scope limitations, plus a documented governance basis.
 
 ---
 
@@ -109,7 +111,7 @@ Relevant project mappings:
 - AU-HUMOUR-008: THE SAME UTTERANCE MAY HAVE DIFFERENT PRAGMATIC MEANINGS UNDER DIFFERENT RELATIONSHIP CONTEXTS
 - AU-HUMOUR-009: ANNOTATOR INTERPRETATION != OBJECTIVE GROUND TRUTH
 
-**Safe benchmark abstraction:** Build new status, self-presentation, relationship, or lexical-confidence minimal pairs without copying programme wording, characters, or distinctive dialogue. Any class-marked register family remains a hypothesis requiring evidence and careful scope limits.
+**Safe benchmark abstraction:** Build new status, self-presentation, relationship, or lexical-confidence minimal pairs without copying programme wording, characters, or distinctive dialogue. Any class-marked register family remains a hypothesis and requires appropriate consultation, provenance, permissions, and scope limitations before it can support community-specific benchmark claims.
 
 ---
 
@@ -201,7 +203,7 @@ Relevant project mappings:
 - AU-HUMOUR-009: ANNOTATOR INTERPRETATION != OBJECTIVE GROUND TRUTH
 - RQ8 as hypothesis-generation material only
 
-**Safe benchmark abstraction:** Use the source to identify questions for later culturally governed research. Do not fabricate Greek-Australian or migrant speech patterns from the programme. Any community-specific benchmark family requires appropriate consultation, provenance, and scope limitations.
+**Safe benchmark abstraction:** Use the source to identify questions for later culturally governed research. Do not fabricate Greek-Australian or migrant speech patterns from the programme. Any community-specific benchmark family requires appropriate consultation, provenance, permissions, and scope limitations.
 
 ---
 
@@ -264,7 +266,7 @@ Relevant project mappings:
 - AU-HUMOUR-010: BENCHMARK PERFORMANCE != GENERAL CULTURAL UNDERSTANDING
 - RQ5 and RQ8 as culturally governed research questions
 
-**Safe benchmark abstraction:** Use the scholarship to improve governance, question design, and recognition of missing perspectives. Any First Nations-specific annotation protocol or benchmark family requires appropriate cultural consultation and must preserve the paper's emphasis on cultural specificity and self-determination.
+**Safe benchmark abstraction:** Use the scholarship to improve governance, question design, and recognition of missing perspectives. Any First Nations-specific annotation protocol or benchmark family requires appropriate consultation, provenance, permissions, and scope limitations and must preserve the paper's emphasis on cultural specificity and self-determination.
 
 ---
 
