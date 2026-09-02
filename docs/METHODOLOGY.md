@@ -87,7 +87,11 @@ This avoids rewarding a model for confidently collapsing unresolved ambiguity in
 
 ## Context-Swap Design
 
-A context-swap group holds the utterance constant while changing context. Dataset validation requires at least two members, the same observed utterance, distinct contexts, and distinct primary pragmatic directions.
+A context-swap group holds the utterance constant while changing context. Dataset validation requires at least two members, the same observed utterance, distinct contexts, distinct primary pragmatic directions, and pairwise-disjoint accepted pragmatic direction sets.
+
+The disjointness requirement is deliberately stronger than merely requiring different primaries. Without it, two ambiguous members could both accept readings `A` and `B`, allowing a model to swap `A` and `B` between contexts and still receive context-sensitivity credit. A valid context-swap group must therefore give each context a non-overlapping set of accepted directions.
+
+The explicit `insufficient_context` sentinel is part of a sentinel-primary member's accepted direction set for this check. Consequently, two members whose primary interpretation is `insufficient_context` cannot belong to the same context-swap group because their accepted direction sets would overlap on the sentinel. That rejection is intentional: such a pair does not provide a unique directional target for the context-swap metric.
 
 Success requires the prediction for each context to match an accepted interpretation for that context and the paired predictions to differ. Different-but-wrong outputs do not pass.
 
@@ -133,6 +137,8 @@ Phase 1 reports:
 An annotated hostility value of `uncertain` is not a categorical truth label. Such examples are excluded from the hostility-accuracy denominator rather than rewarding a model merely for echoing annotator uncertainty.
 
 For the Brier component, pragmatic correctness is encoded as `1` when the submitted pragmatic prediction matches an accepted interpretation, including the explicit `insufficient_context` sentinel when declared by the example, and `0` otherwise. The reported value is the mean squared difference between the model's confidence and that binary outcome. Lower is better.
+
+Prediction confidence must be finite and within `[0, 1]`. This constraint is enforced both for JSONL-loaded predictions and for direct library calls to `score()`, so `NaN`, infinities, and out-of-range values cannot enter the calibration arithmetic.
 
 Missing prediction records have no confidence value, so calibration is computed over submitted valid predictions while coverage is reported independently. Missing predictions still count as incorrect in dataset-proportion accuracy metrics and produce evaluation errors.
 
