@@ -45,7 +45,7 @@ These are questions under investigation, not assumed conclusions.
 
 ## Taxonomy of Pragmatic Mechanisms
 
-The active Phase 1 taxonomy is intentionally small and extensible.
+The active Phase 1/2 taxonomy is intentionally small and extensible.
 
 | Tag | Description |
 |---|---|
@@ -65,11 +65,11 @@ The active Phase 1 taxonomy is intentionally small and extensible.
 | `literal` | The utterance is intended and interpreted at face value |
 | `unknown` | The active taxonomy does not justify a more specific mechanism |
 
-Examples may carry multiple tags. Tags are analytical annotations, not established facts.
+Examples and annotations may carry multiple tags. Tags are analytical judgements, not established facts.
 
 ### Discourse markers such as “yeah nah”
 
-Phase 1 explicitly rejects a fixed phrase-to-intent lookup table. A sequence such as `yeah nah` may have conventional directional tendencies in some Australian discourse, but a benchmark item must justify its interpretation from the supplied context, discourse position, relationship, and available delivery cues. The starter invitation fixture therefore treats refusal as the **best estimate for that context**, not as a universal lexical rule.
+The project explicitly rejects a fixed phrase-to-intent lookup table. A sequence such as `yeah nah` may have conventional directional tendencies in some Australian discourse, but an annotation must justify its interpretation from the supplied context, discourse position, relationship, and available delivery cues. The starter invitation fixture therefore treats refusal as the **best estimate for that context**, not as a universal lexical rule.
 
 The same caution applies to `nah yeah`, `mate`, `old mate`, `righto`, profanity, and other socially loaded forms.
 
@@ -79,29 +79,76 @@ The same caution applies to `nah yeah`, `mate`, `old mate`, `righto`, profanity,
 
 An ambiguous record must preserve at least two distinct normalized pragmatic readings. Duplicate strings, including case- or whitespace-only variants, do not constitute multiple interpretations.
 
-`insufficient_context` is a special primary annotation used only when the supplied context does not justify choosing among those retained readings. It therefore does **not** erase the candidate interpretations. A model may explicitly predict `insufficient_context` for such an example, and that answer is accepted for pragmatic scoring when the example itself declares the sentinel.
+`insufficient_context` is a special primary annotation used only when the supplied context does not justify choosing among those retained readings. It therefore does **not** erase the candidate interpretations. A model may explicitly predict `insufficient_context` for a benchmark example annotated this way, and a human annotator may use the same sentinel in Phase 2.
 
-This avoids rewarding a model for confidently collapsing unresolved ambiguity into one arbitrarily chosen reading.
+The sentinel requires `ambiguity: true`, at least two distinct retained pragmatic readings, and confidence at or below `0.4`.
+
+This avoids rewarding a model or annotator workflow for confidently collapsing unresolved ambiguity into one arbitrarily chosen reading.
 
 ---
 
 ## Context-Swap Design
 
-A context-swap group holds the utterance constant while changing context. Dataset validation requires at least two members, the same observed utterance with lexical case preserved, distinct contexts, distinct primary pragmatic directions, and pairwise-disjoint accepted pragmatic direction sets. Whitespace runs may be normalised for comparison, but case differences such as `US` versus `us` are treated as a changed linguistic observation rather than a valid context-only swap.
+A benchmark context-swap group holds the utterance constant while changing context. Dataset validation requires at least two members, the same observed utterance with lexical case preserved, distinct contexts, distinct primary pragmatic directions, and pairwise-disjoint accepted pragmatic direction sets. Whitespace runs may be normalised for comparison, but case differences such as `US` versus `us` are treated as a changed linguistic observation rather than a valid context-only swap.
 
-The disjointness requirement is deliberately stronger than merely requiring different primaries. Without it, two ambiguous members could both accept readings `A` and `B`, allowing a model to swap `A` and `B` between contexts and still receive context-sensitivity credit. A valid context-swap group must therefore give each context a non-overlapping set of accepted directions.
+The disjointness requirement is deliberately stronger than merely requiring different primaries. Without it, two ambiguous members could both accept readings `A` and `B`, allowing a model to swap `A` and `B` between contexts and still receive context-sensitivity credit. A valid benchmark context-swap group must therefore give each context a non-overlapping set of accepted directions.
 
-The explicit `insufficient_context` sentinel is part of a sentinel-primary member's accepted direction set for this check. Consequently, two members whose primary interpretation is `insufficient_context` cannot belong to the same context-swap group because their accepted direction sets would overlap on the sentinel. That rejection is intentional: such a pair does not provide a unique directional target for the context-swap metric.
+The explicit `insufficient_context` sentinel is part of a sentinel-primary member's accepted direction set for this check. Consequently, two members whose primary interpretation is `insufficient_context` cannot belong to the same benchmark context-swap group because their accepted direction sets would overlap on the sentinel.
 
 Success requires the prediction for each context to match an accepted interpretation for that context and the paired predictions to differ. Different-but-wrong outputs do not pass.
 
-This turns context sensitivity into a controlled test rather than a vocabulary quiz.
+Phase 2 pilot pairs are intentionally weaker: before annotation they only preserve the same observed utterance and vary context. Human annotation is allowed to show that a proposed pair does not produce a clean directional contrast.
+
+---
+
+## Phase 2 Pilot Human Annotation
+
+Phase 2 is a pilot of the **annotation process**, not a claim that human consensus exists.
+
+The repository supplies 60 unannotated synthetic pilot items, arranged as 30 same-utterance context contrasts. The item records contain observation-side information only. They do not contain hidden gold interpretations, mechanism labels, valence, hostility, confidence, or ambiguity labels.
+
+Each item should receive at least two independent human annotations. Annotators use pseudonymous IDs and work from the supplied utterance, context, and relationship only. They should not discuss an item with other annotators before submitting their own interpretation.
+
+The optional `australian_english_exposure` field is a coarse self-report of familiarity (`low`, `medium`, `high`, or `unspecified`). It is not used to infer nationality, ethnicity, or identity.
+
+The Phase 2 annotation record captures:
+
+- literal interpretation;
+- one or more pragmatic interpretations;
+- primary interpretation or `insufficient_context`;
+- mechanism labels;
+- social valence and hostility;
+- confidence and ambiguity;
+- cultural dependency and context dependence;
+- optional alternatives and notes.
+
+The project stores independent annotations rather than overwriting them with a consensus label. Any later adjudication protocol must preserve the original records.
+
+See `PHASE2-PILOT-PROTOCOL.md` for operational and ethical details.
+
+---
+
+## Phase 2 Agreement Analysis
+
+Agreement metrics are evidence about the usability and stability of the annotation scheme. They are not evidence that an agreed label is objective cultural truth.
+
+Phase 2 reports:
+
+- coverage, including whether every item has at least two annotations;
+- descriptive within-item pairwise agreement for categorical fields;
+- Cohen's kappa for each pair of annotators on their shared examples;
+- exact-set agreement and Jaccard overlap for multi-label mechanism selections;
+- descriptive pairwise confidence differences.
+
+Free-text pragmatic interpretations are **not** assigned an exact-string IAA score. Different wording can express similar meanings, and no validated semantic equivalence judge exists in Phase 2. The text is retained for qualitative review and for designing any later adjudication protocol.
+
+A low agreement result is not automatically a failed item. It may indicate genuine ambiguity, unclear context, an unstable taxonomy label, or an annotation-guide problem. Those possibilities must be inspected rather than silently normalised away.
 
 ---
 
 ## Minimal Pairs
 
-Future phases will use variants that differ in one controlled factor such as speaker relationship, preceding event, explicit delivery cue, or social setting while holding other features constant.
+Later phases will formalise variants that differ in one controlled factor such as speaker relationship, preceding event, explicit delivery cue, or social setting while holding other features constant.
 
 ---
 
@@ -116,7 +163,7 @@ The following distinctions are mandatory:
 - **LEXICAL MATCH ≠ INTENT RECOGNITION**
 - **MODEL EXPLANATION ≠ EVIDENCE OF INTERNAL REASONING**
 
-Phase 1 uses deterministic exact matching because it is inspectable. The limitation is explicit rather than hidden behind a semantic judge.
+Phase 1 uses deterministic exact matching because it is inspectable. Phase 2 uses deterministic annotation validation and transparent agreement calculations for the same reason. Limitations are documented rather than hidden behind a semantic judge.
 
 ---
 
@@ -137,11 +184,11 @@ Phase 1 reports:
 
 An annotated hostility value of `uncertain` is not a categorical truth label. Such examples are excluded from the hostility-accuracy denominator rather than rewarding a model merely for echoing annotator uncertainty.
 
-Likewise, `social_valence: "unknown"` marks an unresolved annotation rather than a categorical class target. Those examples are excluded from social-valence accuracy and reported separately, so a model is not rewarded merely for echoing the absence of a resolved label.
+Likewise, `social_valence: "unknown"` marks an unresolved annotation rather than a categorical class target. Those examples are excluded from social-valence accuracy and reported separately.
 
 For the Brier component, pragmatic correctness is encoded as `1` when the submitted pragmatic prediction matches an accepted interpretation, including the explicit `insufficient_context` sentinel when declared by the example, and `0` otherwise. The reported value is the mean squared difference between the model's confidence and that binary outcome. Lower is better.
 
-Prediction confidence must be finite and within `[0, 1]`. This constraint is enforced both for JSONL-loaded predictions and for direct library calls to `score()`, so `NaN`, infinities, and out-of-range values cannot enter the calibration arithmetic.
+Prediction confidence must be finite and within `[0, 1]`. This constraint is enforced both for JSONL-loaded predictions and for direct library calls to `score()`.
 
 Missing prediction records have no confidence value, so calibration is computed over submitted valid predictions while coverage is reported independently. Missing predictions still count as incorrect in dataset-proportion accuracy metrics and produce evaluation errors.
 
