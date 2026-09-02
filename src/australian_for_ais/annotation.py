@@ -73,7 +73,7 @@ def load_annotations(
     path: pathlib.Path,
     known_example_ids: set[str] | None = None,
 ) -> list[HumanAnnotation]:
-    """Load independent annotations, rejecting duplicate records and assignments."""
+    """Load a non-empty independent annotation file, rejecting duplicate assignments."""
     annotations: list[HumanAnnotation] = []
     annotation_ids: set[str] = set()
     assignments: set[tuple[str, str]] = set()
@@ -103,6 +103,9 @@ def load_annotations(
             )
 
         annotations.append(annotation)
+
+    if not annotations:
+        raise ValidationError("Annotation file must contain at least one annotation record.")
 
     return annotations
 
