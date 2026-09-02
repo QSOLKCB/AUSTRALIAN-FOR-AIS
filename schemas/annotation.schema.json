@@ -28,7 +28,7 @@
     "literal_interpretation": {"type": "string", "minLength": 1, "pattern": "\\S"},
     "pragmatic_interpretations": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1, "pattern": "\\S"}},
     "primary_pragmatic_interpretation": {"type": "string", "minLength": 1, "pattern": "\\S"},
-    "humour_mechanisms": {"type": "array", "items": {"type": "string", "enum": ["understatement", "sarcasm", "irony", "deadpan", "affectionate_insult", "inverse_praise", "profanity_non_hostile", "discourse_marker", "self_deprecation", "absurdist_escalation", "relational_teasing", "tall_poppy_humour", "ambiguous_address", "literal", "unknown"]}},
+    "humour_mechanisms": {"type": "array", "minItems": 1, "uniqueItems": true, "description": "One or more active taxonomy labels. Use 'unknown' when no more specific label is justified.", "items": {"type": "string", "enum": ["understatement", "sarcasm", "irony", "deadpan", "affectionate_insult", "inverse_praise", "profanity_non_hostile", "discourse_marker", "self_deprecation", "absurdist_escalation", "relational_teasing", "tall_poppy_humour", "ambiguous_address", "literal", "unknown"]}},
     "social_valence": {"type": "string", "enum": ["friendly", "hostile", "neutral", "ambiguous", "unknown"]},
     "hostility": {"oneOf": [{"type": "boolean"}, {"type": "string", "enum": ["uncertain"]}]},
     "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
