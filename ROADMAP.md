@@ -223,7 +223,7 @@ Candidate invariants for review include:
 These are candidate invariants and research hypotheses, not universal claims about Australians or New Zealanders. A friendly interpretation must never be inferred solely from nationality, and a hostile interpretation must never be inferred solely from the presence of a nationality stereotype. Any benchmark family making claims about New Zealand pragmatic norms should involve New Zealand cultural or linguistic consultation under the same governance principles used elsewhere in the project.
 
 A focused follow-up PR should:
-- register authoritative historical and linguistic sources for the trans-Tasman research family;
+- maintain the now-registered historical and linguistic sources for the trans-Tasman research family and add stronger or more specific evidence as needed;
 - document the distinction between Australian observations about trans-Tasman banter and claims about New Zealand speakers themselves;
 - build independently authored minimal pairs spanning friendship, sports rivalry, workplace/public hostility, quotation/analysis, and uncertain cases;
 - include genuine-hostility controls so relational-teasing recognition cannot reward an always-benign classifier;
@@ -264,7 +264,7 @@ Candidate invariants for review include:
 - **HISTORICAL LANGUAGE BRIEFING != PROOF OF COMMUNICATION FAILURE**
 
 A focused follow-up PR should:
-- register the Victoria University glossary, relevant Defence reports, Australian War Memorial records, and any stronger linguistic scholarship under the governed source contract;
+- maintain the now-registered Victoria University, Defence, and wartime archival records and add stronger linguistic scholarship under the governed source contract;
 - retain Reddit and similar community discussions as orientation/community-attestation sources with explicit non-representative status;
 - build independently authored slang-density and context-swap items instead of converting crowd-sourced examples directly into benchmark data;
 - distinguish lexical recognition, compositional interpretation, pragmatic interpretation, and safety-critical operational clarity as separate evaluation targets;
