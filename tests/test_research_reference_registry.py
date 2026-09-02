@@ -32,6 +32,10 @@ BATCH_END = "## Priority A: adversarial pragmatics"
 CONSULTATION_BOUNDARY = (
     "appropriate consultation, provenance, permissions, and scope limitations"
 )
+HTML_COMMENT_PATTERN = re.compile(
+    r"<!--.*?(?:-->|--!>|$)",
+    re.S,
+)
 GOVERNANCE_FIELD_PATTERN = re.compile(
     r"(?m)^\*\*Community-specific governance:\*\*"
 )
@@ -48,6 +52,11 @@ RESEARCH_MAPPING_HEADING_PATTERN = re.compile(
 PROJECT_MAPPING_HEADING_PATTERN = re.compile(
     r"(?m)^Relevant project mappings:[ \t]*$"
 )
+
+
+def _strip_html_comments(text: str) -> str:
+    """Remove rendered-away HTML comments, including the HTML `--!>` close form."""
+    return HTML_COMMENT_PATTERN.sub("", text)
 
 
 def _registered_batch(corpus: str) -> str:
@@ -78,7 +87,7 @@ def _registered_sections(corpus: str) -> dict[str, str]:
 
 
 def _scalar_value(entry: str, section: str, field: str) -> str:
-    """Return the unique non-whitespace value for a mandatory single-line field."""
+    """Return the unique rendered non-whitespace value for a mandatory field."""
     occurrences = list(re.finditer(rf"(?m)^{re.escape(field)}", section))
     assert len(occurrences) == 1, (
         f"{entry} must contain exactly one mandatory field {field}"
@@ -89,18 +98,20 @@ def _scalar_value(entry: str, section: str, field: str) -> str:
         section,
     )
     assert match, f"{entry} has an empty mandatory field {field}"
-    return match.group(1).strip()
+    value = _strip_html_comments(match.group(1)).strip()
+    assert value, f"{entry} has an empty mandatory field {field}"
+    return value
 
 
 def _require_scalar_value(entry: str, section: str, field: str) -> None:
-    """Require exactly one non-whitespace mandatory single-line field."""
+    """Require exactly one rendered non-whitespace mandatory field."""
     _scalar_value(entry, section, field)
 
 
 def _has_non_heading_content(block: str) -> bool:
-    """Return whether a mapping block contains substantive non-heading content."""
+    """Return whether a mapping block contains substantive rendered content."""
     for raw_line in block.splitlines():
-        line = raw_line.strip()
+        line = _strip_html_comments(raw_line).strip()
         if not line:
             continue
         if RESEARCH_MAPPING_HEADING_PATTERN.fullmatch(line):
@@ -166,7 +177,7 @@ def _require_registered_source_link(entry: str, section: str) -> None:
         section,
     )
     assert source_block, f"{entry} has an empty registered-source field"
-    rendered_source = re.sub(r"<!--.*?-->", "", source_block.group(1), flags=re.S)
+    rendered_source = _strip_html_comments(source_block.group(1))
     assert rendered_source.strip(), f"{entry} has an empty registered-source field"
     urls = re.findall(r"https://[^\s)]+", rendered_source)
     assert urls, f"{entry} has no HTTPS link in its registered-source field"
@@ -181,6 +192,10 @@ def _require_community_governance(entry: str, section: str) -> None:
 
     classification = GOVERNANCE_PATTERN.search(section)
     assert classification, (
+        f"{entry} has an invalid community-specific governance classification or rationale"
+    )
+    rationale = _strip_html_comments(classification.group(2)).strip()
+    assert rationale, (
         f"{entry} has an invalid community-specific governance classification or rationale"
     )
 
@@ -235,6 +250,17 @@ def test_scalar_field_rejects_duplicate_occurrences():
         )
 
 
+def test_scalar_field_rejects_comment_only_value():
+    section = (
+        "### Example\n\n"
+        "**Rights and provenance boundary:** <!-- omitted -->\n"
+    )
+    with pytest.raises(AssertionError, match="empty mandatory field"):
+        _require_scalar_value(
+            "### Example", section, "**Rights and provenance boundary:**"
+        )
+
+
 def test_registered_source_rejects_duplicate_singular_plural_fields():
     section = (
         "### Example\n\n"
@@ -250,6 +276,16 @@ def test_registered_source_ignores_commented_out_url():
     section = (
         "### Example\n\n"
         "**Registered source:** <!-- https://example.com/source -->\n\n"
+        "**Source type:** example\n"
+    )
+    with pytest.raises(AssertionError, match="empty registered-source field"):
+        _require_registered_source_link("### Example", section)
+
+
+def test_registered_source_ignores_alternate_comment_terminator():
+    section = (
+        "### Example\n\n"
+        "**Registered source:** <!-- https://example.com/source --!>\n\n"
         "**Source type:** example\n"
     )
     with pytest.raises(AssertionError, match="empty registered-source field"):
@@ -280,11 +316,31 @@ def test_mapping_blocks_reject_empty_list_markers():
         _require_mapping_block("### Example", section)
 
 
+def test_mapping_blocks_reject_commented_empty_list_markers():
+    section = (
+        "### Example\n\n"
+        "Research mappings:\n- <!-- placeholder -->\n\n"
+        "Relevant project mappings:\n- <!-- placeholder -->\n\n"
+        "**Safe benchmark abstraction:** example\n"
+    )
+    with pytest.raises(AssertionError, match="empty research mappings"):
+        _require_mapping_block("### Example", section)
+
+
 def test_community_governance_requires_same_line_rationale():
     section = (
         "### Example\n\n"
         "**Community-specific governance:** not-required:\n\n"
         "Candidate research mappings:\n- example\n"
+    )
+    with pytest.raises(AssertionError, match="invalid community-specific governance"):
+        _require_community_governance("### Example", section)
+
+
+def test_community_governance_rejects_comment_only_rationale():
+    section = (
+        "### Example\n\n"
+        "**Community-specific governance:** not-required: <!-- omitted -->\n"
     )
     with pytest.raises(AssertionError, match="invalid community-specific governance"):
         _require_community_governance("### Example", section)
