@@ -75,6 +75,8 @@ HOST_LABEL_PATTERN = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?")
 THEMATIC_BREAK_PATTERN = re.compile(
     r"(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|(?:-[ \t]*){3,}"
 )
+EMPTY_BLOCKQUOTE_PATTERN = re.compile(r"(?:>[ \t]*)+")
+FENCE_PATTERN = re.compile(r"(?P<fence>`{3,}|~{3,})(?P<info>.*)")
 
 
 def _strip_html_comments(text: str) -> str:
@@ -187,9 +189,34 @@ def _require_scalar_value(entry: str, section: str, field: str) -> None:
 def _has_non_heading_content(block: str) -> bool:
     """Return whether a mapping block contains substantive rendered content."""
     rendered_block = _strip_html_comments(block)
+    fence_char: str | None = None
+    fence_length = 0
+
     for raw_line in rendered_block.splitlines():
         line = raw_line.strip()
+
+        if fence_char is not None:
+            if re.fullmatch(
+                rf"{re.escape(fence_char)}{{{fence_length},}}[ \t]*", line
+            ):
+                fence_char = None
+                fence_length = 0
+                continue
+            if line:
+                return True
+            continue
+
         if not line:
+            continue
+
+        fence = FENCE_PATTERN.fullmatch(line)
+        if fence:
+            marker = fence.group("fence")
+            fence_char = marker[0]
+            fence_length = len(marker)
+            continue
+
+        if EMPTY_BLOCKQUOTE_PATTERN.fullmatch(line):
             continue
         if RESEARCH_MAPPING_HEADING_PATTERN.fullmatch(line):
             continue
@@ -458,6 +485,27 @@ def test_mapping_blocks_reject_thematic_breaks(marker: str):
         "### Example\n\n"
         f"Research mappings:\n{marker}\n\n"
         f"Relevant project mappings:\n{marker}\n\n"
+        "**Safe benchmark abstraction:** example\n"
+    )
+    with pytest.raises(AssertionError, match="empty research mappings"):
+        _require_mapping_block("### Example", section)
+
+
+@pytest.mark.parametrize(
+    "container",
+    (
+        ">",
+        "> >",
+        "```\n```",
+        "```text\n```",
+        "~~~\n~~~",
+    ),
+)
+def test_mapping_blocks_reject_empty_block_containers(container: str):
+    section = (
+        "### Example\n\n"
+        f"Research mappings:\n{container}\n\n"
+        f"Relevant project mappings:\n{container}\n\n"
         "**Safe benchmark abstraction:** example\n"
     )
     with pytest.raises(AssertionError, match="empty research mappings"):
