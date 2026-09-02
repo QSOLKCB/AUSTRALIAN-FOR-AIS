@@ -11,7 +11,6 @@ Key constraints:
 
 from __future__ import annotations
 
-import math
 import pathlib
 from dataclasses import dataclass, field
 
@@ -225,11 +224,29 @@ def load_predictions(path: pathlib.Path) -> dict[str, EvaluationRecord]:
     return predictions
 
 
+def _prediction_to_dict(prediction: EvaluationRecord) -> dict:
+    """Project a typed prediction back into the public validation contract."""
+    record = {
+        "example_id": prediction.example_id,
+        "predicted_literal": prediction.predicted_literal,
+        "predicted_pragmatic": prediction.predicted_pragmatic,
+        "predicted_hostility": prediction.predicted_hostility,
+        "predicted_social_valence": prediction.predicted_social_valence,
+        "predicted_ambiguity": prediction.predicted_ambiguity,
+        "model_confidence": prediction.model_confidence,
+    }
+    if prediction.model_id is not None:
+        record["model_id"] = prediction.model_id
+    if prediction.notes is not None:
+        record["notes"] = prediction.notes
+    return record
+
+
 def _validate_mapping_contracts(
     examples: dict[str, BenchmarkExample],
     predictions: dict[str, EvaluationRecord],
 ) -> None:
-    """Reject malformed direct-call mappings before any metric is computed."""
+    """Reject malformed direct-call records before any metric is computed."""
     if not examples:
         raise ValidationError("Cannot score an empty benchmark dataset.")
 
@@ -238,6 +255,10 @@ def _validate_mapping_contracts(
             raise ValidationError(
                 f"Example mapping key '{key}' does not match record id '{example.id}'."
             )
+        # Direct dataclass construction is not a validation bypass. Re-run the
+        # same semantic contract used by JSONL loading, including sentinel,
+        # ambiguity and annotation-confidence invariants.
+        validate_example_record(example.to_dict())
 
     for key, prediction in predictions.items():
         if key != prediction.example_id:
@@ -250,13 +271,16 @@ def _validate_mapping_contracts(
         if (
             not isinstance(confidence, (int, float))
             or isinstance(confidence, bool)
-            or not math.isfinite(confidence)
             or not (0.0 <= confidence <= 1.0)
         ):
             raise ValidationError(
-                "Direct score() prediction model_confidence must be a finite number "
+                "Direct score() prediction model_confidence must be a number "
                 f"between 0.0 and 1.0, got {confidence!r}."
             )
+
+        # Once the overflow-safe range gate above passes, validate every other
+        # prediction field through the same schema/semantic path as file input.
+        validate_evaluation_record(_prediction_to_dict(prediction))
 
 
 def score(
