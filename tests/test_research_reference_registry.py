@@ -39,6 +39,15 @@ GOVERNANCE_PATTERN = re.compile(
     r"(?m)^\*\*Community-specific governance:\*\*[ \t]*"
     r"(required|not-required):[ \t]*([^\r\n]*\S[^\r\n]*)[ \t]*$"
 )
+REGISTERED_SOURCE_FIELD_PATTERN = re.compile(
+    r"(?m)^\*\*Registered sources?:\*\*"
+)
+RESEARCH_MAPPING_HEADING_PATTERN = re.compile(
+    r"(?m)^(?:Candidate research mappings:|Research mappings:)[ \t]*$"
+)
+PROJECT_MAPPING_HEADING_PATTERN = re.compile(
+    r"(?m)^Relevant project mappings:[ \t]*$"
+)
 
 
 def _registered_batch(corpus: str) -> str:
@@ -88,25 +97,67 @@ def _require_scalar_value(entry: str, section: str, field: str) -> None:
     _scalar_value(entry, section, field)
 
 
-def _require_mapping_block(entry: str, section: str) -> None:
-    """Require non-empty research and project mapping blocks."""
-    research = re.search(
-        r"(?ms)^(?:Candidate research mappings:|Research mappings:)\s*(.+?)"
-        r"(?=^Relevant project mappings:)",
-        section,
-    )
-    assert research and research.group(1).strip(), f"{entry} has empty research mappings"
+def _has_non_heading_content(block: str) -> bool:
+    """Return whether a mapping block contains content beyond headings/separators."""
+    for raw_line in block.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if RESEARCH_MAPPING_HEADING_PATTERN.fullmatch(line):
+            continue
+        if PROJECT_MAPPING_HEADING_PATTERN.fullmatch(line):
+            continue
+        if re.fullmatch(r"#{1,6}[ \t]+.+", line):
+            continue
+        if re.fullmatch(r"-{3,}", line):
+            continue
+        if re.fullmatch(r"\*\*[^*]+:\*\*(?:[ \t].*)?", line):
+            continue
+        return True
+    return False
 
-    project = re.search(
-        r"(?ms)^Relevant project mappings:\s*(.+?)"
-        r"(?=^\*\*Safe benchmark abstraction:\*\*)",
-        section,
+
+def _require_mapping_block(entry: str, section: str) -> None:
+    """Require unique, non-empty research and project mapping blocks."""
+    research_headings = list(RESEARCH_MAPPING_HEADING_PATTERN.finditer(section))
+    assert len(research_headings) == 1, (
+        f"{entry} must contain exactly one research mappings heading"
     )
-    assert project and project.group(1).strip(), f"{entry} has empty project mappings"
+    project_headings = list(PROJECT_MAPPING_HEADING_PATTERN.finditer(section))
+    assert len(project_headings) == 1, (
+        f"{entry} must contain exactly one relevant project mappings heading"
+    )
+
+    research_start = research_headings[0].end()
+    project_start = project_headings[0].start()
+    assert research_start < project_start, (
+        f"{entry} has research/project mapping headings in the wrong order"
+    )
+    research_block = section[research_start:project_start]
+    assert _has_non_heading_content(research_block), (
+        f"{entry} has empty research mappings"
+    )
+
+    safe_heading = re.search(
+        r"(?m)^\*\*Safe benchmark abstraction:\*\*",
+        section[project_headings[0].end():],
+    )
+    assert safe_heading, f"{entry} is missing the safe benchmark abstraction field"
+    project_start_value = project_headings[0].end()
+    project_end = project_start_value + safe_heading.start()
+    project_block = section[project_start_value:project_end]
+    assert _has_non_heading_content(project_block), (
+        f"{entry} has empty project mappings"
+    )
 
 
 def _require_registered_source_link(entry: str, section: str) -> None:
-    """Require at least one HTTPS link in the registered-source field only."""
+    """Require exactly one registered-source field with at least one HTTPS link."""
+    source_fields = list(REGISTERED_SOURCE_FIELD_PATTERN.finditer(section))
+    assert len(source_fields) == 1, (
+        f"{entry} must contain exactly one registered-source field"
+    )
+
     source_block = re.search(
         r"(?ms)^\*\*Registered sources?:\*\*[ \t]*(.*?)"
         r"(?=^\*\*[^*\n]+:\*\*)",
@@ -180,6 +231,30 @@ def test_scalar_field_rejects_duplicate_occurrences():
         _require_scalar_value(
             "### Example", section, "**Rights and provenance boundary:**"
         )
+
+
+def test_registered_source_rejects_duplicate_singular_plural_fields():
+    section = (
+        "### Example\n\n"
+        "**Registered source:** https://example.com/source\n\n"
+        "**Registered sources:**\n\n"
+        "**Source type:** example\n"
+    )
+    with pytest.raises(AssertionError, match="exactly one registered-source field"):
+        _require_registered_source_link("### Example", section)
+
+
+def test_mapping_blocks_reject_duplicate_headings_without_content():
+    section = (
+        "### Example\n\n"
+        "Research mappings:\n\n"
+        "Research mappings:\n\n"
+        "Relevant project mappings:\n\n"
+        "Relevant project mappings:\n\n"
+        "**Safe benchmark abstraction:** example\n"
+    )
+    with pytest.raises(AssertionError, match="exactly one research mappings heading"):
+        _require_mapping_block("### Example", section)
 
 
 def test_community_governance_requires_same_line_rationale():
