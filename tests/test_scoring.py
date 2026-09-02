@@ -155,7 +155,7 @@ class TestScoring:
         assert result.ambiguity_recognised == 1
         assert result.as_dict()["confidence_brier_score"] == pytest.approx(0.01)
 
-    def test_noncanonical_insufficient_context_prediction_is_not_accepted(self):
+    def test_noncanonical_insufficient_context_prediction_is_rejected(self):
         ex = _make_example(
             ambiguity=True,
             confidence=0.3,
@@ -167,9 +167,8 @@ class TestScoring:
             predicted_ambiguity=True,
             model_confidence=0.9,
         )
-        result = score({"t-001": ex}, {"t-001": pred})
-        assert result.pragmatic_match == 0
-        assert result.as_dict()["confidence_brier_score"] == pytest.approx(0.81)
+        with pytest.raises(ValidationError, match="written exactly"):
+            score({"t-001": ex}, {"t-001": pred})
 
     def test_uncertain_hostility_annotation_is_excluded_from_accuracy(self):
         ex = _make_example(hostility="uncertain")
