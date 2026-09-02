@@ -6,7 +6,7 @@ import pathlib
 import pytest
 
 from australian_for_ais.models import BenchmarkExample, EvaluationRecord
-from australian_for_ais.scoring import load_examples, score
+from australian_for_ais.scoring import load_examples, load_predictions, score
 from australian_for_ais.validation import (
     ValidationError,
     validate_context_swap_groups,
@@ -224,6 +224,40 @@ def test_invalid_utf8_jsonl_is_reported_cleanly(tmp_path):
     assert any("UTF-8" in error for error in errors)
 
     with pytest.raises(ValidationError, match="UTF-8"):
+        load_examples(path)
+
+
+def test_oversized_json_integer_is_reported_cleanly(tmp_path):
+    path = tmp_path / "oversized-int.jsonl"
+    huge_integer = "9" * 5000
+    path.write_text(
+        "{"
+        '"example_id":"test-001",'
+        '"predicted_literal":"Positive evaluation.",'
+        '"predicted_pragmatic":"Sincere praise",'
+        '"predicted_hostility":false,'
+        '"predicted_social_valence":"friendly",'
+        '"predicted_ambiguity":false,'
+        f'"model_confidence":{huge_integer}'
+        "}\n",
+        encoding="utf-8",
+    )
+
+    errors = validate_jsonl_file(path, validate_evaluation_record)
+    assert any("parsed safely" in error for error in errors)
+
+    with pytest.raises(ValidationError, match="parsed safely"):
+        load_predictions(path)
+
+
+def test_duplicate_json_object_keys_are_rejected(tmp_path):
+    path = tmp_path / "duplicate-key.jsonl"
+    path.write_text('{"id":"first","id":"second"}\n', encoding="utf-8")
+
+    errors = validate_jsonl_file(path)
+    assert any("Duplicate JSON object key 'id'" in error for error in errors)
+
+    with pytest.raises(ValidationError, match="Duplicate JSON object key 'id'"):
         load_examples(path)
 
 
