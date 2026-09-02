@@ -149,7 +149,7 @@ Candidate work includes:
 
 **Goal:** Operationalise Australian Sketch Comedy Field Theory (ASCFT) as a theory-derived source of adversarial pragmatic experiments without treating its qutrit, field, collapse, or attractor language as established physical ontology or as representative cultural ground truth.
 
-ASCFT is a candidate theoretical source and must pass the same source-registration contract as other post-Phase-2 research inputs before a benchmark family depends on it. Its useful starting structure is a three-state analytic basis:
+ASCFT is now registered under the same governed source contract as other adopted post-Phase-2 research inputs. Workstream F may use it only within the provenance, rights, epistemic-status, community-governance, and safe-abstraction boundaries recorded in `docs/RESEARCH-REFERENCE-CORPUS.md`. Its useful starting structure is a three-state analytic basis:
 - `|0>` Informal Larrikin Compression;
 - `|1>` Bureaucratic Recursive Formalism;
 - `|2>` Hyper-Formal Surreal Narration.
@@ -178,7 +178,7 @@ Candidate invariants for review include:
 These are candidate invariants, not additions to the canonical AU-HUMOUR set. Any promotion requires explicit invariant review and coordinated documentation changes.
 
 A focused follow-up PR should:
-- formally register ASCFT with provenance, rights, epistemic status, community-governance classification, project mappings, and a safe abstraction path;
+- maintain the registered ASCFT provenance, rights, epistemic-status, community-governance, and safe-abstraction record, strengthening it if more authoritative source or explicit licence metadata becomes available;
 - create an ASCFT operational crosswalk mapping source terminology to observable benchmark manipulations without claiming literal physical equivalence;
 - define independently authored synthetic minimal pairs and context swaps for the strongest testable mechanisms;
 - keep source dialogue, transcript wording, and distinctive copyrighted expression out of redistributable benchmark data;
