@@ -129,6 +129,7 @@ def annotation_coverage(
         "items_total": len(items),
         "annotations_total": len(annotations),
         "annotators_total": len({a.annotator_id for a in annotations}),
+        "annotations_per_item": counts,
         "items_with_at_least_one_annotation": sum(count >= 1 for count in counts.values()),
         "items_with_at_least_two_annotations": sum(count >= 2 for count in counts.values()),
         "items_below_two_annotations": under_two,
