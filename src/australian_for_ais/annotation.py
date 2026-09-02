@@ -79,7 +79,10 @@ def load_annotations(
     assignments: set[tuple[str, str]] = set()
 
     for lineno, record in iter_jsonl(path):
-        validate_annotation_record(record)
+        try:
+            validate_annotation_record(record)
+        except ValidationError as exc:
+            raise ValidationError(f"Line {lineno}: {exc}") from exc
         annotation = HumanAnnotation.from_dict(record)
 
         if annotation.annotation_id in annotation_ids:
