@@ -90,6 +90,7 @@ nav { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
 <fieldset>
 <legend>Pragmatic mechanisms</legend>
+<p class="small">Select at least one mechanism. If no specific taxonomy label is justified, select <code>unknown</code> explicitly.</p>
 <div id="mechanisms" class="mechanisms"></div>
 </fieldset>
 
@@ -200,6 +201,7 @@ function annotatorKey() {
 function storageKey(itemId) { return `afa-phase2:${annotatorKey()}:${itemId}`; }
 function lines(id) { return $(id).value.split(/\r?\n/).map(x => x.trim()).filter(Boolean); }
 function setLines(id, values) { $(id).value = (values || []).join("\n"); }
+function normaliseReading(value) { return value.toLocaleLowerCase().replace(/\s+/g, " ").trim(); }
 function selectedMechanisms() { return [...document.querySelectorAll('input[name="mechanism"]:checked')].map(x => x.value); }
 function setMechanisms(values) {
   const selected = new Set(values || []);
@@ -290,6 +292,7 @@ function loadSaved(item) {
   $("confidenceValue").textContent = Number(a.confidence).toFixed(2); $("ambiguity").checked = a.ambiguity;
   $("culturalDependency").value = a.cultural_dependency; $("contextRequired").checked = a.context_required;
   setLines("alternatives", a.alternative_interpretations); $("notes").value = a.annotation_notes || "";
+  $("exposure").value = a.australian_english_exposure || "unspecified";
 }
 
 function showItem() {
@@ -312,13 +315,16 @@ function buildAnnotation() {
   const ambiguity = $("ambiguity").checked;
   if (!$("literal").value.trim()) throw new Error("Literal interpretation is required.");
   if (!pragmatic.length) throw new Error("Provide at least one plausible pragmatic interpretation.");
+  const normalisedReadings = pragmatic.map(normaliseReading);
+  const distinctReadings = new Set(normalisedReadings).size;
+  if (distinctReadings !== pragmatic.length) throw new Error("Duplicate or equivalent pragmatic readings are not allowed.");
   if (!primary) throw new Error("Primary pragmatic interpretation is required.");
   if (!insufficient && !pragmatic.includes(primary)) throw new Error("Primary interpretation must also appear in the plausible pragmatic interpretations list.");
-  const distinctReadings = new Set(pragmatic.map(x => x.toLocaleLowerCase().replace(/\s+/g, " "))).size;
-  if (ambiguity && distinctReadings < 2) throw new Error("Ambiguity requires at least two distinct pragmatic readings.");
-  if (!ambiguity && distinctReadings > 1) throw new Error("Multiple retained pragmatic readings require ambiguity=true.");
+  if (ambiguity && pragmatic.length < 2) throw new Error("Ambiguity requires at least two distinct pragmatic readings.");
+  if (!ambiguity && pragmatic.length > 1) throw new Error("Multiple retained pragmatic readings require ambiguity=true.");
   if (insufficient && (!ambiguity || confidence > 0.4)) throw new Error("insufficient_context requires ambiguity=true and confidence <= 0.4.");
   const selected = selectedMechanisms();
+  if (!selected.length) throw new Error("Select at least one pragmatic mechanism, or select unknown explicitly.");
   if (selected.includes("unknown") && selected.length > 1) throw new Error("The unknown mechanism cannot be combined with a specific mechanism.");
   return {
     annotation_id: `${annotator}::${item.id}`,
@@ -327,7 +333,7 @@ function buildAnnotation() {
     literal_interpretation: $("literal").value.trim(),
     pragmatic_interpretations: pragmatic,
     primary_pragmatic_interpretation: primary,
-    humour_mechanisms: selected.length ? selected : ["unknown"],
+    humour_mechanisms: selected,
     social_valence: $("socialValence").value,
     hostility: parseHostility($("hostility").value),
     confidence,
