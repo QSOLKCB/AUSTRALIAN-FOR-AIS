@@ -6,7 +6,7 @@ Phases are listed in order. No phase is marked complete until its graduation cri
 
 ---
 
-## Phase 1 — Research Substrate *(awaiting merge of PR #1)*
+## Phase 1 — Research Substrate *(merged; external-researcher invariant review still pending)*
 
 **Goal:** Establish the contracts, schemas, methodology, documentation, starter fixtures, reference evaluator, and tests needed for later dataset expansion.
 
@@ -22,12 +22,14 @@ Phases are listed in order. No phase is marked complete until its graduation cri
 - Repository hygiene rules preventing generated local artefacts from entering the research record
 
 **Graduation Criteria:**
-- [ ] All tests pass in CI
-- [ ] All starter examples validate against the schema
-- [ ] Research references are explicitly separated from redistributable benchmark data
-- [ ] No fabricated release/citation metadata remains in the Phase 1 branch
+- [x] All tests pass in CI
+- [x] All starter examples validate against the schema
+- [x] Research references are explicitly separated from redistributable benchmark data
+- [x] No fabricated release/citation metadata remains in the Phase 1 branch
 - [ ] Invariants reviewed by at least one researcher outside the initial author
-- [ ] PR reviewed and merged
+- [x] PR reviewed and merged
+
+Phase 1 code and documentation are merged, but the phase is not marked complete because the explicit external-researcher invariant review criterion remains open.
 
 ---
 
