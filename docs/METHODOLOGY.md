@@ -152,6 +152,32 @@ Later phases will formalise variants that differ in one controlled factor such a
 
 ---
 
+## ASCFT-Derived Experiment Design
+
+Workstream F uses the registered Australian Sketch Comedy Field Theory (ASCFT) source as a formal analytic framework and hypothesis generator. ASCFT terminology is source-specific analytic machinery, not an addition to the active humour taxonomy and not evidence that Australian humour is literally governed by physical field dynamics.
+
+The preferred design is to hold topic, lexical content, or overt register as constant as practical while manipulating one observable dimension at a time. Core controlled variables include:
+
+- **authority register**, separating confident formal delivery from whether the surrounding evidence supports the speaker's claims;
+- **epistemic coherence**, varying factual, inferential, or categorical consistency while keeping surface fluency and formatting stable;
+- **demonstrated competence**, separating asserted expertise from successful reasoning, prediction, or action;
+- **frame stability**, holding an institutional, documentary, or expert frame constant while pragmatic or semantic content destabilises;
+- **semantic drift and contradiction accumulation**, using ordered multi-turn sequences so degradation can be measured across turns rather than inferred from one isolated sentence; and
+- **mode transition**, using ASCFT's source-specific `|0>`, `|1>`, and `|2>` coordinates only to label controlled transitions among informal compression, bureaucratic recursion, and hyper-formal surreal narration during experiment construction.
+
+Experiment families should include matched controls where polished formal language remains factually coherent, informal language remains semantically precise, or confident speakers demonstrate genuine competence. This prevents the benchmark from rewarding a blanket rule that formality, authority, slang, or confidence is itself evidence of failure.
+
+Source-specific motifs such as the proposed goat attractor may be studied only as motifs of the registered theory or its documented source material. They are not benchmark labels, universal properties of Australian comedy, or acceptable shortcuts for assigning a collapse outcome. Any source-inspired item must be independently authored or appropriately licensed and must not reproduce dialogue, transcript wording, distinctive jokes, or other copyrighted expression.
+
+The epistemic boundary is mandatory:
+
+- **FORMAL ANALOGY != PHYSICAL ONTOLOGY**
+- **MATHEMATICAL MODEL != EMPIRICALLY VALIDATED MECHANISM**
+
+Qutrit states, fields, collapse operators, attractors, Lagrangians, cultural-stress observables, and similar constructs may organize hypotheses and controlled manipulations. Their mathematical definition does not establish that they are empirically validated physical mechanisms, population-level cultural laws, or objective ground truth.
+
+---
+
 ## Trans-Tasman and Slang/Operational Experiment Design
 
 Workstreams G and H extend the general context-swap and minimal-pair methodology. They do not create fixed phrase rules or community ground truth.
