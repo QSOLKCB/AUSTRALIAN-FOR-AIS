@@ -1,6 +1,7 @@
 """Regression tests for review-discovered contract edge cases."""
 
 import json
+import pathlib
 
 import pytest
 
@@ -13,6 +14,9 @@ from australian_for_ais.validation import (
     validate_example_record,
     validate_jsonl_file,
 )
+
+REPO_ROOT = pathlib.Path(__file__).parent.parent
+DATA_PATH = REPO_ROOT / "data" / "starter" / "examples.jsonl"
 
 
 def _example_record(**overrides) -> dict:
@@ -140,6 +144,17 @@ def test_score_rejects_example_mapping_key_mismatch():
         score({"test-001": example}, {})
 
 
+@pytest.mark.parametrize(
+    "confidence",
+    [2.0, -0.1, float("nan"), float("inf"), float("-inf")],
+)
+def test_score_rejects_invalid_direct_confidence(confidence):
+    example = _example_model()
+    prediction = _prediction_model(model_confidence=confidence)
+    with pytest.raises(ValidationError, match="finite number"):
+        score({"test-001": example}, {"test-001": prediction})
+
+
 def test_directory_jsonl_input_is_reported_cleanly(tmp_path):
     directory = tmp_path / "dataset-dir"
     directory.mkdir()
@@ -149,6 +164,27 @@ def test_directory_jsonl_input_is_reported_cleanly(tmp_path):
 
     with pytest.raises(ValidationError, match="not a regular file"):
         load_examples(directory)
+
+
+def test_invalid_utf8_jsonl_is_reported_cleanly(tmp_path):
+    path = tmp_path / "invalid-utf8.jsonl"
+    path.write_bytes(b'{"id":"broken"}\xff\n')
+
+    errors = validate_jsonl_file(path)
+    assert any("UTF-8" in error for error in errors)
+
+    with pytest.raises(ValidationError, match="UTF-8"):
+        load_examples(path)
+
+
+def test_old_mate_fixture_explicitly_rules_out_acquaintance_in_this_context():
+    example = load_examples(DATA_PATH)["au-008"]
+    assert example.ambiguity is False
+    assert "neither recognises or has met before" in example.context
+    assert any(
+        "actual acquaintance" in reading and "different context" in reading
+        for reading in example.alternative_interpretations
+    )
 
 
 def test_file_loader_still_accepts_normal_record(tmp_path):
