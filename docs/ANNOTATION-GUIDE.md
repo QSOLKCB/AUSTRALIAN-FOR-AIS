@@ -1,9 +1,8 @@
 # Annotation Guide
 
-This document describes how future human annotation should be conducted for this project.
+This document describes how human annotation should be conducted for this project.
 
-Phase 1 uses synthetic examples only. This guide prepares the annotation framework for
-Phase 2 onwards.
+Phase 1 established the synthetic benchmark substrate. Phase 2 adds an unannotated 60-item pilot pack, an offline annotation interface, per-annotator records, and agreement-analysis tooling. The existence of those tools does **not** mean that the human pilot has already occurred.
 
 ---
 
@@ -19,7 +18,9 @@ Annotators are **not**:
 Annotators are:
 - Providing documented, hedged interpretations from their own perspective
 - Contributing to a distribution of possible interpretations
-- Making their uncertainty and cultural context explicit
+- Making their uncertainty explicit
+
+Use a pseudonymous `annotator_id`, not a real name, email address, account handle, or other direct identifier. The optional `australian_english_exposure` field records only coarse self-reported familiarity (`low`, `medium`, `high`, or `unspecified`). Do not infer nationality, ethnicity, or other personal identity from an annotation.
 
 ---
 
@@ -40,7 +41,7 @@ What the annotator believes was intended.
 An inference about communicative intent based on:
 - The utterance
 - The provided context
-- The annotator's cultural knowledge and experience
+- The annotator's knowledge and experience
 
 The annotator must label this as an interpretation, not a fact.
 
@@ -70,22 +71,21 @@ Annotators should report genuine uncertainty and not inflate confidence to appea
 
 Other plausible interpretations the annotator considered.
 
-Annotators must list alternative interpretations they found plausible even if they ultimately
-prefer one. This is especially important when:
+Annotators must list alternative interpretations they found plausible even if they ultimately prefer one. This is especially important when:
 - Context is ambiguous
 - Multiple cultural readings are possible
 - The annotator is uncertain about the speaker's intent
 
-Alternatives are not "wrong answers" — they are evidence of genuine pragmatic ambiguity.
+Alternatives are not "wrong answers". They are evidence of genuine pragmatic ambiguity.
 
 ### CULTURAL DEPENDENCE
 
 Whether specific cultural knowledge appears necessary for interpretation.
 
 Annotators should indicate if they believe:
-- A person unfamiliar with Australian English would interpret the utterance differently
+- A person unfamiliar with Australian English could interpret the utterance differently
 - The interpretation relies on knowledge of specific social conventions
-- Contextual cues would be opaque to an outsider
+- Contextual cues could be opaque to an outsider
 
 ---
 
@@ -93,42 +93,44 @@ Annotators should indicate if they believe:
 
 ### Do Not Invent Context
 
-Annotators must work only with the context provided in the example record. They must not
-invent additional context to resolve ambiguity. If context is insufficient, they must
-record this explicitly.
+Annotators must work only with the context provided in the pilot item. They must not invent additional context to resolve ambiguity. If context is insufficient, they must record this explicitly.
 
 ### Inter-Annotator Disagreement is Data
 
-When two annotators disagree about the pragmatic interpretation of an utterance, that
-disagreement is valuable research data. It indicates genuine pragmatic ambiguity, cultural
-variation, or context insufficiency.
+When two annotators disagree about the pragmatic interpretation of an utterance, that disagreement is valuable research data. It may indicate genuine pragmatic ambiguity, variation, annotation error, or context insufficiency.
 
-Disagreement should not be "resolved" by overriding one annotator's interpretation. Both
-interpretations should be retained in the dataset with their respective confidence values.
+Disagreement should not be "resolved" by silently overriding one annotator's interpretation. Independent annotation records must be retained with their respective confidence values.
 
 ### Annotators Bring Their Own Perspective
 
-Annotators should interpret utterances from their own genuine perspective, not attempt to
-simulate a generic "Australian" speaker. Their cultural background and relationship to
-Australian English should be documented as metadata.
+Annotators should interpret utterances from their own genuine perspective, not attempt to simulate a generic "Australian" speaker. The project may record coarse self-reported familiarity with Australian English, but does not require demographic profiling.
 
 ### Do Not Flatten Ambiguity
 
-If an utterance could mean two things and the annotator is genuinely uncertain, both
-interpretations should be recorded. The annotator should not force a single answer.
+If an utterance could mean two things and the annotator is genuinely uncertain, both interpretations should be recorded. The annotator should not force a single answer.
+
+### Do Not Use Pair Metadata as an Answer Hint
+
+Phase 2 pilot records may contain `context_swap_group` metadata for later analysis. The annotation interface intentionally hides that field and other pilot tags. Annotators should make each decision from the displayed utterance, context, and relationship rather than reasoning from experimental grouping metadata.
 
 ---
 
 ## Annotation Workflow (Phase 2)
 
-1. **Read the utterance and context carefully.**
-2. **Record the literal interpretation** — what the words say in isolation.
-3. **Record your pragmatic interpretation** — what you believe was intended.
-4. **Identify the mechanism(s)** — what pragmatic device is in use (see taxonomy in METHODOLOGY.md).
-5. **Rate your confidence** — how certain are you?
-6. **List alternatives** — what other readings did you consider?
-7. **Note cultural dependence** — does this require specific cultural knowledge?
-8. **Note insufficient context** — if context is genuinely insufficient, say so.
+1. Open `annotation/index.html` locally in a browser.
+2. Load `data/pilot/items.jsonl`.
+3. Enter a pseudonymous annotator ID.
+4. Read the utterance and supplied context carefully.
+5. Record the literal interpretation.
+6. Record one or more plausible pragmatic interpretations.
+7. Select the primary pragmatic interpretation, or use `insufficient_context` when justified.
+8. Identify mechanism(s) from the active taxonomy in `METHODOLOGY.md`.
+9. Rate confidence honestly.
+10. Record ambiguity, social valence, hostility, cultural dependence, and whether context was required.
+11. List alternatives and note the contextual cues that affected the decision.
+12. Save locally and export the resulting annotation JSONL.
+
+The browser tool performs no network requests. Local browser storage is a convenience, not an archival or consent mechanism.
 
 ---
 
@@ -136,8 +138,9 @@ interpretations should be recorded. The annotator should not force a single answ
 
 When context is insufficient to determine pragmatic meaning, annotators must use:
 
-- `primary_pragmatic_interpretation: "insufficient_context"` in the record
-- A `confidence` value at or below 0.4
+- `primary_pragmatic_interpretation: "insufficient_context"`
+- at least two distinct retained `pragmatic_interpretations`
+- `confidence` at or below 0.4
 - `ambiguity: true`
 
 Do not guess when genuinely uncertain. Documented uncertainty is more valuable than a forced guess.
@@ -146,9 +149,32 @@ Do not guess when genuinely uncertain. Documented uncertainty is more valuable t
 
 ## Multiple Annotators
 
-From Phase 2 onwards, each example should have at least two independent annotations.
+From Phase 2 onwards, each pilot item should have at least two independent human annotations.
 
-The dataset should store all annotations, not just a "consensus" label.
+The dataset should store all annotations, not just a "consensus" label. The Phase 2 loader rejects duplicate `(example_id, annotator_id)` assignments so a single annotator cannot accidentally count twice on one item.
 
-Inter-annotator agreement will be measured using appropriate metrics and reported as part of
-the dataset documentation. Agreement is informative but disagreement is equally informative.
+Validate collected annotation files with:
+
+```bash
+python -m australian_for_ais.cli validate-annotations \
+  data/pilot/items.jsonl annotations.jsonl
+```
+
+Use `--require-two` only when checking whether the pilot has reached the roadmap's minimum coverage criterion.
+
+---
+
+## Inter-Annotator Agreement
+
+Run:
+
+```bash
+python -m australian_for_ais.cli agreement \
+  data/pilot/items.jsonl annotations.jsonl
+```
+
+Phase 2 reports coverage, categorical pairwise agreement, Cohen's kappa for annotator pairs on shared examples, mechanism-set overlap, and descriptive confidence differences.
+
+Free-text pragmatic interpretations are retained for qualitative review and are **not** assigned an exact-string agreement score. Exact wording is not a validated proxy for semantic equivalence, and the project will not hide that limitation behind an unvalidated semantic judge.
+
+See `PHASE2-PILOT-PROTOCOL.md` for the complete pilot procedure and ethical-review checklist.
