@@ -152,6 +152,37 @@ Later phases will formalise variants that differ in one controlled factor such a
 
 ---
 
+## Trans-Tasman and Slang/Operational Experiment Design
+
+Workstreams G and H extend the general context-swap and minimal-pair methodology. They do not create fixed phrase rules or community ground truth.
+
+For **trans-Tasman relational-pragmatics** experiments, the preferred design is to hold lexical or structural content as constant as practical while manipulating one or more of the following variables explicitly:
+
+- speaker relationship and established relational licence;
+- reciprocity versus one-sided targeting;
+- private, public, workplace, classroom, broadcast, or platform setting;
+- target reaction where that reaction is part of the supplied evidence;
+- direct use versus abstract mention, quotation placeholder, moderation analysis, or historical discussion; and
+- benign-teasing, genuine-hostility, and unresolved controls.
+
+The repository must not introduce group-stereotyping wording merely to instantiate these contrasts. Where a research question depends on historical stereotype structure, use an abstract placeholder or non-identity-targeted synthetic analogue unless exact material has an attributable source, an appropriate rights basis, and a documented governance rationale. Claims about New Zealand lexical or pragmatic norms require attributable New Zealand evidence and, where the claim is community-specific, appropriate New Zealand cultural or linguistic consultation.
+
+For **slang-density and operational-intelligibility** experiments, lexical recognition, compositional interpretation, pragmatic interpretation, and task-critical communication clarity are separate evaluation targets. A useful ladder holds the underlying proposition stable while progressively varying slang density, abbreviation, discourse markers, local idioms, or register compression. Listener background and task criticality should be explicit variables rather than inferred after the fact.
+
+Relevant controlled comparisons include:
+
+- glossary-known versus context-correct interpretation;
+- low-density versus high-density colloquial phrasing;
+- familiar-listener versus unfamiliar-listener conditions;
+- informal social or barracks-style exchange versus safety-critical or operational instruction; and
+- ordinary misunderstanding versus successful repair through clarification, shared terminology, translation, or visual grounding.
+
+Official or archival military sources may motivate **communication-friction** hypotheses, but they do not establish that Australian slang is a secret code, that ordinary conversation defeated codebreakers, or that operational failure followed from slang unless an attributable source establishes that stronger claim. Community discussions and slang glossaries can nominate candidate forms, but neither is treated as representative population evidence or sufficient pragmatic ground truth.
+
+These families remain subject to the same ambiguity, context-swap, provenance, annotation, and scoring rules defined elsewhere in this document. A model succeeds only when it uses the supplied context correctly, not merely when it recognises a slang token or nationality reference.
+
+---
+
 ## Scoring Philosophy
 
 The following distinctions are mandatory:
