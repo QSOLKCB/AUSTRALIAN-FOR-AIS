@@ -32,6 +32,9 @@ BATCH_END = "## Priority A: adversarial pragmatics"
 CONSULTATION_BOUNDARY = (
     "appropriate consultation, provenance, permissions, and scope limitations"
 )
+GOVERNANCE_FIELD_PATTERN = re.compile(
+    r"(?m)^\*\*Community-specific governance:\*\*"
+)
 GOVERNANCE_PATTERN = re.compile(
     r"(?m)^\*\*Community-specific governance:\*\*[ \t]*"
     r"(required|not-required):[ \t]*([^\r\n]*\S[^\r\n]*)[ \t]*$"
@@ -112,13 +115,17 @@ def _require_registered_source_link(entry: str, section: str) -> None:
 
 
 def _require_community_governance(entry: str, section: str) -> None:
-    """Validate exactly one per-entry community-governance classification and gate."""
-    classifications = list(GOVERNANCE_PATTERN.finditer(section))
-    assert len(classifications) == 1, (
-        f"{entry} must contain exactly one valid community-specific governance "
-        "classification"
+    """Validate exactly one per-entry community-governance field and gate."""
+    fields = list(GOVERNANCE_FIELD_PATTERN.finditer(section))
+    assert len(fields) == 1, (
+        f"{entry} must contain exactly one community-specific governance field"
     )
-    classification = classifications[0]
+
+    classification = GOVERNANCE_PATTERN.search(section)
+    assert classification, (
+        f"{entry} has an invalid community-specific governance classification or rationale"
+    )
+
     if classification.group(1) == "required":
         safe_use = _scalar_value(entry, section, "**Safe benchmark abstraction:**")
         assert CONSULTATION_BOUNDARY in safe_use, (
@@ -164,7 +171,7 @@ def test_community_governance_requires_same_line_rationale():
         "**Community-specific governance:** not-required:\n\n"
         "Candidate research mappings:\n- example\n"
     )
-    with pytest.raises(AssertionError, match="exactly one valid community-specific governance"):
+    with pytest.raises(AssertionError, match="invalid community-specific governance"):
         _require_community_governance("### Example", section)
 
 
@@ -187,5 +194,16 @@ def test_community_governance_rejects_duplicate_classifications():
         "**Community-specific governance:** required: community-specific source.\n\n"
         "**Safe benchmark abstraction:** Use only structural research questions.\n"
     )
-    with pytest.raises(AssertionError, match="exactly one valid community-specific governance"):
+    with pytest.raises(AssertionError, match="exactly one community-specific governance field"):
+        _require_community_governance("### Example", section)
+
+
+def test_community_governance_counts_malformed_duplicate_field():
+    section = (
+        "### Example\n\n"
+        "**Community-specific governance:** not-required: structural research only.\n\n"
+        "**Community-specific governance:** required:\n\n"
+        "**Safe benchmark abstraction:** Use only structural research questions.\n"
+    )
+    with pytest.raises(AssertionError, match="exactly one community-specific governance field"):
         _require_community_governance("### Example", section)
