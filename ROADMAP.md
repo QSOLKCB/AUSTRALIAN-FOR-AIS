@@ -66,10 +66,10 @@ These workstreams may be implemented as focused PRs before or alongside Phase 3.
 **Goal:** Broaden the reference corpus without turning copyrighted comedy, historical stereotypes, or cultural commentary into benchmark ground truth.
 
 Planned work includes:
-- expand the comedy/reference registry beyond the initial television set, with candidate sources including *Black Comedy*, *Kath & Kim*, *The Castle*, *Shaun Micallef's Mad as Hell*, *Acropolis Now*, *Hamish & Andy*, the Aunty Jack/Aunty Donna absurdist lineage, and additional Australian sketch, film, radio, and stand-up traditions;
+- expand the comedy/reference registry beyond the initial television set using candidate directions identified in post-Phase-2 research reports, but do not treat a named work as an adopted project reference until `docs/RESEARCH-REFERENCE-CORPUS.md` records its source links, provenance/rights boundary, epistemic status, and safe research use;
 - prefer official, archival, creator, broadcaster, and peer-reviewed sources over orientation-only summaries where available;
-- add academic work on cross-cultural humour, First Nations/Blak comedy, diversity in Australian comedy, and Australian humour as a sociolinguistic or social-regulatory phenomenon;
-- map each research source to candidate pragmatic mechanisms, relevant invariants, evidential status, and safe synthetic experiment families;
+- add academic work on cross-cultural humour, First Nations/Blak comedy, diversity in Australian comedy, and Australian humour as a sociolinguistic or social-regulatory phenomenon only when each source is formally registered;
+- map each registered research source to candidate pragmatic mechanisms, relevant invariants, evidential status, and safe synthetic experiment families;
 - retain the rule **RESEARCH REFERENCE != REDISTRIBUTABLE DATA**;
 - treat performed comedy as mechanism-discovery material, not as a representative corpus of Australian speech.
 
@@ -99,6 +99,8 @@ Candidate future mechanism families include:
 - `larrikin_register`
 - `cultural_cringe_inversion`
 - carefully scoped class-marked register hypotheses
+
+Pilot evidence may nominate a candidate, but **nomination is not schema promotion**. Before any candidate label is added to the active taxonomy, the project must define it provisionally and run an independent trial-coding or re-annotation round on suitable items. That trial must review whether annotators can apply the candidate consistently, whether it improves on existing labels or `unknown`, and whether its agreement/confusion pattern supports keeping it distinct. Only after that evidence is documented may a contract-changing PR update schemas, models, documentation, interface options, and tests together.
 
 No candidate is promoted solely because it is culturally salient or appears frequently in comedy.
 
@@ -130,11 +132,13 @@ Planned work includes:
 
 **Goal:** Prepare the project for larger datasets and reproducible downstream analysis without prematurely freezing a leaderboard format.
 
+Current capability:
+- [x] Evaluation and agreement commands already emit machine-readable JSON.
+
 Candidate work includes:
-- machine-readable JSON output for evaluation and agreement commands;
+- define a versioned result/submission schema building on the existing JSON output before public leaderboard or cross-run aggregation work;
 - directory-level validation for larger dataset collections;
 - an explicit dataset-split contract before Phase 3/4 train/dev/test use becomes necessary;
-- a standard submission/result schema before public leaderboard work;
 - glossary expansion for culturally important research terms such as larrikin, Tall Poppy Syndrome, taking the piss, cultural cringe, and carefully scoped class-marked terminology.
 
 ---
@@ -174,7 +178,7 @@ First Nations/Blak, migrant, multicultural, regional, class-marked, or other com
 **Deliverables:**
 - Evaluation pipeline for local and API-accessible models
 - Baseline scores on component metrics, not a single aggregate "Australian understanding score"
-- Machine-readable result output suitable for independent analysis
+- Versioned machine-readable result records building on the existing JSON CLI output
 - Calibration, coverage, ambiguity-recognition, hostility, social-valence, pragmatic, and context-sensitivity reporting
 - Analysis of model failure modes
 - Initial answer to RQ1–RQ5
@@ -183,7 +187,8 @@ First Nations/Blak, migrant, multicultural, regional, class-marked, or other com
 - [ ] At least 3 models evaluated
 - [ ] Component metrics reported without overclaiming
 - [ ] Analysis does not conflate benchmark performance with cultural competence
-- [ ] Missing predictions and unresolved annotations remain visible rather than being silently removed from denominators
+- [ ] Missing predictions remain visible in dataset-level coverage and the applicable accuracy denominators rather than being silently dropped
+- [ ] Unresolved categorical annotations such as `hostility: "uncertain"` and `social_valence: "unknown"` are excluded from their categorical accuracy denominators and reported separately, matching the reference evaluator contract
 - [ ] Results reviewed before public release
 
 ---
@@ -219,18 +224,20 @@ First Nations/Blak, migrant, multicultural, regional, class-marked, or other com
 
 ## Phase 6 — Moderation-Fairness Evaluation
 
-**Goal:** Investigate whether content moderation systems produce disparate false-positive or false-negative rates for Australian pragmatic language compared with appropriately matched controls.
+**Goal:** Investigate whether content moderation systems produce disparate false-positive or false-negative rates for Australian pragmatic language relative to explicitly defined, denotatively/pragmatically matched non-Australian or comparison-register counterparts, while separately testing benign-versus-hostile discrimination.
 
 **Deliverables:**
 - Moderation-fairness evaluation methodology
-- Matched benign-versus-hostile control families
+- Matched Australian-versus-non-Australian (or otherwise explicitly defined comparison-register) counterpart families suitable for estimating disparate error rates
+- Matched benign-versus-hostile control families suitable for detecting false positives, false negatives, and degenerate always-benign behaviour
 - Results on at least 2 publicly accessible moderation systems
-- Analysis of false-positive and false-negative patterns
+- Analysis of false-positive and false-negative patterns by comparison group and hostility status
 - Separate treatment of affectionate insult, profanity-non-hostile, relational teasing, satire, genuine hostility, and unresolved hostility
 - Answer to RQ5
 
 **Graduation Criteria:**
 - [ ] Methodology reviewed for ethical soundness
+- [ ] The evaluation includes matched Australian/comparison-register counterparts sufficient to support any disparate-rate claim
 - [ ] The evaluation includes enough genuine-hostility controls that an always-benign classifier cannot appear successful
 - [ ] Results do not identify individuals
 - [ ] Limitations of moderation system API access are documented
