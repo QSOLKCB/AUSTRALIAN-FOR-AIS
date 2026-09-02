@@ -69,7 +69,12 @@ def _registered_sections(corpus: str) -> dict[str, str]:
 
 
 def _scalar_value(entry: str, section: str, field: str) -> str:
-    """Return non-whitespace content from a mandatory single-line field."""
+    """Return the unique non-whitespace value for a mandatory single-line field."""
+    occurrences = list(re.finditer(rf"(?m)^{re.escape(field)}", section))
+    assert len(occurrences) == 1, (
+        f"{entry} must contain exactly one mandatory field {field}"
+    )
+
     match = re.search(
         rf"(?m)^{re.escape(field)}[ \t]*([^\r\n]*\S[^\r\n]*)[ \t]*$",
         section,
@@ -79,7 +84,7 @@ def _scalar_value(entry: str, section: str, field: str) -> str:
 
 
 def _require_scalar_value(entry: str, section: str, field: str) -> None:
-    """Require non-whitespace content on a mandatory single-line field."""
+    """Require exactly one non-whitespace mandatory single-line field."""
     _scalar_value(entry, section, field)
 
 
@@ -163,6 +168,18 @@ def test_scalar_field_cannot_borrow_next_metadata_line():
     )
     with pytest.raises(AssertionError, match="empty mandatory field"):
         _require_scalar_value("### Example", section, "**Source type:**")
+
+
+def test_scalar_field_rejects_duplicate_occurrences():
+    section = (
+        "### Example\n\n"
+        "**Rights and provenance boundary:** restrictive value\n\n"
+        "**Rights and provenance boundary:**\n"
+    )
+    with pytest.raises(AssertionError, match="exactly one mandatory field"):
+        _require_scalar_value(
+            "### Example", section, "**Rights and provenance boundary:**"
+        )
 
 
 def test_community_governance_requires_same_line_rationale():
