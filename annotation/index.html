@@ -201,7 +201,7 @@ function annotatorKey() {
 function storageKey(itemId) { return `afa-phase2:${annotatorKey()}:${itemId}`; }
 function lines(id) { return $(id).value.split(/\r?\n/).map(x => x.trim()).filter(Boolean); }
 function setLines(id, values) { $(id).value = (values || []).join("\n"); }
-function normaliseReading(value) { return value.toLocaleLowerCase().replace(/\s+/g, " ").trim(); }
+function normaliseReading(value) { return value.toLowerCase().replace(/\s+/g, " ").trim(); }
 function selectedMechanisms() { return [...document.querySelectorAll('input[name="mechanism"]:checked')].map(x => x.value); }
 function setMechanisms(values) {
   const selected = new Set(values || []);
