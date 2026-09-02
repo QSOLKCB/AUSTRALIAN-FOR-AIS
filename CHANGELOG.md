@@ -21,6 +21,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Formally registered ASCFT under the governed research-source contract with explicit project-authored theoretical status, rights/provenance limits, source-specific mappings, and a safe-abstraction boundary rather than leaving Workstream F dependent on roadmap-only provenance
 - Centralized ASCFT-derived authority-register, epistemic-coherence, demonstrated-competence, frame-stability, semantic-drift, contradiction-accumulation, and mode-transition experiment rules in `docs/METHODOLOGY.md`, preserving `FORMAL ANALOGY != PHYSICAL ONTOLOGY` and `MATHEMATICAL MODEL != EMPIRICALLY VALIDATED MECHANISM`
 - Hardened research-reference validation to reject private, loopback, and other non-global IP-literal source destinations and to prevent all supported Markdown thematic-break forms from masquerading as substantive research or project mappings
+- Centralized the ASCFT deadpan delivery-versus-intent construction rule with matched literal and nonliteral controls, and hardened mapping validation so bare blockquote markers and empty fenced-code containers cannot satisfy mandatory mapping content
 
 ---
 
