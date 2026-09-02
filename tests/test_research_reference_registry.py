@@ -1,5 +1,6 @@
 """Regression checks for governed research-reference registration."""
 
+from collections import Counter
 from pathlib import Path
 import re
 
@@ -17,14 +18,6 @@ EXPECTED_INITIAL_ENTRIES = (
     "### Hurley (2025), *Laughter with purpose: how First Nations Australian comedians use humour to engage, educate, and empower audiences*",
 )
 
-COMMUNITY_SPECIFIC_ENTRIES = (
-    "### *Black Comedy* (ABC, 2014-2020)",
-    "### *Kath & Kim*",
-    "### *The Castle* (1997)",
-    "### *Acropolis Now*",
-    "### Hurley (2025), *Laughter with purpose: how First Nations Australian comedians use humour to engage, educate, and empower audiences*",
-)
-
 SCALAR_FIELDS = (
     "**Source type:**",
     "**Rights and provenance boundary:**",
@@ -34,6 +27,9 @@ SCALAR_FIELDS = (
 
 BATCH_HEADING = "## Registered post-Phase-2 expansion batch"
 BATCH_END = "## Priority A: adversarial pragmatics"
+CONSULTATION_BOUNDARY = (
+    "appropriate consultation, provenance, permissions, and scope limitations"
+)
 
 
 def _registered_batch(corpus: str) -> str:
@@ -48,6 +44,12 @@ def _registered_sections(corpus: str) -> dict[str, str]:
     batch = _registered_batch(corpus)
     matches = list(re.finditer(r"(?m)^### .+$", batch))
     assert matches, "registered post-Phase-2 batch contains no entries"
+
+    headings = [match.group(0) for match in matches]
+    duplicates = sorted(
+        heading for heading, count in Counter(headings).items() if count > 1
+    )
+    assert not duplicates, f"duplicate registered-entry headings: {duplicates}"
 
     sections: dict[str, str] = {}
     for index, match in enumerate(matches):
@@ -81,10 +83,10 @@ def _require_mapping_block(entry: str, section: str) -> None:
 
 
 def _require_registered_source_link(entry: str, section: str) -> None:
-    """Require at least one HTTPS link in the registered-source field."""
+    """Require at least one HTTPS link in the registered-source field only."""
     source_block = re.search(
-        r"(?ms)^\*\*Registered sources?:\*\*\s*(.+?)"
-        r"(?=^\*\*Source type:\*\*)",
+        r"(?ms)^\*\*Registered sources?:\*\*\s*(.*?)"
+        r"(?=^\*\*[^*\n]+:\*\*)",
         section,
     )
     assert source_block and source_block.group(1).strip(), (
@@ -92,6 +94,22 @@ def _require_registered_source_link(entry: str, section: str) -> None:
     )
     urls = re.findall(r"https://[^\s)]+", source_block.group(1))
     assert urls, f"{entry} has no HTTPS link in its registered-source field"
+
+
+def _require_community_governance(entry: str, section: str) -> None:
+    """Validate the per-entry community-governance classification and gate."""
+    classification = re.search(
+        r"(?m)^\*\*Community-specific governance:\*\*\s*"
+        r"(required|not-required):\s*(.+?)\s*$",
+        section,
+    )
+    assert classification and classification.group(2).strip(), (
+        f"{entry} is missing a valid community-specific governance classification"
+    )
+    if classification.group(1) == "required":
+        assert CONSULTATION_BOUNDARY in section, (
+            f"{entry} is missing its community-specific consultation boundary"
+        )
 
 
 def test_post_phase2_registry_batch_preserves_governance_contract():
@@ -111,13 +129,5 @@ def test_post_phase2_registry_batch_preserves_governance_contract():
         _require_registered_source_link(entry, section)
         for field in SCALAR_FIELDS:
             _require_scalar_value(entry, section, field)
+        _require_community_governance(entry, section)
         _require_mapping_block(entry, section)
-
-    consultation_boundary = (
-        "appropriate consultation, provenance, permissions, and scope limitations"
-    )
-    for entry in COMMUNITY_SPECIFIC_ENTRIES:
-        assert entry in sections, f"community-specific registration {entry!r} is missing"
-        assert consultation_boundary in sections[entry], (
-            f"{entry} is missing its community-specific consultation boundary"
-        )
