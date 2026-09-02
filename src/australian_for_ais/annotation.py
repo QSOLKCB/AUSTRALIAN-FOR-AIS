@@ -28,7 +28,21 @@ def _normalise_context(value: str) -> str:
     return " ".join(value.split()).casefold()
 
 
-def validate_pilot_context_swap_groups(items: list[PilotItem]) -> None:
+def _pilot_group_line_suffix(
+    members: list[PilotItem], source_lines: dict[str, int] | None
+) -> str:
+    if not source_lines:
+        return ""
+    lines = sorted({source_lines[item.id] for item in members if item.id in source_lines})
+    if not lines:
+        return ""
+    label = "line" if len(lines) == 1 else "lines"
+    return f" ({label} {', '.join(str(line) for line in lines)})"
+
+
+def validate_pilot_context_swap_groups(
+    items: list[PilotItem], source_lines: dict[str, int] | None = None
+) -> None:
     """Validate only observation-level contracts for unannotated pilot swap groups."""
     groups: dict[str, list[PilotItem]] = defaultdict(list)
     for item in items:
@@ -36,25 +50,27 @@ def validate_pilot_context_swap_groups(items: list[PilotItem]) -> None:
             groups[item.context_swap_group].append(item)
 
     for group_name, members in groups.items():
+        line_suffix = _pilot_group_line_suffix(members, source_lines)
         if len(members) < 2:
             raise ValidationError(
-                f"Pilot context_swap_group '{group_name}' must contain at least two items."
+                f"Pilot context_swap_group '{group_name}'{line_suffix} must contain at least two items."
             )
         utterances = {_normalise_observed_utterance(item.utterance) for item in members}
         if len(utterances) != 1:
             raise ValidationError(
-                f"Pilot context_swap_group '{group_name}' must preserve the same utterance."
+                f"Pilot context_swap_group '{group_name}'{line_suffix} must preserve the same utterance."
             )
         contexts = {_normalise_context(item.context) for item in members}
         if len(contexts) != len(members):
             raise ValidationError(
-                f"Pilot context_swap_group '{group_name}' must use distinct contexts."
+                f"Pilot context_swap_group '{group_name}'{line_suffix} must use distinct contexts."
             )
 
 
 def load_pilot_items(path: pathlib.Path) -> dict[str, PilotItem]:
     """Load a non-empty pilot item file and validate duplicate/group contracts."""
     items: dict[str, PilotItem] = {}
+    source_lines: dict[str, int] = {}
     for lineno, record in iter_jsonl(path):
         try:
             validate_pilot_item_record(record)
@@ -64,11 +80,12 @@ def load_pilot_items(path: pathlib.Path) -> dict[str, PilotItem]:
         if item.id in items:
             raise ValidationError(f"Line {lineno}: duplicate pilot item id '{item.id}'.")
         items[item.id] = item
+        source_lines[item.id] = lineno
 
     if not items:
         raise ValidationError("Pilot item file must contain at least one item.")
 
-    validate_pilot_context_swap_groups(list(items.values()))
+    validate_pilot_context_swap_groups(list(items.values()), source_lines=source_lines)
     return items
 
 
