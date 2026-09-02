@@ -59,10 +59,33 @@ def _require_non_whitespace_items(values: Any, field_name: str) -> None:
             )
 
 
+def _require_unit_interval_number(
+    record: Mapping[str, Any], field_name: str
+) -> None:
+    """Fail closed on bounded numeric fields without formatting hostile values."""
+    if field_name not in record:
+        return
+    value = record.get(field_name)
+    if (
+        not isinstance(value, (int, float))
+        or isinstance(value, bool)
+        or not (0.0 <= value <= 1.0)
+    ):
+        # Do not interpolate ``value`` here: arbitrarily large integers can raise
+        # during repr/str conversion before the intended ValidationError is built.
+        raise ValidationError(
+            f"'{field_name}' must be a number between 0.0 and 1.0."
+        )
+
+
 def validate_example_record(record: Any) -> None:
     """Validate a single benchmark example record."""
     if not isinstance(record, Mapping):
         raise ValidationError("Example record must be a JSON object.")
+
+    # Preflight bounded numerics before jsonschema constructs diagnostics. This
+    # keeps giant integers, NaN, and infinities on a controlled failure path.
+    _require_unit_interval_number(record, "confidence")
 
     try:
         jsonschema.validate(record, _get_example_schema())
@@ -94,14 +117,7 @@ def _semantic_validate_example(record: Mapping[str, Any]) -> None:
     )
 
     confidence = record.get("confidence")
-    if (
-        not isinstance(confidence, (int, float))
-        or isinstance(confidence, bool)
-        or not (0.0 <= confidence <= 1.0)
-    ):
-        raise ValidationError(
-            f"'confidence' must be a number between 0.0 and 1.0, got {confidence!r}."
-        )
+    _require_unit_interval_number(record, "confidence")
 
     interps = record.get("pragmatic_interpretations", [])
     if not isinstance(interps, list) or len(interps) < 1:
@@ -242,6 +258,9 @@ def validate_evaluation_record(record: Any) -> None:
     if not isinstance(record, Mapping):
         raise ValidationError("Evaluation record must be a JSON object.")
 
+    # Preflight for the same reason as example confidence above.
+    _require_unit_interval_number(record, "model_confidence")
+
     try:
         jsonschema.validate(record, _get_evaluation_schema())
     except jsonschema.ValidationError as exc:
@@ -267,15 +286,7 @@ def validate_evaluation_record(record: Any) -> None:
     ):
         raise ValidationError("'model_id' must contain non-whitespace text when present.")
 
-    mc = record.get("model_confidence")
-    if (
-        not isinstance(mc, (int, float))
-        or isinstance(mc, bool)
-        or not (0.0 <= mc <= 1.0)
-    ):
-        raise ValidationError(
-            f"'model_confidence' must be a number between 0.0 and 1.0, got {mc!r}."
-        )
+    _require_unit_interval_number(record, "model_confidence")
 
     ph = record.get("predicted_hostility")
     if not isinstance(ph, bool) and ph != "uncertain":
