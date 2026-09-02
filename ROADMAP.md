@@ -121,8 +121,12 @@ These controls are particularly important before Phase 6 moderation-fairness eva
 
 **Goal:** Keep benchmark behaviour stable across supported Python versions and parser/runtime changes.
 
+Current support contract:
+- [x] Python 3.11 and 3.12 are the currently advertised and CI-tested package range.
+- [x] Package metadata is temporarily constrained to `>=3.11,<3.13` so unverified newer runtimes are not silently advertised as supported.
+
 Planned work includes:
-- expand CI beyond Python 3.11/3.12 to include Python 3.13 and 3.14 once compatibility is established;
+- establish Python 3.13 and 3.14 compatibility in CI before removing the temporary `<3.13` package bound or describing those runtimes as supported;
 - make excessive-JSON-nesting rejection an explicit project contract rather than relying on a particular Python parser raising `RecursionError`;
 - preserve fail-closed handling for duplicate keys, pathological integers, non-finite values, cyclic in-memory structures, malformed JSON, Unicode decoding failures, and schema-diagnostic hazards;
 - add useful test-coverage reporting without weakening deterministic test gates;
