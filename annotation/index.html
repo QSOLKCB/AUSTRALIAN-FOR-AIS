@@ -200,6 +200,26 @@ function annotatorKey() {
   return id;
 }
 function storageKey(itemId) { return `afa-phase2:${annotatorKey()}:${itemId}`; }
+function itemObservationKey(item) {
+  return JSON.stringify({
+    id: item.id,
+    locale: item.locale,
+    utterance: item.utterance,
+    context: item.context,
+    speaker_relationship: item.speaker_relationship,
+    source_type: item.source_type,
+    provenance: item.provenance,
+    license: item.license,
+    tags: item.tags || [],
+    context_swap_group: item.context_swap_group || null
+  });
+}
+function unpackStoredAnnotation(item, raw) {
+  const saved = JSON.parse(raw);
+  if (!saved || saved.item_observation_key !== itemObservationKey(item)) return null;
+  if (!saved.annotation || saved.annotation.example_id !== item.id) return null;
+  return saved.annotation;
+}
 function normaliseReading(value) {
   return value.toLowerCase().replace(PHASE2_ANNOTATION_WHITESPACE, " ").replace(/^ +| +$/g, "");
 }
@@ -287,7 +307,8 @@ function loadSaved(item) {
   let raw;
   try { raw = localStorage.getItem(storageKey(item.id)); } catch (_) { return; }
   if (!raw) return;
-  const a = JSON.parse(raw);
+  const a = unpackStoredAnnotation(item, raw);
+  if (!a) return;
   $("literal").value = a.literal_interpretation || "";
   setLines("pragmatics", a.pragmatic_interpretations);
   $("primary").value = a.primary_pragmatic_interpretation || "";
@@ -338,7 +359,7 @@ function buildAnnotation() {
     annotation_id: `${annotator}::${item.id}`,
     example_id: item.id,
     annotator_id: annotator,
-    literal_interpretation: literal.trim(),
+    literal_interpretation: literal,
     pragmatic_interpretations: pragmatic,
     primary_pragmatic_interpretation: primary,
     humour_mechanisms: selected,
@@ -356,8 +377,10 @@ function buildAnnotation() {
 
 function saveCurrent() {
   try {
+    const item = items[index];
     const annotation = buildAnnotation();
-    localStorage.setItem(storageKey(items[index].id), JSON.stringify(annotation));
+    const saved = {item_observation_key: itemObservationKey(item), annotation};
+    localStorage.setItem(storageKey(item.id), JSON.stringify(saved));
     $("status").textContent = `${index + 1} / ${items.length} — saved`;
     return true;
   } catch (err) { alert(err.message); return false; }
@@ -397,7 +420,12 @@ $("next").addEventListener("click", () => { if (index < items.length - 1) { inde
 $("export").addEventListener("click", () => {
   try {
     const annotator = annotatorKey(); const records = [];
-    for (const item of items) { const raw = localStorage.getItem(`afa-phase2:${annotator}:${item.id}`); if (raw) records.push(JSON.parse(raw)); }
+    for (const item of items) {
+      const raw = localStorage.getItem(`afa-phase2:${annotator}:${item.id}`);
+      if (!raw) continue;
+      const annotation = unpackStoredAnnotation(item, raw);
+      if (annotation) records.push(annotation);
+    }
     if (!records.length) throw new Error("No saved annotations to export.");
     const blob = new Blob([records.map(record => JSON.stringify(record)).join("\n") + "\n"], {type:"application/x-ndjson"});
     const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `${annotator}-annotations.jsonl`; a.click(); URL.revokeObjectURL(url);
