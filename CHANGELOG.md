@@ -18,6 +18,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Synchronized `docs/METHODOLOGY.md` with the new trans-Tasman relational-pragmatics and slang/operational-intelligibility experiment families, including explicit relationship, reciprocity, mention/use, listener-background, slang-density, and task-criticality controls
 - Replaced explicit nationality-stereotype wording in `ROADMAP.md` with abstract research placeholders and marked the New Zealand sexual sense of `root` as unestablished until an attributable New Zealand source is registered
 - Pinned all newly adopted Workstream G/H registry entries in the governance regression and tightened source-link validation to reject localhost and other single-label HTTPS hosts
+- Formally registered ASCFT under the governed research-source contract with explicit project-authored theoretical status, rights/provenance limits, source-specific mappings, and a safe-abstraction boundary rather than leaving Workstream F dependent on roadmap-only provenance
+- Centralized ASCFT-derived authority-register, epistemic-coherence, demonstrated-competence, frame-stability, semantic-drift, contradiction-accumulation, and mode-transition experiment rules in `docs/METHODOLOGY.md`, preserving `FORMAL ANALOGY != PHYSICAL ONTOLOGY` and `MATHEMATICAL MODEL != EMPIRICALLY VALIDATED MECHANISM`
+- Hardened research-reference validation to reject private, loopback, and other non-global IP-literal source destinations and to prevent all supported Markdown thematic-break forms from masquerading as substantive research or project mappings
 
 ---
 
