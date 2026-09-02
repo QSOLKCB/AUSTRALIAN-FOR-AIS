@@ -87,7 +87,7 @@ This avoids rewarding a model for confidently collapsing unresolved ambiguity in
 
 ## Context-Swap Design
 
-A context-swap group holds the utterance constant while changing context. Dataset validation requires at least two members, the same observed utterance, distinct contexts, distinct primary pragmatic directions, and pairwise-disjoint accepted pragmatic direction sets.
+A context-swap group holds the utterance constant while changing context. Dataset validation requires at least two members, the same observed utterance with lexical case preserved, distinct contexts, distinct primary pragmatic directions, and pairwise-disjoint accepted pragmatic direction sets. Whitespace runs may be normalised for comparison, but case differences such as `US` versus `us` are treated as a changed linguistic observation rather than a valid context-only swap.
 
 The disjointness requirement is deliberately stronger than merely requiring different primaries. Without it, two ambiguous members could both accept readings `A` and `B`, allowing a model to swap `A` and `B` between contexts and still receive context-sensitivity credit. A valid context-swap group must therefore give each context a non-overlapping set of accepted directions.
 
@@ -130,11 +130,14 @@ Phase 1 reports:
 - ambiguity recognition on annotated ambiguous items;
 - hostility classification accuracy on examples with resolved boolean hostility annotations;
 - a separate count of examples whose hostility annotation remains `uncertain`;
-- social-valence classification accuracy;
+- social-valence classification accuracy on examples with resolved social-valence annotations;
+- a separate count of examples whose social valence remains `unknown`;
 - confidence calibration using the Brier score for confidence in pragmatic correctness; and
 - directionally correct context-swap sensitivity.
 
 An annotated hostility value of `uncertain` is not a categorical truth label. Such examples are excluded from the hostility-accuracy denominator rather than rewarding a model merely for echoing annotator uncertainty.
+
+Likewise, `social_valence: "unknown"` marks an unresolved annotation rather than a categorical class target. Those examples are excluded from social-valence accuracy and reported separately, so a model is not rewarded merely for echoing the absence of a resolved label.
 
 For the Brier component, pragmatic correctness is encoded as `1` when the submitted pragmatic prediction matches an accepted interpretation, including the explicit `insufficient_context` sentinel when declared by the example, and `0` otherwise. The reported value is the mean squared difference between the model's confidence and that binary outcome. Lower is better.
 
