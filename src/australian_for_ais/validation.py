@@ -87,9 +87,21 @@ def _require_unit_interval_number(
 
 def _preflight_json_structure(value: Any) -> None:
     """Reject values that can make schema diagnostics recurse or stringify unsafely."""
-    stack = [value]
+    # Track only containers currently on the traversal path. A container may be
+    # reused in a different, already-completed branch without being a cycle.
+    stack: list[tuple[Any, bool]] = [(value, False)]
+    active_container_ids: set[int] = set()
+
     while stack:
-        current = stack.pop()
+        current, exiting = stack.pop()
+        is_mapping = isinstance(current, Mapping)
+        is_sequence = isinstance(current, Sequence) and not isinstance(
+            current, (str, bytes)
+        )
+
+        if exiting:
+            active_container_ids.remove(id(current))
+            continue
 
         if isinstance(current, bool) or current is None:
             continue
@@ -107,14 +119,25 @@ def _preflight_json_structure(value: Any) -> None:
             continue
         if isinstance(current, str):
             continue
-        if isinstance(current, Mapping):
-            for key, item in current.items():
-                if not isinstance(key, str):
-                    raise ValidationError("JSON object keys must be strings.")
-                stack.append(item)
-            continue
-        if isinstance(current, Sequence) and not isinstance(current, (str, bytes)):
-            stack.extend(current)
+
+        if is_mapping or is_sequence:
+            container_id = id(current)
+            if container_id in active_container_ids:
+                raise ValidationError(
+                    "Record contains a cyclic container reference and cannot be validated."
+                )
+
+            active_container_ids.add(container_id)
+            stack.append((current, True))
+
+            if is_mapping:
+                for key, item in current.items():
+                    if not isinstance(key, str):
+                        raise ValidationError("JSON object keys must be strings.")
+                    stack.append((item, False))
+            else:
+                for item in current:
+                    stack.append((item, False))
 
 
 def _reject_duplicate_object_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
