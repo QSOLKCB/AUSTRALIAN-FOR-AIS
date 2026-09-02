@@ -61,6 +61,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Moved the documented lukewarm reading for `au-006` into the accepted pragmatic interpretations
 - Rejected whitespace-only benchmark and prediction text across required linguistic/scorable fields
 - Made `scripts/evaluate_predictions.py` return non-zero on missing/unknown prediction errors, matching the module CLI
+- Reserved `insufficient_context` for exact sentinel-primary examples and rejected it from ordinary accepted-reading lists
+- Required pairwise-disjoint accepted pragmatic direction sets in context-swap groups so overlapping ambiguous answers cannot earn swapped-direction credit
+- Made empty benchmark datasets, malformed direct mapping IDs, directory JSONL inputs, and unreadable JSONL inputs fail closed
+- Added finite `[0, 1]` confidence validation to direct `score()` calls before Brier arithmetic
+- Clarified `au-008` by explicitly establishing that the referenced supermarket person is unknown to both speakers, preserving the acquaintance reading only as a different-context possibility
+- Synchronized `docs/METHODOLOGY.md` with the hardened context-swap contract, including the sentinel/disjointness interaction
 
 ### Removed
 
