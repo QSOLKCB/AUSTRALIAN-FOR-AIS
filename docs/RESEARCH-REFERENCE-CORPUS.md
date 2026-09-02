@@ -285,6 +285,192 @@ Relevant project mappings:
 
 ---
 
+### Trans-Tasman constitutional and federation context
+
+**Registered sources:**
+- https://peo.gov.au/understand-our-parliament/history-of-parliament/federation/federation
+- https://peo.gov.au/understand-our-parliament/how-parliament-works/the-australian-constitution/introducing-the-australian-constitution
+- https://peo.gov.au/understand-our-parliament/your-questions-on-notice/questions/new-zealand-is-mentioned-in-the-australian-constitution-does-that-mean-that-new-zealanders-have-the-right-to-vote-in-australia
+- https://www.legislation.gov.au/C2004Q00685/asmade/1901-01-01/text/original/epub/OEBPS/document_1/document_1.html
+
+**Source type:** Official Parliamentary Education Office explanatory material and Commonwealth legislation used to establish historical federation and constitutional context.
+
+**Rights and provenance boundary:** These official pages are cited as historical and legal references. Registration does not authorise wholesale republication of page text, educational material, or legislative presentation content in benchmark records; benchmark examples must remain independently authored.
+
+**Epistemic status:** These sources establish that New Zealand participated in early Australasian federation discussions and is named in the historical constitutional text. They do not establish a shared modern national identity, prove a cousin-like relationship between individual Australians and New Zealanders, or determine the pragmatic meaning of contemporary trans-Tasman teasing.
+
+**Community-specific governance:** not-required: The registered use is limited to institutional historical context and does not claim to represent New Zealand speech, identity, or community-specific pragmatic norms.
+
+Research mappings:
+
+- historical background for trans-Tasman relational-pragmatics hypotheses
+- distinction between institutional history and contemporary interpersonal meaning
+- risks of converting historical proximity into deterministic identity claims
+
+Relevant project mappings:
+
+- Workstream G: Trans-Tasman relational pragmatics and lexical context
+- HISTORICAL FEDERATION CONNECTION != SHARED NATIONAL IDENTITY
+- AU-HUMOUR-007: A CULTURAL HEURISTIC MUST NOT BE TREATED AS A UNIVERSAL RULE
+- Phase 7 cross-dialect and cross-cultural comparison
+
+**Safe benchmark abstraction:** Use the records only to document historical context around Australia and New Zealand; do not infer modern affinity, hostility, shared identity, or pragmatic licence from constitutional history alone.
+
+---
+
+### ABC Language, *From rooting to bonking: a history of Australian sex terms*
+
+**Registered source:** https://www.abc.net.au/news/2018-03-01/from-rooting-to-bonking-a-history-of-australian-sex-terms/9492856
+
+**Source type:** ABC language-history article used as a public linguistic reference for Australian sexual slang and lexical change.
+
+**Rights and provenance boundary:** The article is a research reference only. Registration does not permit reproducing substantial article text or turning its examples into redistributable benchmark records without independent provenance and rights analysis.
+
+**Epistemic status:** The article supports the bounded claim that `root` has an Australian sexual-intercourse sense and provides historical discussion of Australian sex terminology. It does not establish how every Australian uses the term, does not by itself establish New Zealand usage, and does not make any single phrase a deterministic sexual reading outside context.
+
+**Community-specific governance:** not-required: The registered use is a bounded Australian lexical-history reference, not a claim about a subgroup or a New Zealand community-specific speech norm.
+
+Research mappings:
+
+- lexical polysemy and dialect-sensitive sense selection
+- `root` sexual versus technical, botanical, and sports-support senses
+- historical lexical change and context dependence
+
+Relevant project mappings:
+
+- Workstream G: Trans-Tasman relational pragmatics and lexical context
+- DIALECT-SPECIFIC SENSE != GLOBAL ENGLISH SENSE
+- AU-HUMOUR-005: MODEL CONFIDENCE SHALL NOT SUBSTITUTE FOR CULTURAL CONTEXT
+- Phase 5 context-swap and minimal-pair design
+
+**Safe benchmark abstraction:** Build independently authored polysemy pairs that vary social, technical, botanical, or sports contexts; do not treat the article as proof that every Australian or New Zealander assigns the same sense to `root`.
+
+---
+
+### Victoria University, *Australian slang dictionary*
+
+**Registered source:** https://www.vu.edu.au/about-vu/news-events/vu-blog/australian-slang-dictionary
+
+**Source type:** Public university educational glossary used for orientation to attested Australian slang terms and context-sensitive address forms.
+
+**Rights and provenance boundary:** The glossary is cited for research orientation. Registration does not permit copying the glossary wholesale into the benchmark, and its entries are not automatically benchmark labels or licensed dataset examples.
+
+**Epistemic status:** The glossary provides useful public attestations for terms including `mate`, `old mate`, `smoko`, `heaps`, and `cactus`, and explicitly notes that address terms can be unfriendly in some contexts. It is not a complete lexicon, a population survey, or evidence that every listed form is equally current across regions, generations, occupations, and communities.
+
+**Community-specific governance:** not-required: The source is used as broad lexical orientation and not to manufacture subgroup-specific Australian speech or community ground truth.
+
+Research mappings:
+
+- slang recognition versus pragmatic interpretation
+- social-valence ambiguity of address terms
+- glossary meaning versus context-conditioned force
+- regional, generational, and temporal uncertainty
+
+Relevant project mappings:
+
+- Workstream H: Slang density, register compression, and operational intelligibility
+- SLANG GLOSSARY != PRAGMATIC UNDERSTANDING
+- SLANG TOKEN != FIXED PRAGMATIC MEANING
+- AU-HUMOUR-003: MATE SHALL NOT BE ASSIGNED A FIXED SOCIAL VALENCE
+
+**Safe benchmark abstraction:** Use the glossary to nominate independently authored lexical and context-swap tests, while requiring separate evidence for regional, generational, occupational, or community-specific claims.
+
+---
+
+### r/australia, *Best Aussie slang* community thread
+
+**Registered source:** https://www.reddit.com/r/australia/comments/1g73mue/best_aussie_slang/
+
+**Source type:** Public user-generated community discussion retained as orientation and community-attestation material rather than lexicographic authority.
+
+**Rights and provenance boundary:** Individual Reddit posts and comments remain third-party user-generated content. Registration does not permit bulk copying, redistribution, or conversion of comments into benchmark examples; any exact quotation requires separate provenance and rights consideration.
+
+**Epistemic status:** The thread can reveal candidate expressions, speaker judgements, disagreements about currency or origin, and naturally occurring metalinguistic discussion. Its participants are self-selected and the thread cannot establish prevalence, representativeness, national consensus, or authoritative etymology.
+
+**Community-specific governance:** not-required: The thread is used only as non-representative orientation and attestation, not as ground truth about an Australian subgroup or the Australian population.
+
+Research mappings:
+
+- community disagreement about slang currency and origin
+- discovery of candidate colloquial forms
+- naturally occurring metalinguistic judgements
+- uncertainty about regional and generational usage
+
+Relevant project mappings:
+
+- Workstream H: Slang density, register compression, and operational intelligibility
+- COMMUNITY ATTESTATION != LEXICOGRAPHIC AUTHORITY
+- AU-HUMOUR-009: ANNOTATOR INTERPRETATION != OBJECTIVE GROUND TRUTH
+
+**Safe benchmark abstraction:** Use the thread only to generate research leads for independently authored examples and later source verification; do not use comment popularity or repetition as a proxy for population prevalence.
+
+---
+
+### Australian Defence multinational communication reports (2022 and 2026)
+
+**Registered sources:**
+- https://www.defence.gov.au/news-events/news/2022-09-08/communication-key-combined-exercise
+- https://www.defence.gov.au/news-events/news/2026-06-11/partner-nations-rehearse-war
+
+**Source type:** Official Australian Defence news reports documenting communication challenges and adaptation during multinational military exercises.
+
+**Rights and provenance boundary:** Defence reporting is registered as institutional evidence. The repository may cite and summarise the reports but does not treat their prose, imagery, interviews, or exercise material as redistributable benchmark data.
+
+**Epistemic status:** The 2022 report directly records that Australian accent and slang could be particularly challenging for Filipino soldiers, while the 2026 report records language and terminology hurdles and the use of visual aids to create shared understanding. These reports support communication-friction hypotheses, not claims that slang functioned as intentional encryption, defeated Allied codebreakers, or was formally prohibited in Australian-American exercises.
+
+**Community-specific governance:** not-required: The registered use concerns operational communication across partner forces and listener backgrounds, not a claim that a cultural or demographic community has a fixed speech pattern.
+
+Research mappings:
+
+- cross-group intelligibility under unfamiliar accent and slang
+- terminology alignment and shared operational reference frames
+- task criticality as a variable in register choice
+- communication repair through translation and visual grounding
+
+Relevant project mappings:
+
+- Workstream H: Slang density, register compression, and operational intelligibility
+- IN-GROUP FLUENCY != CROSS-GROUP INTELLIGIBILITY
+- FAMILIAR REGISTER != OPERATIONAL CLARITY
+- DENSE COLLOQUIAL REGISTER != SECRET CODE
+- Phase 7 cross-register comparison
+
+**Safe benchmark abstraction:** Create synthetic communication tasks that vary slang density, listener familiarity, and operational stakes without reproducing exercise dialogue or claiming that authentic Australian speech is inherently unsafe or unintelligible.
+
+---
+
+### WWII American-serviceman Australia language guides
+
+**Registered sources:**
+- https://www.awm.gov.au/collection/LIB100000077
+- https://www.awm.gov.au/collection/LIB20571
+- https://dictionaryofsydney.org/media/5562
+
+**Source type:** Australian War Memorial catalogue records for wartime guides and an archived Dictionary of Sydney record identifying the Australian-slang section of a United States Army guide.
+
+**Rights and provenance boundary:** These records establish the existence and historical purpose of the guides. Registration does not authorise republication of the full booklets, scans, illustrations, or glossary content as benchmark data.
+
+**Epistemic status:** The sources establish that American servicemen were provided Australia-oriented guides and that a United States Army pocket guide contained an Australian-slang section. They support a historical need for cultural and language orientation, but do not prove that actual joint operations failed because of slang or that Australian speech operated as an accidental cipher.
+
+**Community-specific governance:** not-required: The registered use is historical institutional evidence about serviceman orientation rather than a community-specific claim about contemporary Australian speakers.
+
+Research mappings:
+
+- historical language briefing for cross-national communication
+- slang as an anticipated comprehension issue for unfamiliar listeners
+- distinction between orientation material and evidence of operational failure
+
+Relevant project mappings:
+
+- Workstream H: Slang density, register compression, and operational intelligibility
+- HISTORICAL LANGUAGE BRIEFING != PROOF OF COMMUNICATION FAILURE
+- INFORMAL COMPRESSION != INTENTIONAL ENCRYPTION
+- Phase 7 historical and cross-register context
+
+**Safe benchmark abstraction:** Use the archival records to motivate historically bounded comprehension experiments and source-governance questions, not to infer contemporary prevalence or fabricate claims of wartime codebreaking failure.
+
+---
+
 ## Priority A: adversarial pragmatics
 
 ### The Chaser / *The Chaser's War on Everything*
