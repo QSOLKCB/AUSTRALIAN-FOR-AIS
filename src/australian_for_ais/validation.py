@@ -78,6 +78,16 @@ def _require_unit_interval_number(
         )
 
 
+def _reject_duplicate_object_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Build a JSON object while rejecting parser-dependent duplicate keys."""
+    record: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in record:
+            raise ValidationError(f"Duplicate JSON object key '{key}' is not allowed.")
+        record[key] = value
+    return record
+
+
 def validate_example_record(record: Any) -> None:
     """Validate a single benchmark example record."""
     if not isinstance(record, Mapping):
@@ -307,10 +317,20 @@ def iter_jsonl(path: pathlib.Path) -> Iterator[tuple[int, Any]]:
                 if not line:
                     continue
                 try:
-                    yield lineno, json.loads(line)
+                    yield lineno, json.loads(
+                        line, object_pairs_hook=_reject_duplicate_object_keys
+                    )
                 except json.JSONDecodeError as exc:
                     raise ValidationError(
                         f"Line {lineno}: malformed JSON — {exc}"
+                    ) from exc
+                except ValidationError as exc:
+                    raise ValidationError(f"Line {lineno}: {exc}") from exc
+                except ValueError as exc:
+                    # CPython may raise ValueError before producing an integer when
+                    # a numeric token exceeds the interpreter's safe digit limit.
+                    raise ValidationError(
+                        f"Line {lineno}: JSON value could not be parsed safely — {exc}"
                     ) from exc
     except ValidationError:
         raise
