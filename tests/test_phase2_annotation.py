@@ -59,6 +59,16 @@ def test_phase2_schemas_are_valid_and_packaged():
         assert root_schema["x-project-schema-version"] == "0.1.0"
 
 
+def test_annotation_requires_at_least_one_unique_mechanism():
+    with pytest.raises(ValidationError, match="should be non-empty"):
+        validate_annotation_record(_annotation(humour_mechanisms=[]))
+
+    with pytest.raises(ValidationError, match="non-unique elements"):
+        validate_annotation_record(
+            _annotation(humour_mechanisms=["understatement", "understatement"])
+        )
+
+
 def test_annotation_insufficient_context_contract_is_enforced():
     record = _annotation(
         pragmatic_interpretations=["Reading A", "Reading B"],
@@ -77,6 +87,13 @@ def test_annotation_primary_must_be_retained_as_a_reading():
     record = _annotation(primary_pragmatic_interpretation="Different reading")
     with pytest.raises(ValidationError, match="must be present"):
         validate_annotation_record(record)
+
+
+def test_empty_annotation_file_is_rejected(tmp_path):
+    path = tmp_path / "annotations.jsonl"
+    path.write_text("\n", encoding="utf-8")
+    with pytest.raises(ValidationError, match="at least one annotation"):
+        load_annotations(path, {"item-1"})
 
 
 def test_duplicate_annotator_assignment_is_rejected(tmp_path):
