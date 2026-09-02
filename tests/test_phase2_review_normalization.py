@@ -42,6 +42,15 @@ def test_phase2_normalization_matches_browser_contract():
         )
     )
 
+    # Primary membership follows the same normalized comparison as retained readings.
+    validate_annotation_record(
+        _annotation(
+            pragmatic_interpretations=["Friendly approval"],
+            primary_pragmatic_interpretation="friendly   approval",
+            ambiguity=False,
+        )
+    )
+
     with pytest.raises(ValidationError, match="at least two distinct normalized readings"):
         validate_annotation_record(
             _annotation(
@@ -66,6 +75,9 @@ def test_phase2_normalization_matches_browser_contract():
     assert "toLocaleLowerCase" not in html
     assert "PHASE2_ANNOTATION_WHITESPACE" in html
     assert r"\u0085" in html
+    assert ".filter(x => normaliseReading(x).length > 0)" in html
+    assert "const normalisedPrimary = normaliseReading(primary);" in html
+    assert "!normalisedReadings.includes(normalisedPrimary)" in html
 
 
 def test_reserved_sentinel_is_rejected_from_retained_readings():
