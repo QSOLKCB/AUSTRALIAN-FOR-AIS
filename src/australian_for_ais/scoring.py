@@ -49,6 +49,7 @@ class ComponentScores:
 
     social_valence_correct: int = 0
     social_valence_total: int = 0
+    social_valence_unknown_examples: int = 0
 
     context_swap_pairs_found: int = 0
     context_swap_sensitive: int = 0
@@ -83,6 +84,7 @@ class ComponentScores:
             "social_valence_accuracy": safe_rate(
                 self.social_valence_correct, self.social_valence_total
             ),
+            "social_valence_unknown_examples": self.social_valence_unknown_examples,
             "confidence_brier_score": (
                 round(self.confidence_brier_sum / self.confidence_total, 4)
                 if self.confidence_total > 0
@@ -294,7 +296,6 @@ def score(
     for ex_id, ex in examples.items():
         result.literal_total += 1
         result.pragmatic_total += 1
-        result.social_valence_total += 1
         if ex.ambiguity:
             result.ambiguity_total += 1
 
@@ -302,6 +303,11 @@ def score(
             result.hostility_uncertain_examples += 1
         else:
             result.hostility_total += 1
+
+        if ex.social_valence == "unknown":
+            result.social_valence_unknown_examples += 1
+        else:
+            result.social_valence_total += 1
 
         pred = predictions.get(ex_id)
         if pred is None:
@@ -326,7 +332,9 @@ def score(
         ):
             result.hostility_correct += 1
 
-        if _social_valence_matches(pred.predicted_social_valence, ex.social_valence):
+        if ex.social_valence != "unknown" and _social_valence_matches(
+            pred.predicted_social_valence, ex.social_valence
+        ):
             result.social_valence_correct += 1
 
         if ex.ambiguity and pred.predicted_ambiguity is True:
