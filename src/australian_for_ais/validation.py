@@ -144,11 +144,10 @@ def validate_example_record(record: Any) -> None:
     if not isinstance(record, Mapping):
         raise ValidationError("Example record must be a JSON object.")
 
-    # Preflight the complete structure before jsonschema constructs diagnostics.
-    # This prevents malformed direct-call values in any field from turning a
-    # validation failure into an integer-formatting or recursion traceback.
-    _preflight_json_structure(record)
+    # Preserve the field-specific confidence contract before the generic
+    # structure preflight handles pathological values elsewhere in the record.
     _require_unit_interval_number(record, "confidence")
+    _preflight_json_structure(record)
     _validate_schema_safely(record, _get_example_schema())
     _semantic_validate_example(record)
 
@@ -320,8 +319,8 @@ def validate_evaluation_record(record: Any) -> None:
     if not isinstance(record, Mapping):
         raise ValidationError("Evaluation record must be a JSON object.")
 
-    _preflight_json_structure(record)
     _require_unit_interval_number(record, "model_confidence")
+    _preflight_json_structure(record)
     _validate_schema_safely(record, _get_evaluation_schema())
 
     for field_name in ("example_id", "predicted_literal", "predicted_pragmatic"):
