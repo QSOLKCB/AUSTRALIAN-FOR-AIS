@@ -317,9 +317,10 @@ function buildAnnotation() {
   const insufficient = $("insufficient").checked;
   const primary = insufficient ? "insufficient_context" : $("primary").value.trim();
   const normalisedPrimary = normaliseReading(primary);
+  const literal = $("literal").value;
   const confidence = Number($("confidence").value);
   const ambiguity = $("ambiguity").checked;
-  if (!$("literal").value.trim()) throw new Error("Literal interpretation is required.");
+  if (!normaliseReading(literal)) throw new Error("Literal interpretation is required.");
   if (!pragmatic.length) throw new Error("Provide at least one plausible pragmatic interpretation.");
   const normalisedReadings = pragmatic.map(normaliseReading);
   const distinctReadings = new Set(normalisedReadings).size;
@@ -337,7 +338,7 @@ function buildAnnotation() {
     annotation_id: `${annotator}::${item.id}`,
     example_id: item.id,
     annotator_id: annotator,
-    literal_interpretation: $("literal").value.trim(),
+    literal_interpretation: literal.trim(),
     pragmatic_interpretations: pragmatic,
     primary_pragmatic_interpretation: primary,
     humour_mechanisms: selected,
