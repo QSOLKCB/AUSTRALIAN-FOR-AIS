@@ -67,6 +67,20 @@ def test_pilot_group_validation_reports_participating_lines(tmp_path):
         load_pilot_items(path)
 
 
+def test_relationship_only_context_swap_is_valid(tmp_path):
+    records = [_pilot_item("item-1"), _pilot_item("item-2")]
+    for record in records:
+        record["context"] = "The speaker says this after the same small mistake."
+        record["context_swap_group"] = "relationship-only"
+    records[0]["speaker_relationship"] = "long-term friends"
+    records[1]["speaker_relationship"] = "strangers"
+    path = tmp_path / "relationship-only.jsonl"
+    _write_jsonl(path, records)
+
+    items = load_pilot_items(path)
+    assert set(items) == {"item-1", "item-2"}
+
+
 def test_browser_saved_annotations_are_bound_to_item_content():
     html = ANNOTATION_UI.read_text(encoding="utf-8")
 
