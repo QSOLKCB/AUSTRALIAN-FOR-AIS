@@ -189,7 +189,14 @@ def test_score_rejects_example_mapping_key_mismatch():
 
 @pytest.mark.parametrize(
     "confidence",
-    [2.0, -0.1, float("nan"), float("inf"), float("-inf"), 10**10000],
+    [
+        pytest.param(2.0, id="above-range"),
+        pytest.param(-0.1, id="below-range"),
+        pytest.param(float("nan"), id="nan"),
+        pytest.param(float("inf"), id="positive-infinity"),
+        pytest.param(float("-inf"), id="negative-infinity"),
+        pytest.param(10**10000, id="huge-integer"),
+    ],
 )
 def test_score_rejects_invalid_direct_confidence_without_overflow(confidence):
     example = _example_model()
