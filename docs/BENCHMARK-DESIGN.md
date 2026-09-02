@@ -114,11 +114,14 @@ Phase 1 reports independent components only:
 4. **ambiguity_recognition_rate**: ambiguous examples correctly marked ambiguous / all ambiguous examples
 5. **hostility_accuracy**: correct hostility predictions / examples with resolved boolean hostility annotations
 6. **hostility_uncertain_examples**: count of examples excluded from hostility accuracy because the annotation is `uncertain`
-7. **social_valence_accuracy**: correct social-valence predictions / all examples
-8. **confidence_brier_score**: mean Brier score for confidence in submitted pragmatic predictions; lower is better
-9. **context_swap_sensitivity_rate**: context-swap pairs that are both directionally correct and different / all valid context-swap pairs
+7. **social_valence_accuracy**: correct social-valence predictions / examples with resolved social-valence annotations
+8. **social_valence_unknown_examples**: count of examples excluded from social-valence accuracy because the annotation is `unknown`
+9. **confidence_brier_score**: mean Brier score for confidence in submitted pragmatic predictions; lower is better
+10. **context_swap_sensitivity_rate**: context-swap pairs that are both directionally correct and different / all valid context-swap pairs
 
-An annotated hostility value of `uncertain` is not converted into categorical ground truth. Those examples are counted separately and excluded from the hostility-accuracy denominator.
+An annotated hostility value of `uncertain` is not converted into categorical ground truth. Those examples are counted in `hostility_uncertain_examples` and excluded from the `hostility_accuracy` denominator.
+
+An annotated social valence of `unknown` is likewise unresolved rather than categorical ground truth. Those examples are counted in `social_valence_unknown_examples` and excluded from the `social_valence_accuracy` denominator.
 
 Confidence calibration is reported only over submitted, schema-valid predictions because an absent record contains no confidence value. Coverage is reported separately, and missing records already count as failures in the dataset-proportion metrics.
 
