@@ -180,6 +180,46 @@ def test_context_swap_rejects_case_changed_utterance():
         validate_context_swap_groups([first, second])
 
 
+def test_preflight_rejects_self_referential_list():
+    cyclic_list = []
+    cyclic_list.append(cyclic_list)
+    record = _example_record(tags=cyclic_list)
+
+    with pytest.raises(ValidationError, match="cyclic container reference"):
+        validate_example_record(record)
+
+
+def test_preflight_rejects_self_referential_dict():
+    cyclic_dict = {}
+    cyclic_dict["self"] = cyclic_dict
+    record = _example_record(tags=cyclic_dict)
+
+    with pytest.raises(ValidationError, match="cyclic container reference"):
+        validate_example_record(record)
+
+
+def test_preflight_allows_reused_noncyclic_container_and_scalars():
+    shared_text = "Sincere praise"
+    shared_list = [shared_text]
+    record = _example_record(
+        utterance=shared_text,
+        pragmatic_interpretations=shared_list,
+        primary_pragmatic_interpretation=shared_text,
+        alternative_interpretations=shared_list,
+    )
+
+    validate_example_record(record)
+
+
+def test_score_rejects_cyclic_direct_example_deterministically():
+    cyclic_list = []
+    cyclic_list.append(cyclic_list)
+    example = _example_model(tags=cyclic_list)
+
+    with pytest.raises(ValidationError, match="cyclic container reference"):
+        score({"test-001": example}, {})
+
+
 def test_empty_benchmark_validation_fails(tmp_path):
     path = tmp_path / "empty.jsonl"
     path.write_text("\n\n", encoding="utf-8")
@@ -322,6 +362,23 @@ def test_old_mate_fixture_explicitly_rules_out_acquaintance_in_this_context():
         "actual acquaintance" in reading and "different context" in reading
         for reading in example.alternative_interpretations
     )
+
+
+def test_cactus_fixture_does_not_require_irreparability():
+    example = load_examples(DATA_PATH)["au-010"]
+    assert (
+        example.primary_pragmatic_interpretation
+        == "The engine (or the car) is broken or non-functional"
+    )
+    assert "The engine (or the car) is stuffed and may be beyond repair" in (
+        example.pragmatic_interpretations
+    )
+    assert all(
+        "irreparably" not in reading.casefold()
+        and "cannot be fixed" not in reading.casefold()
+        for reading in example.pragmatic_interpretations
+    )
+    assert "does not establish that repair is impossible" in example.annotation_notes
 
 
 def test_file_loader_still_accepts_normal_record(tmp_path):
