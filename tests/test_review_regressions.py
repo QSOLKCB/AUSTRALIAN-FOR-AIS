@@ -159,6 +159,27 @@ def test_context_swap_rejects_overlapping_accepted_directions():
         validate_context_swap_groups([first, second])
 
 
+def test_context_swap_rejects_case_changed_utterance():
+    first = _example_record(
+        id="swap-case-a",
+        utterance="US",
+        context="Context A",
+        pragmatic_interpretations=["Reading A"],
+        primary_pragmatic_interpretation="Reading A",
+        context_swap_group="swap-case",
+    )
+    second = _example_record(
+        id="swap-case-b",
+        utterance="us",
+        context="Context B",
+        pragmatic_interpretations=["Reading B"],
+        primary_pragmatic_interpretation="Reading B",
+        context_swap_group="swap-case",
+    )
+    with pytest.raises(ValidationError, match="preserving lexical case"):
+        validate_context_swap_groups([first, second])
+
+
 def test_empty_benchmark_validation_fails(tmp_path):
     path = tmp_path / "empty.jsonl"
     path.write_text("\n\n", encoding="utf-8")
@@ -203,6 +224,27 @@ def test_score_rejects_invalid_direct_confidence_without_overflow(confidence):
     prediction = _prediction_model(model_confidence=confidence)
     with pytest.raises(ValidationError, match="between 0.0 and 1.0"):
         score({"test-001": example}, {"test-001": prediction})
+
+
+def test_oversized_nonconfidence_value_is_rejected_without_diagnostic_overflow():
+    record = _example_record(hostility=10**10000)
+    with pytest.raises(ValidationError, match="integer too large"):
+        validate_example_record(record)
+
+    example = _example_model(hostility=10**10000)
+    with pytest.raises(ValidationError, match="integer too large"):
+        score({"test-001": example}, {})
+
+
+def test_unknown_social_valence_is_excluded_from_accuracy():
+    example = _example_model(social_valence="unknown")
+    prediction = _prediction_model(predicted_social_valence="unknown")
+    result = score({"test-001": example}, {"test-001": prediction})
+    assert result.social_valence_total == 0
+    assert result.social_valence_correct == 0
+    assert result.social_valence_unknown_examples == 1
+    assert result.as_dict()["social_valence_accuracy"] is None
+    assert result.as_dict()["social_valence_unknown_examples"] == 1
 
 
 def test_directory_jsonl_input_is_reported_cleanly(tmp_path):
@@ -258,6 +300,17 @@ def test_duplicate_json_object_keys_are_rejected(tmp_path):
     assert any("Duplicate JSON object key 'id'" in error for error in errors)
 
     with pytest.raises(ValidationError, match="Duplicate JSON object key 'id'"):
+        load_examples(path)
+
+
+def test_excessive_json_nesting_is_reported_cleanly(tmp_path):
+    path = tmp_path / "deeply-nested.jsonl"
+    path.write_text("[" * 10000 + "0" + "]" * 10000 + "\n", encoding="utf-8")
+
+    errors = validate_jsonl_file(path)
+    assert any("nesting is too deep" in error for error in errors)
+
+    with pytest.raises(ValidationError, match="nesting is too deep"):
         load_examples(path)
 
 
