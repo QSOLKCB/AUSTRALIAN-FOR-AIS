@@ -106,6 +106,7 @@ def test_duplicate_or_equivalent_retained_readings_are_rejected():
         validate_annotation_record(
             _annotation(
                 pragmatic_interpretations=["Reading A", "Reading A"],
+                primary_pragmatic_interpretation="Reading A",
                 ambiguity=True,
             )
         )
@@ -114,6 +115,7 @@ def test_duplicate_or_equivalent_retained_readings_are_rejected():
         validate_annotation_record(
             _annotation(
                 pragmatic_interpretations=["Reading A", " reading   a "],
+                primary_pragmatic_interpretation="Reading A",
                 ambiguity=True,
             )
         )
