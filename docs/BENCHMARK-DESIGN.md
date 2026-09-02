@@ -10,7 +10,7 @@ The project therefore keeps observation, literal interpretation, pragmatic annot
 
 ## Example Record Structure
 
-Each example contains:
+Each benchmark example contains:
 
 - **id**: stable unique identifier
 - **locale**: language variety, e.g. `en-AU`
@@ -56,11 +56,52 @@ A reading described as genuinely plausible in the fixture should be represented 
 
 ---
 
+## Phase 2 Pilot Items
+
+Phase 2 separates the material shown to annotators from the annotations they produce.
+
+`schemas/pilot-item.schema.json` contains only the observation-side fields needed for annotation:
+
+- `id`
+- `locale`
+- `utterance`
+- `context`
+- `speaker_relationship`
+- `source_type`
+- `provenance`
+- `license`
+- optional `tags`
+- optional `context_swap_group`
+
+A pilot item deliberately contains **no gold pragmatic interpretation, mechanism label, social valence, hostility label, confidence, or ambiguity label**. Those are outputs of the human pilot rather than hints supplied to the annotator.
+
+`data/pilot/items.jsonl` currently contains 60 independently authored synthetic pilot items arranged as 30 same-utterance context contrasts. These are pilot prompts, not a validated benchmark release.
+
+---
+
+## Phase 2 Human Annotation Records
+
+`schemas/annotation.schema.json` stores one independent human annotation per record. It carries a pseudonymous `annotator_id` and the annotation fields required by the project methodology.
+
+The annotation schema preserves the same uncertainty contract as benchmark examples:
+
+- the primary pragmatic interpretation must be retained among the annotator's plausible readings unless it is exactly `insufficient_context`;
+- `insufficient_context` requires at least two distinct retained readings, `ambiguity: true`, and confidence at or below `0.4`;
+- `insufficient_context` is not an ordinary pragmatic reading;
+- hostility may be `true`, `false`, or `uncertain`;
+- social valence may be `friendly`, `hostile`, `neutral`, `ambiguous`, or `unknown`.
+
+The optional `australian_english_exposure` field is a coarse, non-identifying self-report (`low`, `medium`, `high`, `unspecified`). It is not a nationality or demographic label.
+
+One annotator may submit only one annotation for a given pilot item within an annotation file. Duplicate `(example_id, annotator_id)` assignments fail validation rather than being allowed to inflate annotation coverage.
+
+---
+
 ## Context-Swap Test Design
 
-A context-swap group contains the same utterance under two or more different contexts.
+A benchmark context-swap group contains the same utterance under two or more different contexts.
 
-Before scoring, a group is valid only when:
+Before scoring, a benchmark group is valid only when:
 
 1. it contains at least two records;
 2. every member has the same observed utterance;
@@ -77,6 +118,8 @@ A pair passes only when:
 3. the two pragmatic predictions differ.
 
 Merely producing two different strings is not sufficient. Swapped answers or two different wrong answers are failures.
+
+Phase 2 pilot context contrasts are weaker experimental objects because they are intentionally unannotated. Their validation requires only that the group has at least two items, preserves the exact observed utterance, and changes context. Human annotation may later show that a proposed contrast is ambiguous or unsuitable. The pilot must not manufacture a directional target merely to preserve the design hypothesis.
 
 ---
 
@@ -104,7 +147,7 @@ All advertised JSONL inputs must be regular files. Directory paths and unreadabl
 
 ---
 
-## Component Metrics
+## Phase 1 Component Metrics
 
 Phase 1 reports independent components only:
 
@@ -129,6 +172,24 @@ No component is combined into a single "Australian understanding" score.
 
 ---
 
+## Phase 2 Agreement Reporting
+
+Phase 2 agreement analysis is descriptive evidence about the annotation process, not a replacement gold label.
+
+The deterministic report includes:
+
+- annotation coverage per pilot item;
+- within-item pairwise agreement rates for categorical fields;
+- Cohen's kappa for each annotator pair on shared examples;
+- exact-set agreement and Jaccard overlap for multi-label mechanism selections;
+- descriptive pairwise confidence differences.
+
+Free-text pragmatic interpretations are deliberately **not** scored by exact-string agreement. Exact wording is not semantic equivalence, and Phase 2 does not introduce an unvalidated model judge to conceal that limitation. Free-text readings remain available for qualitative comparison and later adjudication design.
+
+At least two independent human annotations per pilot item are required for Phase 2 graduation, but the software does not pretend that this human work has happened merely because the tooling exists.
+
+---
+
 ## Exact-Match Limitation
 
 The Phase 1 pragmatic evaluator uses case-folded exact string matching with collapsed whitespace against accepted interpretations. This is deliberately transparent and deterministic, but it is not semantic equivalence.
@@ -141,18 +202,18 @@ A later phase may introduce a separately validated semantic scoring protocol.
 
 ## Schema Versioning
 
-Both schemas carry two machine-readable version markers:
+The review-facing schemas carry two machine-readable version markers:
 
 - a versioned `$id`, currently containing `/v0.1.0/`;
 - `x-project-schema-version: "0.1.0"`.
 
 The JSON Schema `$schema` URI identifies the JSON Schema dialect only. It is **not** the project schema version.
 
-The `0.1.0` schema remains the draft Phase 1 contract until this bootstrap PR is merged. Tightening that unreleased draft during review does not create a released compatibility promise.
+The Phase 2 pilot-item and annotation schemas extend the unreleased research substrate without changing the semantics of the Phase 1 example or evaluation schemas.
 
-After the initial contract is released, a backward-incompatible schema change must:
+After a public schema contract is released, a backward-incompatible schema change must:
 
-1. increment the project schema version in both root schemas and packaged copies;
+1. increment the relevant project schema version in root schemas and packaged copies;
 2. update affected records and Python models;
 3. update tests and documentation; and
 4. document the change in `CHANGELOG.md`.
