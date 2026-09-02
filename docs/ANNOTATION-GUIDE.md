@@ -119,7 +119,7 @@ Phase 2 pilot records may contain `context_swap_group` metadata for later analys
 
 1. Open `annotation/index.html` locally in a browser.
 2. Load `data/pilot/items.jsonl`.
-3. Enter a pseudonymous annotator ID.
+3. Verify and use the read-only pseudonymous annotator ID generated locally by the browser.
 4. Read the utterance and supplied context carefully.
 5. Record the literal interpretation.
 6. Record one or more plausible pragmatic interpretations.
