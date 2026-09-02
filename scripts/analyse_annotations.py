@@ -8,6 +8,10 @@ import json
 import pathlib
 import sys
 
+# Allow running from a source checkout without installing the package.
+REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
+
 from australian_for_ais.annotation import (
     build_agreement_report,
     load_annotations,
