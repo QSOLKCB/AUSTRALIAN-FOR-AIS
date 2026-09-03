@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import html
+from html.parser import HTMLParser
 import re
 
 import pytest
@@ -17,6 +18,15 @@ REQUIRED_CLAUSES = (
     "source-gated research proposal",
     "not legal advice",
     "Every implemented item should record the relevant country, jurisdiction, institutional role, encounter type, and source date.",
+    "US POLICE SCRIPT != AUSTRALIAN LEGAL PROCEDURE",
+    "CASUAL ADDRESS != FRIENDSHIP OR CONSENT",
+    "FICTIONAL POLICE TROPE != OPERATIONAL POLICY",
+    "JURISDICTIONAL DIFFERENCE != NATIONAL MORAL CHARACTER",
+    "LEGAL INFORMATION != LEGAL ADVICE",
+    "register official and current sources for each Australian and United States jurisdictional claim",
+)
+
+AFFIRMATIVE_LINE_PREFIX_CLAUSES = (
     "US POLICE SCRIPT != AUSTRALIAN LEGAL PROCEDURE",
     "CASUAL ADDRESS != FRIENDSHIP OR CONSENT",
     "FICTIONAL POLICE TROPE != OPERATIONAL POLICY",
@@ -45,6 +55,54 @@ NON_RENDERING_HTML_PATTERN = re.compile(
     r"<(script|style|template)\b[^>]*>.*?</\1\s*>",
     flags=re.IGNORECASE | re.DOTALL,
 )
+
+
+class _VisibleHTMLTextParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self.stack: list[tuple[str, bool]] = []
+
+    @staticmethod
+    def _is_hidden(tag: str, attrs: list[tuple[str, str | None]]) -> bool:
+        tag = tag.lower()
+        if tag in {"script", "style", "template"}:
+            return True
+        values = {key.lower(): (value or "") for key, value in attrs}
+        if "hidden" in values:
+            return True
+        if values.get("aria-hidden", "").strip().lower() == "true":
+            return True
+        style = re.sub(r"\s+", "", values.get("style", "").lower())
+        return "display:none" in style or "visibility:hidden" in style
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        inherited = self.stack[-1][1] if self.stack else False
+        self.stack.append((tag.lower(), inherited or self._is_hidden(tag, attrs)))
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        return
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        for index in range(len(self.stack) - 1, -1, -1):
+            if self.stack[index][0] == tag:
+                del self.stack[index:]
+                return
+
+    def handle_data(self, data: str) -> None:
+        if not self.stack or not self.stack[-1][1]:
+            self.parts.append(data)
+
+
+def _visible_html_text(text: str) -> str:
+    parser = _VisibleHTMLTextParser()
+    try:
+        parser.feed(text)
+        parser.close()
+    except Exception:
+        return ""
+    return " ".join(parser.parts)
 
 
 def _mask_non_newline(text: str) -> str:
@@ -209,18 +267,17 @@ def _rendered_structure(markdown: str) -> str:
     return "".join(parts)
 
 
+
 def _visible_text(markdown: str) -> str:
-    """Return visible text without link metadata or non-rendering HTML content."""
-    visible = NON_RENDERING_HTML_PATTERN.sub(" ", markdown)
-    visible = MARKDOWN_IMAGE_PATTERN.sub(" ", visible)
+    """Return browser-visible text without hidden HTML or link metadata."""
+    visible = MARKDOWN_IMAGE_PATTERN.sub(" ", markdown)
     visible = MARKDOWN_LINK_PATTERN.sub(lambda match: match.group("label"), visible)
     visible = AUTOLINK_PATTERN.sub(lambda match: match.group("url"), visible)
-    visible = HTML_TAG_PATTERN.sub(" ", visible)
+    visible = _visible_html_text(visible)
     visible = html.unescape(visible)
     visible = visible.replace("**", "").replace("__", "")
     visible = visible.replace("*", "").replace("_", "")
     return " ".join(visible.split())
-
 
 def _rendered_policing_workstream(roadmap: str) -> str:
     structure = _rendered_structure(roadmap)
@@ -230,13 +287,25 @@ def _rendered_policing_workstream(roadmap: str) -> str:
     return structure[start:end]
 
 
-def _validate_policing_workstream(roadmap: str) -> None:
-    workstream = _visible_text(_rendered_policing_workstream(roadmap))
-    for clause in REQUIRED_CLAUSES:
-        assert _visible_text(clause) in workstream, (
-            f"missing policing-workstream safeguard: {clause}"
-        )
 
+def _validate_policing_workstream(roadmap: str) -> None:
+    rendered = _rendered_policing_workstream(roadmap)
+    workstream = _visible_text(rendered)
+    visible_lines: list[str] = []
+    for raw_line in rendered.splitlines():
+        line = _visible_text(raw_line).strip()
+        line = re.sub(r"^(?:[-+*]|\d{1,9}[.)])\s+", "", line)
+        if line:
+            visible_lines.append(line)
+
+    for clause in REQUIRED_CLAUSES:
+        visible_clause = _visible_text(clause)
+        if clause in AFFIRMATIVE_LINE_PREFIX_CLAUSES:
+            assert any(line.startswith(visible_clause) for line in visible_lines), (
+                f"missing policing-workstream safeguard: {clause}"
+            )
+        else:
+            assert visible_clause in workstream, f"missing policing-workstream safeguard: {clause}"
 
 def test_policing_context_workstream_remains_source_gated_and_noncomparative():
     _validate_policing_workstream(ROADMAP.read_text(encoding="utf-8"))
@@ -303,5 +372,22 @@ def test_policing_safeguard_cannot_hide_in_link_title():
     clause = "register official and current sources for each Australian and United States jurisdictional claim"
     replacement = f'[sources required](# "{clause}")'
     mutated = roadmap.replace(clause, replacement, 1)
+    with pytest.raises(AssertionError, match="missing policing-workstream safeguard"):
+        _validate_policing_workstream(mutated)
+
+
+
+def test_policing_safeguard_cannot_hide_in_hidden_html():
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    clause = "register official and current sources for each Australian and United States jurisdictional claim"
+    mutated = roadmap.replace(clause, f"<span hidden>{clause}</span>", 1)
+    with pytest.raises(AssertionError, match="missing policing-workstream safeguard"):
+        _validate_policing_workstream(mutated)
+
+
+def test_policing_source_gate_cannot_be_negated():
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    clause = "register official and current sources for each Australian and United States jurisdictional claim"
+    mutated = roadmap.replace(clause, "never " + clause, 1)
     with pytest.raises(AssertionError, match="missing policing-workstream safeguard"):
         _validate_policing_workstream(mutated)
