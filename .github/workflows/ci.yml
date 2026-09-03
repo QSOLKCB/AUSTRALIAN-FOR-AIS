@@ -89,28 +89,27 @@ jobs:
           '''
           text = text[:scalar_start] + scalar_replacement + text[scalar_end + 1:]
 
-          hidden_scalar_case = '''        (
-              "### Example\\n\\n"
-              "**Rights and provenance boundary:** `hidden value`\\n",
-              RIGHTS_FIELD,
-              "empty mandatory field",
-          ),
+          old_inline_expectation = '''    with pytest.raises(AssertionError, match="empty registered-source field"):
+              _require_registered_source_link("### Example", inline)
           '''
-          if hidden_scalar_case not in text:
-              raise SystemExit("expected hidden scalar regression not found")
-          text = text.replace(hidden_scalar_case, "", 1)
+          new_inline_expectation = '''    with pytest.raises(AssertionError, match="no usable HTTPS destination"):
+              _require_registered_source_link("### Example", inline)
+          '''
+          if old_inline_expectation not in text:
+              raise SystemExit("expected inline-source assertion not found")
+          text = text.replace(old_inline_expectation, new_inline_expectation, 1)
 
-          hidden_governance_case = '''
-              hidden = (
-                  "### Example\\n\\n"
-                  "**Community-specific governance:** not-required: `hidden`\\n"
-              )
-              with pytest.raises(AssertionError, match="invalid community-specific governance"):
-                  _require_community_governance("### Example", hidden)
-          '''
-          if hidden_governance_case not in text:
-              raise SystemExit("expected hidden governance regression not found")
-          text = text.replace(hidden_governance_case, "", 1)
+          old_scalar_value = '"**Rights and provenance boundary:** `hidden value`\\n",'
+          new_scalar_value = '"**Rights and provenance boundary:** <!-- hidden value -->\\n",'
+          if old_scalar_value not in text:
+              raise SystemExit("expected inline scalar fixture not found")
+          text = text.replace(old_scalar_value, new_scalar_value, 1)
+
+          old_governance_value = '"**Community-specific governance:** not-required: `hidden`\\n"'
+          new_governance_value = '"**Community-specific governance:** not-required: <!-- hidden -->\\n"'
+          if old_governance_value not in text:
+              raise SystemExit("expected inline governance fixture not found")
+          text = text.replace(old_governance_value, new_governance_value, 1)
 
           path.write_text(text, encoding="utf-8")
           PY
