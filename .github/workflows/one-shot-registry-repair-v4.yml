@@ -1,4 +1,5 @@
 name: Final one-shot registry parser repair
+# Triggered after the workflow exists on the branch so GitHub can execute it.
 
 on:
   push:
