@@ -37,7 +37,7 @@ Australian comedy is used here as a rich source of adversarial pragmatic structu
 
 Post-Phase-2 additions are not considered adopted project references merely because they appear in a planning report. Every adopted post-Phase-2 registry entry must record all of the following fields:
 
-- one or more official, archival, creator, broadcaster, publisher, or peer-reviewed source links;
+- one or more official, archival, creator, broadcaster, publisher, peer-reviewed, or explicitly bounded community-attestation source links;
 - the source type and why it is relevant to pragmatic research;
 - the rights and provenance boundary for repository use;
 - an explicit epistemic status stating what the source can and cannot establish;
@@ -47,6 +47,8 @@ Post-Phase-2 additions are not considered adopted project references merely beca
 - a safe abstraction path for independently authored or appropriately licensed benchmark work.
 
 A required field must not be omitted merely because no strong value is available. When a field genuinely has no applicable mapping or no stronger source can be identified, the entry must say so explicitly and explain the limitation. Singular and plural source-link headings may differ when an entry needs more than one source, but the source-link field itself is mandatory.
+
+Community-attestation links are eligible only when the entry explicitly identifies them as user-generated, non-representative orientation or attestation material. They may nominate candidate forms, disagreements, or research leads, but cannot establish prevalence, population consensus, authoritative etymology, subgroup ground truth, or substitute for official, archival, publisher, or peer-reviewed evidence where the claim requires those sources. Safe abstraction must use independently authored examples and later source verification rather than converting community posts into benchmark data.
 
 Community-specific material requires an additional governance boundary inside that source's own registry entry. Registering a First Nations, migrant, multicultural, regional, or class-marked source does **not** grant the project authority to manufacture community-specific benchmark ground truth. An entry classified `required` must retain the consultation, provenance, permissions, and scope-limitations boundary in its safe-abstraction path. An entry classified `not-required` must explain why the registered research use is not being treated as a community-specific benchmark claim.
 

@@ -250,7 +250,7 @@ Candidate adversarial experiment families include:
 - diachronic and regional uncertainty cases where speakers disagree about whether an expression is current, local, borrowed, dated, or widespread;
 - glossary-versus-context tests where a model is given correct dictionary meanings but must still infer implicature, tone, relationship, and intended force;
 - military or emergency-style clarity contrasts separating informal barracks banter from safety-critical instructions where conventional terminology and explicitness matter;
-- cross-national listener cases testing Australian slang with familiar Australian speakers, other English-speaking partners, and speakers using English as an additional language;
+- crossed listener-familiarity cases varying self-reported or experimentally established Australian-English exposure independently of general English-language background or proficiency; nationality and first-language identity must not define the comparison cohorts or stand in as proxies for comprehension;
 - ASCFT `|0>` bridge tests treating Informal Larrikin Compression as a hypothesis about information compression rather than a licence to equate slang density with semantic degradation.
 
 Candidate invariants for review include:

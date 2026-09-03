@@ -508,6 +508,11 @@ LIST_CONTAINER_PREFIX_PATTERN = re.compile(r"(?:[-+*]|\d{1,9}[.)])[ \t]+")
 STRONG_METADATA_FIELD_PATTERN = re.compile(
     r"^(?P<marker>\*\*|__)(?P<label>[^:\r\n]+):(?P=marker)(?=$|[ \t])"
 )
+HTML_STRONG_METADATA_FIELD_PATTERN = re.compile(
+    r"^<(?P<tag>strong|b)\b(?P<attrs>[^>]*)>"
+    r"(?P<label>[^<:\r\n]+):</(?P=tag)>(?=$|[ \t])",
+    flags=re.IGNORECASE,
+)
 HTML_TAG_PATTERN = re.compile(
     r"</?[A-Za-z][^>]*>|<![A-Za-z][^>]*>|<\?[\s\S]*?\?>"
 )
@@ -594,8 +599,7 @@ class LineContext:
 class FenceState:
     character: str
     minimum_length: int
-    quote_depth: int
-    list_indent: int | None
+    containers: tuple[tuple[str, int], ...]
 
 
 def _mask_non_newline(text: str) -> str:
@@ -646,6 +650,90 @@ def _line_context(line: str) -> LineContext:
     )
 
 
+def _display_columns(value: str) -> int:
+    columns = 0
+    for character in value:
+        if character == "\t":
+            columns += 4 - (columns % 4)
+        else:
+            columns += 1
+    return columns
+
+
+def _parse_composed_container_prefixes(
+    line: str,
+) -> tuple[str, bool, tuple[tuple[str, int], ...]]:
+    """Return logical text, code status, and ordered list/quote containers."""
+    value = line.rstrip("\r\n")
+    position = 0
+    containers: list[tuple[str, int]] = []
+
+    for _ in range(32):
+        probe, columns = _indent_columns(value, position)
+        if columns >= 4:
+            return value[position:], True, tuple(containers)
+
+        if probe < len(value) and value[probe] == ">":
+            containers.append(("quote", 0))
+            position = probe + 1
+            if position < len(value) and value[position] in " \t":
+                position += 1
+            continue
+
+        marker = LIST_CONTAINER_PREFIX_PATTERN.match(value, probe)
+        if marker:
+            content_indent = columns + _display_columns(marker.group(0))
+            containers.append(("list", content_indent))
+            position = marker.end()
+            continue
+
+        position = probe
+        break
+
+    return value[position:], False, tuple(containers)
+
+
+def _consume_required_indent(
+    value: str,
+    start: int,
+    required_columns: int,
+) -> tuple[int, bool]:
+    position = start
+    columns = 0
+    while position < len(value) and value[position] in " \t" and columns < required_columns:
+        if value[position] == " ":
+            columns += 1
+        else:
+            columns += 4 - (columns % 4)
+        position += 1
+    return position, columns >= required_columns
+
+
+def _strip_expected_fence_containers(
+    line: str,
+    containers: tuple[tuple[str, int], ...],
+) -> tuple[str, bool]:
+    """Strip the continuation form of the containers that own an active fence."""
+    value = line.rstrip("\r\n")
+    position = 0
+
+    for kind, amount in containers:
+        if kind == "list":
+            position, ok = _consume_required_indent(value, position, amount)
+            if not ok:
+                return value, False
+            continue
+
+        probe, columns = _indent_columns(value, position)
+        if columns > 3 or probe >= len(value) or value[probe] != ">":
+            return value, False
+        position = probe + 1
+        if position < len(value) and value[position] in " \t":
+            position += 1
+
+    return value[position:], True
+
+
 def _line_opens_paragraph(line: str) -> bool:
     """Return whether a rendered line can keep a CommonMark paragraph open."""
     context = _line_context(line)
@@ -662,11 +750,11 @@ def _line_opens_paragraph(line: str) -> bool:
 
 
 def _fence_opener(line: str) -> FenceState | None:
-    """Return a valid fence opener and its containing quote/list context."""
-    context = _line_context(line)
-    if context.indented_code:
+    """Return a valid fence opener and its ordered container ownership."""
+    logical, indented_code, containers = _parse_composed_container_prefixes(line)
+    if indented_code:
         return None
-    match = FENCE_PATTERN.fullmatch(context.logical.rstrip(" \t"))
+    match = FENCE_PATTERN.fullmatch(logical.rstrip(" \t"))
     if not match:
         return None
     marker = match.group("fence")
@@ -676,33 +764,26 @@ def _fence_opener(line: str) -> FenceState | None:
     return FenceState(
         character=marker[0],
         minimum_length=len(marker),
-        quote_depth=context.quote_depth,
-        list_indent=context.list_indent,
+        containers=containers,
     )
 
 
 def _fence_container_continues(line: str, state: FenceState) -> bool:
-    """Return whether a nested quote/list fence still owns this source line."""
+    """Return whether the active fence's complete container chain continues."""
     if not line.strip():
         return True
-    context = _line_context(line)
-    if context.quote_depth < state.quote_depth:
-        return False
-    if state.list_indent is not None:
-        if context.quote_depth != state.quote_depth:
-            return False
-        if context.list_indent is not None:
-            return False
-        return context.leading_spaces >= state.list_indent
-    return True
+    if not state.containers:
+        return True
+    _, ok = _strip_expected_fence_containers(line, state.containers)
+    return ok
 
 
 def _fence_logical_line(line: str, state: FenceState) -> str:
-    """Return content inside the active fence's container context."""
-    context = _line_context(line)
-    if state.list_indent is not None:
-        return context.after_quotes[state.list_indent:]
-    return context.logical
+    """Return content inside the active fence's ordered container context."""
+    if not state.containers:
+        return line.rstrip("\r\n")
+    logical, ok = _strip_expected_fence_containers(line, state.containers)
+    return logical if ok else line.rstrip("\r\n")
 
 
 def _is_fence_closer(line: str, state: FenceState) -> bool:
@@ -1054,46 +1135,25 @@ def _registered_sections(corpus: str) -> dict[str, str]:
 
 def _strip_composed_container_prefixes(line: str) -> tuple[str, bool]:
     """Strip recursively composed quote/list prefixes and detect code indentation."""
-    value = line.rstrip("\r\n")
-    position = 0
-
-    for _ in range(32):
-        probe = position
-        columns = 0
-        while probe < len(value) and value[probe] in " \t":
-            if value[probe] == " ":
-                columns += 1
-            else:
-                columns += 4 - (columns % 4)
-            probe += 1
-        if columns >= 4:
-            return value[position:], True
-
-        if probe < len(value) and value[probe] == ">":
-            position = probe + 1
-            if position < len(value) and value[position] in " \t":
-                position += 1
-            continue
-
-        marker = LIST_CONTAINER_PREFIX_PATTERN.match(value, probe)
-        if marker:
-            position = marker.end()
-            continue
-
-        position = probe
-        break
-
-    return value[position:], False
-
+    logical, is_code, _ = _parse_composed_container_prefixes(line)
+    return logical, is_code
 
 
 def _canonicalise_metadata_marker(line: str) -> str:
-    """Canonicalise equivalent CommonMark strong-emphasis field labels."""
+    """Canonicalise equivalent visible strong-emphasis metadata labels."""
     match = STRONG_METADATA_FIELD_PATTERN.match(line)
-    if not match:
-        return line
-    canonical = f"**{match.group('label')}:**"
-    return canonical + line[match.end():]
+    if match:
+        canonical = f"**{match.group('label')}:**"
+        return canonical + line[match.end():]
+
+    html_match = HTML_STRONG_METADATA_FIELD_PATTERN.match(line)
+    if html_match:
+        label = html_match.group("label")
+        rendered_label = _visible_html_text(html_match.group(0)).strip()
+        if rendered_label == f"{label}:":
+            canonical = f"**{label}:**"
+            return canonical + line[html_match.end():]
+    return line
 
 
 def _normalised_rendered_lines(section: str) -> list[tuple[str, str, bool]]:
@@ -2069,3 +2129,46 @@ def test_equivalent_strong_emphasis_doi_field_is_counted():
     )
     with pytest.raises(AssertionError, match="exactly one mandatory field"):
         _validate_registered_entry(entry, mutated)
+
+
+def test_compound_container_fence_cannot_hide_scalar_metadata():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = "### *Black Comedy* (ABC, 2014-2020)"
+    section = _registered_sections(corpus)[entry]
+    rights_line = next(
+        line for line in section.splitlines()
+        if line.startswith(RIGHTS_FIELD)
+    )
+    mutated = section.replace(
+        rights_line,
+        f"- > ```\n  > {rights_line}\n  > ```",
+        1,
+    )
+    with pytest.raises(AssertionError, match="exactly one mandatory field"):
+        _validate_registered_entry(entry, mutated)
+
+
+@pytest.mark.parametrize("tag", ["strong", "b"])
+def test_html_strong_doi_field_is_counted(tag: str):
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = "### Chey (2021), *Overcoming awkwardness: some interpretations of Australian humour*"
+    section = _registered_sections(corpus)[entry]
+    expected = "**DOI:** https://doi.org/10.7592/EJHR2021.9.4.560"
+    mutated = section.replace(
+        expected,
+        expected + f"\n\n<{tag}>DOI:</{tag}> https://doi.org/10.0000/fabricated",
+        1,
+    )
+    with pytest.raises(AssertionError, match="exactly one mandatory field"):
+        _validate_registered_entry(entry, mutated)
+
+
+def test_registration_contract_explicitly_bounds_community_attestation():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    structure = _structural_registry_text(corpus)
+    start = structure.index(CONTRACT_HEADING)
+    end = structure.index(BATCH_HEADING, start)
+    contract = structure[start:end]
+    assert "explicitly bounded community-attestation source links" in contract
+    assert "user-generated, non-representative orientation or attestation material" in contract
+    assert "cannot establish prevalence" in contract

@@ -194,13 +194,13 @@ For **trans-Tasman relational-pragmatics** experiments, the preferred design is 
 
 The repository must not introduce group-stereotyping wording merely to instantiate these contrasts. Where a research question depends on historical stereotype structure, use an abstract placeholder or non-identity-targeted synthetic analogue unless exact material has an attributable source, an appropriate rights basis, and a documented governance rationale. Claims about New Zealand lexical or pragmatic norms require attributable New Zealand evidence and, where the claim is community-specific, appropriate New Zealand cultural or linguistic consultation.
 
-For **slang-density and operational-intelligibility** experiments, lexical recognition, compositional interpretation, pragmatic interpretation, and task-critical communication clarity are separate evaluation targets. A useful ladder holds the underlying proposition stable while progressively varying slang density, abbreviation, discourse markers, local idioms, or register compression. Listener background and task criticality should be explicit variables rather than inferred after the fact.
+For **slang-density and operational-intelligibility** experiments, lexical recognition, compositional interpretation, pragmatic interpretation, and task-critical communication clarity are separate evaluation targets. A useful ladder holds the underlying proposition stable while progressively varying slang density, abbreviation, discourse markers, local idioms, or register compression. Australian-English familiarity or exposure, general English-language background or proficiency, and task criticality should be explicit independent variables rather than inferred from nationality or identity. Where listener effects are evaluated, Australian-English familiarity should be self-reported or experimentally established, and comparisons should cross or match dialect exposure against broader English-language background so neither nationality nor first-language category acts as a proxy for comprehension.
 
 Relevant controlled comparisons include:
 
 - glossary-known versus context-correct interpretation;
 - low-density versus high-density colloquial phrasing;
-- familiar-listener versus unfamiliar-listener conditions;
+- higher versus lower Australian-English familiarity crossed or matched across general English-language backgrounds;
 - informal social or barracks-style exchange versus safety-critical or operational instruction; and
 - ordinary misunderstanding versus successful repair through clarification, shared terminology, translation, or visual grounding.
 
