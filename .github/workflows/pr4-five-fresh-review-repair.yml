@@ -31,6 +31,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
+      - name: Narrow ambiguous repair anchor
+        run: |
+          set -euo pipefail
+          python .github/scripts/pr4-five-fresh-review-correction.py
+
       - name: Apply guarded repair
         run: |
           set -euo pipefail
@@ -60,8 +65,10 @@ jobs:
         run: |
           set -euo pipefail
           rm .github/scripts/pr4-five-fresh-review-repair.py
+          rm .github/scripts/pr4-five-fresh-review-correction.py
           rm .github/workflows/pr4-five-fresh-review-repair.yml
           test ! -e .github/scripts/pr4-five-fresh-review-repair.py
+          test ! -e .github/scripts/pr4-five-fresh-review-correction.py
           test ! -e .github/workflows/pr4-five-fresh-review-repair.yml
 
       - name: Commit verified repair
@@ -76,6 +83,7 @@ jobs:
             tests/test_policing_contract_receipt.py
           git add -u \
             .github/scripts/pr4-five-fresh-review-repair.py \
+            .github/scripts/pr4-five-fresh-review-correction.py \
             .github/workflows/pr4-five-fresh-review-repair.yml
           git diff --cached --check
           git commit -m "Close five fresh PR4 review gaps"
