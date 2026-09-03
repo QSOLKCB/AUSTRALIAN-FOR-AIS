@@ -272,6 +272,47 @@ A focused follow-up PR should:
 - connect suitable tests to Phase 5 adversarial context swaps and Phase 7 cross-dialect/cross-register comparison;
 - keep any military claims limited to what official or archival evidence actually demonstrates.
 
+### I. Australian and United States policing-context transfer
+
+**Goal:** Study whether AI systems import policing language, legal scripts, agency assumptions, emergency-routing conventions, and screen-fiction tropes from one jurisdiction into another, without treating either country, police service, officer, or encounter as monolithic.
+
+This workstream is a **source-gated research proposal**, not an adopted description of either policing system and not legal advice. Before any benchmark family is implemented, the project must register current official Australian and United States sources covering the specific jurisdictions and topics being compared. Australian federal, state, and territory material must not be collapsed into one undifferentiated script; United States federal, state, county, municipal, sheriff, highway-patrol, and special-jurisdiction material must likewise not be treated as interchangeable. Every implemented item should record the relevant country, jurisdiction, institutional role, encounter type, and source date.
+
+The core pragmatic problem is institutional-script transfer. A model trained heavily on United States media may insert a familiar American warning, agency title, emergency convention, courtroom role, or encounter expectation into an Australian scenario. The reverse error is also possible. Surface-equivalent terms may carry different legal force, institutional scope, or conversational expectations, while distinct terms may serve partly comparable functions. The benchmark should test whether the model asks for or uses jurisdictional context instead of completing the scene from the loudest television trope in its training data.
+
+Candidate adversarial experiment families include:
+- same-utterance jurisdiction swaps in which the country, state/territory, agency, or officer role changes while the wording remains constant;
+- emergency-contact and agency-routing scenarios that test whether the model selects the convention supported by the supplied location rather than a globally assumed default;
+- caution, interview, detention, search, consent, and right-to-silence scenarios that distinguish jurisdiction-specific legal language from imported catchphrases;
+- role-title pairs involving terms such as `constable`, `sheriff`, `deputy`, `trooper`, `detective`, `prosecutor`, and other labels whose powers or institutional position cannot be inferred from the word alone;
+- casual-address pairs testing whether an officer's use of `mate`, first names, humour, understatement, or a calm register is mistaken for friendship, consent, informality of legal consequence, or absence of coercive authority;
+- direction-versus-request pairs separating politeness, conversational softening, lawful authority, voluntary cooperation, uncertainty, and explicit compulsion;
+- ordinary service, traffic, welfare, public-order, emergency, questioning, and detention controls so the benchmark does not equate every police interaction with hostility or every calm interaction with harmlessness;
+- media-trope controls separating fictional dialogue and imported procedural scripts from the official rule or practice actually supplied in context.
+
+Candidate invariants for review include:
+- **US POLICE SCRIPT != AUSTRALIAN LEGAL PROCEDURE**
+- **POLICE TERMINOLOGY != CROSS-JURISDICTION EQUIVALENCE**
+- **CASUAL ADDRESS != FRIENDSHIP OR CONSENT**
+- **CALM TONE != ABSENCE OF COERCIVE AUTHORITY**
+- **POLITE WORDING != VOLUNTARY CHOICE**
+- **FICTIONAL POLICE TROPE != OPERATIONAL POLICY**
+- **ONE AGENCY != A NATIONAL POLICING SYSTEM**
+- **ONE ENCOUNTER != SYSTEM-WIDE GROUND TRUTH**
+- **JURISDICTIONAL DIFFERENCE != NATIONAL MORAL CHARACTER**
+- **LEGAL INFORMATION != LEGAL ADVICE**
+
+These are candidate research invariants, not legal conclusions or evaluations of which country polices "better". The study must not infer danger, benevolence, lawfulness, racism, corruption, restraint, or legitimacy from nationality, uniform, accent, weapon visibility, casual language, or one anecdote. Where an experiment concerns coercion, consent, search, detention, questioning, force, or legal rights, the supplied context and registered jurisdiction-specific source must establish the relevant condition rather than asking annotators or models to guess it.
+
+A focused follow-up PR should:
+- register official and current sources for each Australian and United States jurisdictional claim before adopting it as benchmark context;
+- add a canonical methodology section defining jurisdiction/date metadata, encounter categories, matched controls, source hierarchy, and legal-review requirements;
+- construct independently authored context swaps rather than copying body-camera audio, police interviews, television dialogue, viral clips, or identifiable real-person encounters;
+- separate linguistic-pragmatic evaluation from legal correctness, policy evaluation, use-of-force analysis, and moral comparison, reporting each only when the dataset and sources genuinely support it;
+- include unresolved cases where the context does not establish whether a statement is a request, direction, warning, caution, consent inquiry, or compulsory instruction;
+- involve appropriate Australian and United States legal, policing, civil-liberties, and community expertise before publishing high-stakes conclusions;
+- connect suitable families to Phase 5 context swaps, Phase 6 moderation/safety analysis, and Phase 7 cross-register and cross-institution comparison.
+
 ---
 
 ## Phase 3 — Multi-Annotator Culturally Contextualised Dataset
@@ -341,6 +382,7 @@ First Nations/Blak, migrant, multicultural, regional, class-marked, or other com
 - Absurdist-escalation families separating literal improbability, deadpan delivery, understatement, and surreal frame shifts
 - Trans-Tasman relationship-swap families separating reciprocal Australian/New Zealand banter from one-sided hostility, harassment, quotation/analysis, and uncertain cases
 - Slang-density and compositional-register families separating lexical recognition from context-sensitive pragmatic interpretation
+- Source-gated Australian/United States policing-context families separating jurisdictional evidence from imported institutional scripts or media tropes
 - Analysis of whether context-swap failures correlate with lexical shortcuts or authority/prestige shortcuts
 - Answers to RQ6 and RQ7
 
