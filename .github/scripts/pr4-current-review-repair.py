@@ -8,6 +8,13 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
+def replace_exact(text: str, old: str, new: str, expected: int, label: str) -> str:
+    count = text.count(old)
+    if count != expected:
+        raise RuntimeError(f"{label}: expected {expected} matches, found {count}")
+    return text.replace(old, new)
+
+
 registry_path = Path("tests/test_research_reference_registry.py")
 registry = registry_path.read_text(encoding="utf-8")
 
@@ -59,17 +66,29 @@ registry_path.write_text(registry, encoding="utf-8")
 policing_path = Path("tests/test_policing_context_roadmap.py")
 policing = policing_path.read_text(encoding="utf-8")
 
-policing = replace_once(
-    policing,
-    '    "US POLICE SCRIPT != AUSTRALIAN LEGAL PROCEDURE",\n    "CASUAL ADDRESS != FRIENDSHIP OR CONSENT",\n    "FICTIONAL POLICE TROPE != OPERATIONAL POLICY",\n    "JURISDICTIONAL DIFFERENCE != NATIONAL MORAL CHARACTER",\n',
-    '    "US POLICE SCRIPT != AUSTRALIAN LEGAL PROCEDURE",\n    "POLICE TERMINOLOGY != CROSS-JURISDICTION EQUIVALENCE",\n    "CASUAL ADDRESS != FRIENDSHIP OR CONSENT",\n    "CALM TONE != ABSENCE OF COERCIVE AUTHORITY",\n    "POLITE WORDING != VOLUNTARY CHOICE",\n    "FICTIONAL POLICE TROPE != OPERATIONAL POLICY",\n    "ONE AGENCY != A NATIONAL POLICING SYSTEM",\n    "ONE ENCOUNTER != SYSTEM-WIDE GROUND TRUTH",\n    "JURISDICTIONAL DIFFERENCE != NATIONAL MORAL CHARACTER",\n',
-    "required policing invariants",
+old_invariants = (
+    '    "US POLICE SCRIPT != AUSTRALIAN LEGAL PROCEDURE",\n'
+    '    "CASUAL ADDRESS != FRIENDSHIP OR CONSENT",\n'
+    '    "FICTIONAL POLICE TROPE != OPERATIONAL POLICY",\n'
+    '    "JURISDICTIONAL DIFFERENCE != NATIONAL MORAL CHARACTER",\n'
 )
-policing = replace_once(
+new_invariants = (
+    '    "US POLICE SCRIPT != AUSTRALIAN LEGAL PROCEDURE",\n'
+    '    "POLICE TERMINOLOGY != CROSS-JURISDICTION EQUIVALENCE",\n'
+    '    "CASUAL ADDRESS != FRIENDSHIP OR CONSENT",\n'
+    '    "CALM TONE != ABSENCE OF COERCIVE AUTHORITY",\n'
+    '    "POLITE WORDING != VOLUNTARY CHOICE",\n'
+    '    "FICTIONAL POLICE TROPE != OPERATIONAL POLICY",\n'
+    '    "ONE AGENCY != A NATIONAL POLICING SYSTEM",\n'
+    '    "ONE ENCOUNTER != SYSTEM-WIDE GROUND TRUTH",\n'
+    '    "JURISDICTIONAL DIFFERENCE != NATIONAL MORAL CHARACTER",\n'
+)
+policing = replace_exact(
     policing,
-    '    "US POLICE SCRIPT != AUSTRALIAN LEGAL PROCEDURE",\n    "CASUAL ADDRESS != FRIENDSHIP OR CONSENT",\n    "FICTIONAL POLICE TROPE != OPERATIONAL POLICY",\n    "JURISDICTIONAL DIFFERENCE != NATIONAL MORAL CHARACTER",\n',
-    '    "US POLICE SCRIPT != AUSTRALIAN LEGAL PROCEDURE",\n    "POLICE TERMINOLOGY != CROSS-JURISDICTION EQUIVALENCE",\n    "CASUAL ADDRESS != FRIENDSHIP OR CONSENT",\n    "CALM TONE != ABSENCE OF COERCIVE AUTHORITY",\n    "POLITE WORDING != VOLUNTARY CHOICE",\n    "FICTIONAL POLICE TROPE != OPERATIONAL POLICY",\n    "ONE AGENCY != A NATIONAL POLICING SYSTEM",\n    "ONE ENCOUNTER != SYSTEM-WIDE GROUND TRUTH",\n    "JURISDICTIONAL DIFFERENCE != NATIONAL MORAL CHARACTER",\n',
-    "affirmative policing invariants",
+    old_invariants,
+    new_invariants,
+    2,
+    "policing invariant tuples",
 )
 policing = replace_once(
     policing,
