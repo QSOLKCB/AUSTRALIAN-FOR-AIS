@@ -71,3 +71,5 @@ jobs:
           git diff --cached --check
           git commit -m "Close six fresh PR4 review gaps"
           git push origin HEAD:research-corpus-governed-expansion
+
+# retry-v3: corrected generated newline escaping
