@@ -1,5 +1,5 @@
 name: Focused registry review repair
-# Triggered after the workflow exists in the branch history.
+# Rerun after switching full boundary integrity to committed hashes.
 
 on:
   push:
