@@ -74,7 +74,7 @@ replace_all_exact(
     registry,
     '        close = text.find(marker, run_end)\n',
     '        close = _matching_backtick_run_start(text, run_end, len(marker))\n',
-    2,
+    3,
 )
 
 # ---------------------------------------------------------------------------
