@@ -49,6 +49,12 @@ POLICING_METHODOLOGY_HEADING = (
 POLICING_METADATA_INTRO = (
     "Every implemented policing-context item must record, at minimum:"
 )
+HIGH_STAKES_REVIEW_SENTENCE = (
+    "before publishing any family involving coercion, consent, search, detention, "
+    "questioning, force, emergency powers, or legal rights, verify the governing sources "
+    "are current for the recorded jurisdiction and date and obtain appropriate review from "
+    "relevant Australian and United States legal, policing, civil-liberties, and community expertise;"
+)
 
 
 def _string_constants_in_tuple(name: str) -> tuple[str, ...]:
@@ -119,3 +125,19 @@ def test_policing_metadata_cannot_be_satisfied_outside_canonical_section():
 
     with pytest.raises(AssertionError):
         _assert_canonical_policing_metadata(mutated)
+
+
+def test_high_stakes_family_review_gate_matches_canonical_methodology():
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    methodology = _policing_methodology_section(
+        METHODOLOGY.read_text(encoding="utf-8")
+    )
+    required = set(_string_constants_in_tuple("REQUIRED_CLAUSES"))
+    affirmative = set(_string_constants_in_tuple("AFFIRMATIVE_LINE_PREFIX_CLAUSES"))
+
+    assert "before publishing high-stakes conclusions" not in roadmap
+    assert HIGH_STAKES_REVIEW_SENTENCE in roadmap
+    assert HIGH_STAKES_REVIEW_SENTENCE in required
+    assert HIGH_STAKES_REVIEW_SENTENCE in affirmative
+    assert "Before publication of a family involving coercion, consent, search, detention, questioning, force, emergency powers, or legal rights" in methodology
+    assert "obtain appropriate review from relevant Australian and United States legal, policing, civil-liberties, and community expertise" in methodology

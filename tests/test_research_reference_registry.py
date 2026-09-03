@@ -34,6 +34,34 @@ BOUNDARY_FIELDS = (
     SAFE_FIELD,
 )
 SOURCES_KEY = "sources"
+RESEARCH_MAPPING_VALUE_HASHES: dict[str, str] = {'### *Acropolis Now*': '9fd209c6a8e7308e4332deebb70d6cff614362af84e959e85f3f2eb22651aa09',
+ '### *Black Comedy* (ABC, 2014-2020)': '540200c12cf71e94c7ba788ed30dfb55775ef813fd3b5e77f01a42bc29e3919e',
+ '### *Kath & Kim*': '5c0bc12a172cc7345bd113889e660b5ca134fe9ecb67a858d237582a732fe3f5',
+ "### *Shaun Micallef's MAD AS HELL*": 'becf9683d9ed2b938d0ee74d618600e57f08daf776d6a0c857e4248599e640c1',
+ '### *The Castle* (1997)': '43a85976158f505ee9387e478a105a3d7390b1cc5eadb31d1e4f32645aed01e2',
+ '### ABC Language, *From rooting to bonking: a history of Australian sex terms*': 'e35c474ae820ec7812ba4f26ce43ad1f1c3bd258f3bf51dc1d07f794dea1e34a',
+ '### Australian Defence multinational communication reports (2022 and 2026)': '232f46f4dc2085fdb9056efcea7d5ae8b0c3afdba2742d1cfc101e976610591e',
+ '### Chey (2021), *Overcoming awkwardness: some interpretations of Australian humour*': 'd3c4858f238bd9d787a7c15b7e4f43b16c80659f090ad6e05502ab5790ece1b0',
+ '### Hurley (2025), *Laughter with purpose: how First Nations Australian comedians use humour to engage, educate, and empower audiences*': '879e88036d34b67c1d4831e40fab515c43a6c43eb20ac493df78e25b04620c9c',
+ '### Slade, *Australian Sketch Comedy Field Theory* (ASCFT)': '577e26f9b7a273c13f6776f87c0faa5a4653094131a919b36ef2fe219bc0b4bc',
+ '### Trans-Tasman constitutional and federation context': '838d26de2af33b6416b38486ce9df2fe4cf32491f8cb1cdcaf1de5ed943f2759',
+ '### Victoria University, *Australian slang dictionary*': '0b9457aed13ee05b5859fb98862a314543ab594735bb33907c65743e9c75e37e',
+ '### WWII American-serviceman Australia language guides': '25173199cf9039abb3c4bc978d185d3907ac1a28cf66b99b1f0b732c6a1601c9',
+ '### r/australia, *Best Aussie slang* community thread': 'd28273300e2cdfa66e4478aaf1fff34fa1ad1601f8e39297d6b4e0e94aca1cfc'}
+PROJECT_MAPPING_VALUE_HASHES: dict[str, str] = {'### *Acropolis Now*': 'b815c5c0d2124206cfe1ce4f4bea2dfa460fc26159f4f54e41c87a281e96030f',
+ '### *Black Comedy* (ABC, 2014-2020)': 'bc1183186383a4e22347a61249342d1bebaf5bd715d23e399ec0c142963397b9',
+ '### *Kath & Kim*': '491fa6639318124836a6910bfc1cc1d7cdd0ce27716a4a4c07cd22c9f5f1c99c',
+ "### *Shaun Micallef's MAD AS HELL*": '89398f99f540261b938792b0175c2a74747732f4b69cacaee31517504b778ad8',
+ '### *The Castle* (1997)': 'e64987ad3330a017731ce3c106def42045aff144666799f5ea1e54ac12004517',
+ '### ABC Language, *From rooting to bonking: a history of Australian sex terms*': '59dc8896ae709bb7420047a87e30dc2c432765ebb88d5388187d6246364f30c9',
+ '### Australian Defence multinational communication reports (2022 and 2026)': 'ecf5fbd24c883a8ffdee455563014b6244008adb37909df053ee854907f1c6f1',
+ '### Chey (2021), *Overcoming awkwardness: some interpretations of Australian humour*': '3d3280dc0e2bb48493da4f0c6fd67582a9cc5767215225658233b7a7b8f8eb19',
+ '### Hurley (2025), *Laughter with purpose: how First Nations Australian comedians use humour to engage, educate, and empower audiences*': '5ba8f2de7cab8b4a4a573a5b06af631f1f6ec60bfff7e8e7fc8284dc0c1d7ad1',
+ '### Slade, *Australian Sketch Comedy Field Theory* (ASCFT)': 'b225a22dc7ee9248f2ecd77d3e532629f37e9dbcfbc9475ab25054da90acf058',
+ '### Trans-Tasman constitutional and federation context': '3f0a81e49aeeaedcc1a0f7e4452ced23bb46c818416ad770d9101c9665590907',
+ '### Victoria University, *Australian slang dictionary*': '1e969d4a713c528549494fe9eb806c7dfc9475d991eec751b4cb123f76b2539b',
+ '### WWII American-serviceman Australia language guides': '73f11830b562ab52a37535def1b5d6e99e48150eaea66211e2aae80bf54970ec',
+ '### r/australia, *Best Aussie slang* community thread': '870ecba124d927a6ee6d2d462f72feb4f601ce5aefbe1fdb615251deccf5f61f'}
 
 
 def _entry_contract(
@@ -1166,7 +1194,7 @@ def _visible_inline_text(text: str) -> str:
     return " ".join(visible.split())
 
 def _normalise_https_destination(candidate: str) -> str | None:
-    value = candidate.strip().strip("<>").rstrip(".,;:!?")
+    value = html.unescape(candidate).strip().strip("<>").rstrip(".,;:!?")
     try:
         parsed = urlparse(value)
         port = parsed.port
@@ -1565,6 +1593,11 @@ def _canonicalise_metadata_marker(line: str) -> str:
     # Decode the candidate line before matching so `DOI&#58;` is the same
     # visible label as `DOI:` for uniqueness and scalar extraction.
     decoded = html.unescape(line)
+    inline_links = _markdown_inline_links(decoded)
+    if inline_links:
+        first_link = inline_links[0]
+        if first_link.start == 0 and not first_link.image:
+            decoded = first_link.label + decoded[first_link.end:]
     match = STRONG_METADATA_FIELD_PATTERN.match(decoded)
     if match:
         canonical = f"**{match.group('label')}:**"
@@ -1753,7 +1786,7 @@ def _has_non_heading_content(block: str) -> bool:
     return False
 
 
-def _require_mapping_block(entry: str, section: str) -> None:
+def _require_mapping_block(entry: str, section: str) -> tuple[str, str]:
     normalised = _normalised_rendered_lines(section)
     research_count = sum(
         1
@@ -1776,7 +1809,10 @@ def _require_mapping_block(entry: str, section: str) -> None:
     research_start = research_headings[0].end()
     project_start = project_headings[0].start()
     assert research_start < project_start, f"{entry} has research/project mapping headings in the wrong order"
-    assert _has_non_heading_content(rendered[research_start:project_start]), f"{entry} has empty research mappings"
+    research_block = rendered[research_start:project_start]
+    assert _has_non_heading_content(research_block), f"{entry} has empty research mappings"
+    research_value = _visible_inline_text(research_block)
+    assert research_value, f"{entry} has empty research mappings"
 
     safe_heading = re.search(
         rf"(?m)^ {{0,3}}{re.escape(SAFE_FIELD)}",
@@ -1785,7 +1821,11 @@ def _require_mapping_block(entry: str, section: str) -> None:
     assert safe_heading, f"{entry} is missing the safe benchmark abstraction field"
     project_value_start = project_headings[0].end()
     project_end = project_value_start + safe_heading.start()
-    assert _has_non_heading_content(rendered[project_value_start:project_end]), f"{entry} has empty project mappings"
+    project_block = rendered[project_value_start:project_end]
+    assert _has_non_heading_content(project_block), f"{entry} has empty project mappings"
+    project_value = _visible_inline_text(project_block)
+    assert project_value, f"{entry} has empty project mappings"
+    return research_value, project_value
 
 
 def _require_registered_source_link(
@@ -1855,6 +1895,8 @@ def _require_pinned_entry_contract(
     classification: str,
     scalar_values: dict[str, str],
     destinations: tuple[str, ...],
+    research_mapping: str,
+    project_mapping: str,
 ) -> None:
     contract = ENTRY_CONTRACTS.get(entry)
     assert contract is not None, f"{entry} has no pinned source-governance contract"
@@ -1890,6 +1932,20 @@ def _require_pinned_entry_contract(
                 f"{expected_hash!r}, got {actual_hash!r}"
             )
 
+    actual_research_hash = hashlib.sha256(research_mapping.encode("utf-8")).hexdigest()
+    expected_research_hash = RESEARCH_MAPPING_VALUE_HASHES[entry]
+    assert actual_research_hash == expected_research_hash, (
+        f"{entry} research mappings changed: expected hash "
+        f"{expected_research_hash!r}, got {actual_research_hash!r}"
+    )
+    actual_project_hash = hashlib.sha256(project_mapping.encode("utf-8")).hexdigest()
+    expected_project_hash = PROJECT_MAPPING_VALUE_HASHES[entry]
+    assert actual_project_hash == expected_project_hash, (
+        f"{entry} project mappings changed: expected hash "
+        f"{expected_project_hash!r}, got {actual_project_hash!r}"
+    )
+
+
 def _validate_registered_entry(
     entry: str,
     section: str,
@@ -1919,13 +1975,15 @@ def _validate_registered_entry(
     else:
         assert not _visible_scalar_values(section, DOI_FIELD), f"{entry} has unpinned DOI metadata"
     classification = _require_community_governance(entry, section)
+    research_mapping, project_mapping = _require_mapping_block(entry, section)
     _require_pinned_entry_contract(
         entry,
         classification=classification,
         scalar_values=scalar_values,
         destinations=destinations,
+        research_mapping=research_mapping,
+        project_mapping=project_mapping,
     )
-    _require_mapping_block(entry, section)
 
 
 def _validate_registry_corpus(corpus: str) -> None:
@@ -2919,3 +2977,48 @@ def test_open_dialog_keeps_governed_batch_visible():
     batch = _registered_batch(corpus)
     mutated = corpus.replace(batch, f"<dialog open>\n{batch}\n</dialog>\n", 1)
     _validate_registry_corpus(mutated)
+
+
+def test_link_wrapped_metadata_label_is_counted():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = (
+        "### Chey (2021), *Overcoming awkwardness: some interpretations of "
+        "Australian humour*"
+    )
+    section = _registered_sections(corpus)[entry]
+    mutated = section.rstrip() + "\n\n[**DOI:**](#field) https://doi.org/10.0000/fabricated\n"
+    with pytest.raises(AssertionError, match="exactly one mandatory field"):
+        _validate_registered_entry(entry, mutated)
+
+
+def test_entity_encoded_markdown_link_destination_is_counted():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = "### *Black Comedy* (ABC, 2014-2020)"
+    section = _registered_sections(corpus)[entry]
+    pinned = "https://iview.abc.net.au/show/black-comedy"
+    mutated = section.replace(
+        pinned,
+        pinned + " [alternate](https&#58;//www.wikipedia.org/)",
+        1,
+    )
+    with pytest.raises(AssertionError, match="registered-source destinations changed"):
+        _validate_registered_entry(entry, mutated)
+
+
+def test_complete_per_entry_mappings_are_pinned():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = "### *Black Comedy* (ABC, 2014-2020)"
+    section = _registered_sections(corpus)[entry]
+    research = RESEARCH_MAPPING_HEADING_PATTERN.search(section)
+    project = PROJECT_MAPPING_HEADING_PATTERN.search(section)
+    assert research is not None and project is not None
+    safe_start = section.index(SAFE_FIELD, project.end())
+    mutated = (
+        section[:research.end()]
+        + "\n\n- unrelated placeholder\n\n"
+        + section[project.start():project.end()]
+        + "\n\n- unrelated placeholder\n\n"
+        + section[safe_start:]
+    )
+    with pytest.raises(AssertionError, match="research mappings changed|project mappings changed"):
+        _validate_registered_entry(entry, mutated)

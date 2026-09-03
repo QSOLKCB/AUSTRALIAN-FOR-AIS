@@ -34,7 +34,7 @@ class _VisibleHTMLTextParser(HTMLParser):
         if tag in {"script", "style", "template"}:
             return True
         values = {key.lower(): (value or "") for key, value in attrs}
-        if tag == "details" and "open" not in values:
+        if tag in {"details", "dialog"} and "open" not in values:
             return True
         if "hidden" in values:
             return True
@@ -238,6 +238,7 @@ def test_workstream_h_and_methodology_safeguards_must_be_browser_visible():
     for hidden in (
         f"<!-- {listener_clause} -->",
         f"<span hidden>{listener_clause}</span>",
+        f"<dialog>{listener_clause}</dialog>",
         f'[placeholder](# "{listener_clause}")',
     ):
         mutated = roadmap.replace(listener_clause, hidden, 1)

@@ -30,6 +30,11 @@ REQUIRED_CLAUSES = (
     "JURISDICTIONAL DIFFERENCE != NATIONAL MORAL CHARACTER",
     "LEGAL INFORMATION != LEGAL ADVICE",
     "register official and current sources for each Australian and United States jurisdictional claim",
+    "before publishing any family involving coercion, consent, search, detention, "
+    "questioning, force, emergency powers, or legal rights, verify the governing "
+    "sources are current for the recorded jurisdiction and date and obtain appropriate "
+    "review from relevant Australian and United States legal, policing, civil-liberties, "
+    "and community expertise;",
 )
 
 AFFIRMATIVE_LINE_PREFIX_CLAUSES = (
@@ -45,7 +50,19 @@ AFFIRMATIVE_LINE_PREFIX_CLAUSES = (
     "JURISDICTIONAL DIFFERENCE != NATIONAL MORAL CHARACTER",
     "LEGAL INFORMATION != LEGAL ADVICE",
     "register official and current sources for each Australian and United States jurisdictional claim",
+    "before publishing any family involving coercion, consent, search, detention, "
+    "questioning, force, emergency powers, or legal rights, verify the governing "
+    "sources are current for the recorded jurisdiction and date and obtain appropriate "
+    "review from relevant Australian and United States legal, policing, civil-liberties, "
+    "and community expertise;",
 )
+
+AFFIRMATIVE_EXACT_LINE_OVERRIDES = {
+    "register official and current sources for each Australian and United States jurisdictional claim": (
+        "register official and current sources for each Australian and United States "
+        "jurisdictional claim before adopting it as benchmark context;"
+    ),
+}
 
 FENCE_PATTERN = re.compile(r"(?P<fence>`{3,}|~{3,})(?P<info>.*)")
 LIST_MARKER_PATTERN = re.compile(r"(?:[-+*]|\d{1,9}[.)])(?:[ \t]+|$)")
@@ -632,7 +649,10 @@ def _validate_policing_workstream(roadmap: str) -> None:
     for clause in REQUIRED_CLAUSES:
         visible_clause = _visible_text(clause)
         if clause in AFFIRMATIVE_LINE_PREFIX_CLAUSES:
-            assert any(line.startswith(visible_clause) for line in visible_lines), (
+            expected_line = _visible_text(
+                AFFIRMATIVE_EXACT_LINE_OVERRIDES.get(clause, clause)
+            )
+            assert any(line == expected_line for line in visible_lines), (
                 f"missing policing-workstream safeguard: {clause}"
             )
         else:
@@ -781,5 +801,21 @@ def test_policing_scope_boundaries_are_all_required(clause: str):
     roadmap = ROADMAP.read_text(encoding="utf-8")
     assert clause in roadmap
     mutated = roadmap.replace(clause, "REMOVED POLICING BOUNDARY", 1)
+    with pytest.raises(AssertionError, match="missing policing-workstream safeguard"):
+        _validate_policing_workstream(mutated)
+
+
+def test_policing_source_gate_cannot_be_suffix_negated():
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    original = (
+        "register official and current sources for each Australian and United States "
+        "jurisdictional claim before adopting it as benchmark context;"
+    )
+    contradictory = (
+        "register official and current sources for each Australian and United States "
+        "jurisdictional claim only when convenient; no source is actually mandatory"
+    )
+    assert original in roadmap
+    mutated = roadmap.replace(original, contradictory, 1)
     with pytest.raises(AssertionError, match="missing policing-workstream safeguard"):
         _validate_policing_workstream(mutated)

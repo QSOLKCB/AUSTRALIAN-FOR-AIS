@@ -312,7 +312,7 @@ A focused follow-up PR should:
 - construct independently authored context swaps rather than copying body-camera audio, police interviews, television dialogue, viral clips, or identifiable real-person encounters;
 - separate linguistic-pragmatic evaluation from legal correctness, policy evaluation, use-of-force analysis, and moral comparison, reporting each only when the dataset and sources genuinely support it;
 - include unresolved cases where the context does not establish whether a statement is a request, direction, warning, caution, consent inquiry, or compulsory instruction;
-- involve appropriate Australian and United States legal, policing, civil-liberties, and community expertise before publishing high-stakes conclusions;
+- before publishing any family involving coercion, consent, search, detention, questioning, force, emergency powers, or legal rights, verify the governing sources are current for the recorded jurisdiction and date and obtain appropriate review from relevant Australian and United States legal, policing, civil-liberties, and community expertise;
 - connect suitable families to Phase 5 context swaps, Phase 6 moderation/safety analysis, and Phase 7 cross-register and cross-institution comparison.
 
 ---
