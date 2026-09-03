@@ -33,6 +33,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Canonicalized equivalent CommonMark strong-emphasis metadata labels before registry field counting so forms such as `__DOI:__` cannot bypass uniqueness checks, and restored the complete Phase 1 changelog history that had been accidentally truncated during review cleanup
 - Closed the next review round by making registry fence ownership container-order-aware, canonicalizing visible HTML strong metadata labels, explicitly governing community-attestation sources, and decoupling Australian-English familiarity from nationality and general language background in Workstream H
 - Hardened rendered-governance validation with container-owned policing fences, balanced nested Markdown link labels, nested inline markup inside HTML metadata labels, and browser-visible Workstream H methodology safeguards so hidden or non-rendered text cannot satisfy governance contracts
+- Extended rendered-Markdown hardening to resolve multiline reference definitions, discover governed headings inside quote/list containers, parse balanced nested link labels in Workstream H and policing visibility checks, and preserve closed-disclosure/hidden-container state across the complete Workstream I roadmap before section slicing
 
 ---
 
