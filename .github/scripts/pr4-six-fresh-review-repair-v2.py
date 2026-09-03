@@ -35,7 +35,7 @@ new = '''if \"browser-visible policing workstream changed\" not in policing:
         )
     integrity = ''' + "'''" + '''
 
-    integrity_value = \"\\n\".join(visible_lines)
+    integrity_value = \"\\\\n\".join(visible_lines)
     integrity_hash = hashlib.sha256(integrity_value.encode(\"utf-8\")).hexdigest()
     assert integrity_hash == POLICING_WORKSTREAM_VISIBLE_SHA256, (
         \"browser-visible policing workstream changed: expected hash \"
