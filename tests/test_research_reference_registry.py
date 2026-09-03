@@ -454,11 +454,13 @@ CONTRACT_HEADING = "## Registration contract for new sources"
 CONTRACT_SENTENCE = (
     "Every adopted post-Phase-2 registry entry must record all of the following fields"
 )
+REGISTRATION_CONTRACT_HASH = "1d171556a66c3cfc54a7bf14072d51bb68d17cb390fffa826a0f50329e2d51d6"
 CONSULTATION_BOUNDARY = (
     "appropriate consultation, provenance, permissions, and scope limitations"
 )
 
 ENTRY_HEADING_PATTERN = re.compile(r"(?m)^ {0,3}(?P<heading>### .+?)[ \t]*$")
+HTML_ENTRY_HEADING_PATTERN = re.compile(r"(?is)<h3\b[^>]*>.*?</h3\s*>")
 GOVERNANCE_FIELD_PATTERN = re.compile(
     r"(?m)^[ \t]*\*\*Community-specific governance:\*\*"
 )
@@ -528,6 +530,7 @@ class _VisibleHTMLTextParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.parts: list[str] = []
+        self.hrefs: list[str] = []
         self.stack: list[tuple[str, bool]] = []
 
     @staticmethod
@@ -545,7 +548,13 @@ class _VisibleHTMLTextParser(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         inherited = self.stack[-1][1] if self.stack else False
-        self.stack.append((tag.lower(), inherited or self._is_hidden(tag, attrs)))
+        hidden = inherited or self._is_hidden(tag, attrs)
+        if tag.lower() == "a" and not hidden:
+            for key, value in attrs:
+                if key.lower() == "href" and value:
+                    self.hrefs.append(value)
+                    break
+        self.stack.append((tag.lower(), hidden))
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         return
@@ -570,6 +579,17 @@ def _visible_html_text(text: str) -> str:
     except Exception:
         return ""
     return " ".join(parser.parts)
+
+
+def _visible_html_links(text: str) -> tuple[str, ...]:
+    """Return navigable href values from browser-visible raw HTML anchors."""
+    parser = _VisibleHTMLTextParser()
+    try:
+        parser.feed(text)
+        parser.close()
+    except Exception:
+        return ()
+    return tuple(parser.hrefs)
 
 
 def _indent_columns(value: str, start: int = 0) -> tuple[int, int]:
@@ -1082,6 +1102,11 @@ def _usable_https_destinations(text: str) -> tuple[str, ...]:
     structure = _structural_registry_text(text)
     destinations: list[str] = []
 
+    for candidate in _visible_html_links(structure):
+        destination = _normalise_https_destination(candidate)
+        if destination is not None:
+            destinations.append(destination)
+
     for match in MARKDOWN_LINK_PATTERN.finditer(structure):
         if match.group("image"):
             continue
@@ -1116,20 +1141,27 @@ def _registered_batch(corpus: str) -> str:
 def _registered_sections(corpus: str) -> dict[str, str]:
     batch = _registered_batch(corpus)
     rendered, structure = _markdown_views(batch)
-    matches = list(ENTRY_HEADING_PATTERN.finditer(structure))
+    matches: list[tuple[int, int, str]] = [
+        (match.start(), match.end(), match.group("heading"))
+        for match in ENTRY_HEADING_PATTERN.finditer(structure)
+    ]
+    for match in HTML_ENTRY_HEADING_PATTERN.finditer(structure):
+        visible_heading = _visible_inline_text(rendered[match.start():match.end()])
+        if visible_heading:
+            matches.append((match.start(), match.end(), f"### {visible_heading}"))
+    matches.sort(key=lambda item: item[0])
     assert matches, "registered post-Phase-2 batch contains no entries"
 
-    headings = [match.group("heading") for match in matches]
+    headings = [heading for _, _, heading in matches]
     duplicates = sorted(
         heading for heading, count in Counter(headings).items() if count > 1
     )
     assert not duplicates, f"duplicate registered-entry headings: {duplicates}"
 
     sections: dict[str, str] = {}
-    for index, match in enumerate(matches):
-        heading = match.group("heading")
-        end = matches[index + 1].start() if index + 1 < len(matches) else len(batch)
-        sections[heading] = rendered[match.start():end]
+    for index, (start, _heading_end, heading) in enumerate(matches):
+        end = matches[index + 1][0] if index + 1 < len(matches) else len(batch)
+        sections[heading] = rendered[start:end]
     return sections
 
 
@@ -1487,13 +1519,19 @@ def _validate_registered_entry(entry: str, section: str) -> None:
 
 
 def _validate_registry_corpus(corpus: str) -> None:
-    structure = _structural_registry_text(corpus)
+    rendered, structure = _markdown_views(corpus)
     assert CONTRACT_HEADING in structure, "rendered registration contract is missing"
     contract_start = structure.index(CONTRACT_HEADING)
     assert BATCH_HEADING in structure[contract_start:], "rendered governed batch heading is missing"
     contract_end = structure.index(BATCH_HEADING, contract_start)
     contract_section = structure[contract_start:contract_end]
     assert CONTRACT_SENTENCE in contract_section, "rendered registration contract is incomplete"
+    visible_contract = _visible_inline_text(rendered[contract_start:contract_end])
+    actual_contract_hash = hashlib.sha256(visible_contract.encode("utf-8")).hexdigest()
+    assert actual_contract_hash == REGISTRATION_CONTRACT_HASH, (
+        "rendered registration contract changed or was weakened: "
+        f"expected hash {REGISTRATION_CONTRACT_HASH!r}, got {actual_contract_hash!r}"
+    )
     assert "RESEARCH REFERENCE != REDISTRIBUTABLE DATA" in structure
 
     sections = _registered_sections(corpus)
@@ -2172,3 +2210,43 @@ def test_registration_contract_explicitly_bounds_community_attestation():
     assert "explicitly bounded community-attestation source links" in contract
     assert "user-generated, non-representative orientation or attestation material" in contract
     assert "cannot establish prevalence" in contract
+
+
+
+def test_registry_discovery_detects_rendered_html_h3_entry():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    injected = (
+        BATCH_HEADING
+        + "\n\n<h3>Fabricated ungoverned reference</h3>\n\n"
+        + "Arbitrary provenance prose.\n\n"
+    )
+    mutated = corpus.replace(BATCH_HEADING, injected, 1)
+    sections = _registered_sections(mutated)
+    assert "### Fabricated ungoverned reference" in sections
+    with pytest.raises(AssertionError, match="every rendered governed entry"):
+        _validate_registry_corpus(mutated)
+
+
+def test_complete_registration_contract_is_pinned():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    start = corpus.index(CONTRACT_HEADING)
+    end = corpus.index(BATCH_HEADING, start)
+    contract = corpus[start:end]
+    keep = contract.index(CONTRACT_SENTENCE) + len(CONTRACT_SENTENCE)
+    weakened = contract[:keep] + "\n\nAll other requirements are optional.\n\n"
+    mutated = corpus[:start] + weakened + corpus[end:]
+    with pytest.raises(AssertionError, match="registration contract changed or was weakened"):
+        _validate_registry_corpus(mutated)
+
+
+def test_html_anchor_source_destination_is_included_in_pinned_set():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = EXPECTED_GOVERNED_ENTRIES[0]
+    section = _registered_sections(corpus)[entry]
+    mutated = section.replace(
+        SOURCE_TYPE_FIELD,
+        '<a href="https://wikipedia.org/">alternate source</a>\n\n' + SOURCE_TYPE_FIELD,
+        1,
+    )
+    with pytest.raises(AssertionError, match="registered-source destinations changed"):
+        _validate_registered_entry(entry, mutated)

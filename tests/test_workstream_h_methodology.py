@@ -37,3 +37,12 @@ def test_workstream_h_keeps_community_attestation_bounded():
     section = _workstream_h(ROADMAP.read_text(encoding="utf-8"))
     assert "orientation/community-attestation sources with explicit non-representative status" in section
     assert "converting crowd-sourced examples directly into benchmark data" in section
+
+
+def test_trans_tasman_methodology_never_allows_exact_group_stereotype_wording():
+    text = METHODOLOGY.read_text(encoding="utf-8")
+    start = text.index("## Trans-Tasman and Slang/Operational Experiment Design")
+    end = text.index("## Australian and United States Policing-Context Experiment Design", start)
+    section = text[start:end]
+    assert "exact group-stereotyping wording must not be reproduced" in section
+    assert "unless exact material has an attributable source" not in section
