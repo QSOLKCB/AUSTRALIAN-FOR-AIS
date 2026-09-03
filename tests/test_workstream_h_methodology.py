@@ -1,4 +1,4 @@
-"""Regression checks for Workstream H listener-variable design."""
+"""Regression checks for Workstream H listener-variable and source-governance design."""
 
 from pathlib import Path
 
@@ -31,3 +31,9 @@ def test_canonical_methodology_crosses_listener_variables_independently():
     assert "self-reported or experimentally established" in section
     assert "neither nationality nor first-language category acts as a proxy for comprehension" in section
     assert "higher versus lower Australian-English familiarity crossed or matched" in section
+
+
+def test_workstream_h_keeps_community_attestation_bounded():
+    section = _workstream_h(ROADMAP.read_text(encoding="utf-8"))
+    assert "orientation/community-attestation sources with explicit non-representative status" in section
+    assert "converting crowd-sourced examples directly into benchmark data" in section
