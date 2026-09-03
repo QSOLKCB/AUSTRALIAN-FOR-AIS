@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   repair-latest-codex-registry-findings:
-    name: Apply robust CommonMark registry repair
+    name: Complete robust latest Codex repair
     if: github.event_name == 'push' && github.ref == 'refs/heads/research-corpus-governed-expansion'
     runs-on: ubuntu-latest
 
@@ -21,13 +21,41 @@ jobs:
           ref: research-corpus-governed-expansion
           fetch-depth: 0
 
-      - name: Replace rendered Markdown helpers
+      - name: Apply complete rendered Markdown repair
         run: |
           python - <<'PY'
           from pathlib import Path
 
           path = Path("tests/test_research_reference_registry.py")
           text = path.read_text(encoding="utf-8")
+
+          def ensure_entry_doi(entry_fragment: str, source_fragment: str, doi: str) -> None:
+              global text
+              entry_start = text.index(entry_fragment)
+              next_entry = text.find("\n    ", entry_start + len(entry_fragment))
+              if next_entry < 0:
+                  next_entry = len(text)
+              window = text[entry_start:next_entry]
+              doi_line = f'        doi="{doi}",\n'
+              if doi_line in window:
+                  return
+              source_start = text.index(source_fragment, entry_start)
+              if source_fragment.endswith("),\n"):
+                  insert_at = source_start + len(source_fragment)
+              else:
+                  insert_at = text.index("        ),\n", source_start) + len("        ),\n")
+              text = text[:insert_at] + doi_line + text[insert_at:]
+
+          ensure_entry_doi(
+              '"### Chey (2021), *Overcoming awkwardness: some interpretations of "',
+              '        sources=("https://europeanjournalofhumour.org/ejhr/article/view/560",),\n',
+              "https://doi.org/10.7592/EJHR2021.9.4.560",
+          )
+          ensure_entry_doi(
+              '"### Hurley (2025), *Laughter with purpose: how First Nations Australian "',
+              '            "https://www.tandfonline.com/doi/full/10.1080/2040610X.2025.2538977",\n',
+              "https://doi.org/10.1080/2040610X.2025.2538977",
+          )
 
           start = text.index("def _markdown_views(text: str) -> tuple[str, str]:")
           end = text.index("\ndef _rendered_registry_text", start)
@@ -162,7 +190,7 @@ jobs:
       - name: Check repaired test syntax
         run: python -m py_compile tests/test_research_reference_registry.py
 
-      - name: Run focused regressions
+      - name: Run focused registry regressions
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
@@ -171,13 +199,13 @@ jobs:
       - name: Commit parser repair
         run: |
           if git diff --quiet -- tests/test_research_reference_registry.py; then
-            echo "Robust parser repair already present."
+            echo "Complete repair already present."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add tests/test_research_reference_registry.py
-          git commit -m "Finish CommonMark registry semantics"
+          git commit -m "Complete latest registry hardening"
           git push origin HEAD:research-corpus-governed-expansion
 
   test:
