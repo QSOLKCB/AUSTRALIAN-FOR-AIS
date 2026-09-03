@@ -27,6 +27,25 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
+      - name: Normalize policing repair anchor
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("tests/test_policing_context_roadmap.py")
+          text = path.read_text(encoding="utf-8")
+          old = '''    def handle_startendtag(
+                  self, tag: str, attrs: list[tuple[str, str | None]]
+              ) -> None:
+                  parent_hidden = self.stack[-1][1] if self.stack else False
+          '''
+          new = '''    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+                  parent_hidden = self.stack[-1][1] if self.stack else False
+          '''
+          if text.count(old) != 1:
+              raise SystemExit(f"expected one policing hidden-parser signature, found {text.count(old)}")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
       - name: Apply browser-semantics repairs
         run: python .github/scripts/pr4-browser-semantics-repair.py
       - name: Run focused regressions
