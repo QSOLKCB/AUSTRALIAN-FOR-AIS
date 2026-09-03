@@ -210,6 +210,50 @@ These families remain subject to the same ambiguity, context-swap, provenance, a
 
 ---
 
+## Australian and United States Policing-Context Experiment Design
+
+Workstream I studies **institutional-script transfer** between Australian and United States policing contexts. It is a linguistic-pragmatic research design, not legal advice, a use-of-force benchmark, or a ranking of which country polices “better”. No policing behaviour, legal right, coercive condition, or procedural difference may be inferred from nationality alone.
+
+Every implemented policing-context item must record, at minimum:
+
+- **country**;
+- **jurisdiction**, including the relevant Australian state/territory or United States federal/state/local level where applicable;
+- **agency or institutional role** when it affects interpretation;
+- **encounter type**, such as ordinary service, traffic, welfare, public-order, emergency, questioning, interview, detention, or another explicitly defined category;
+- **source date or version**;
+- **registered source identifiers or links** supporting any legal or procedural condition supplied to the model; and
+- **claim type**, separating linguistic-pragmatic interpretation from legal/procedural correctness, policy description, empirical system comparison, or unresolved context.
+
+The source hierarchy is explicit. Current official legislation, court material, police-service policy/guidance, and other authoritative jurisdiction-specific sources are preferred for legal or procedural propositions. Official institutional reports may support operational terminology or documented practice within their stated scope. Peer-reviewed legal, criminological, sociolinguistic, or related scholarship may motivate bounded descriptive hypotheses. News, television, film, viral clips, body-camera compilations, anecdotes, and community discussion may generate research questions but cannot substitute for a current official source when an item asserts legal authority, rights, compulsion, search power, detention status, caution requirements, or another jurisdiction-specific rule.
+
+Controlled construction should hold the utterance and encounter purpose as constant as practical while varying only the jurisdictional or institutional variable under study. A jurisdiction swap is valid only when the underlying conditions are actually comparable. If the Australian and United States conditions differ in law, role, procedure, or factual setting, the item must expose that difference explicitly rather than pretending it is a clean lexical minimal pair. Appropriate controls include:
+
+- same wording with different supplied jurisdictions when the legal/pragmatic comparison is genuinely matched;
+- same jurisdiction with different officer roles, encounter categories, or explicit authority conditions;
+- polite wording versus explicit compulsion while holding the legal condition fixed;
+- casual address, first-name use, humour, understatement, or `mate` versus a more formal register while holding authority constant;
+- fictional or media-script wording versus the current official rule supplied in context; and
+- unresolved cases where the evidence does not establish whether an utterance is a request, direction, warning, caution, consent inquiry, or compulsory instruction.
+
+A proposed Australian “lighter touch” hypothesis must therefore be decomposed into observable, source-supported variables such as conversational register, casual address, explicitness, repair, de-escalatory language, or stated compulsion. `Australian` and `American` are never labels for benevolence, danger, coercion, restraint, lawfulness, legitimacy, or conversational style. If the evidence supports only a language/register difference, the benchmark must make only that linguistic claim.
+
+Legal and procedural review is mandatory for high-stakes use. Before publication of a family involving coercion, consent, search, detention, questioning, force, emergency powers, or legal rights, the project must verify the governing sources are current for the recorded jurisdiction and date and obtain appropriate review from relevant Australian and United States legal, policing, civil-liberties, and community expertise. When sources conflict, are stale, or do not establish the requested condition, the item must remain unresolved or be excluded rather than forcing a gold label.
+
+The following boundaries are mandatory:
+
+- **US POLICE SCRIPT != AUSTRALIAN LEGAL PROCEDURE**
+- **POLICE TERMINOLOGY != CROSS-JURISDICTION EQUIVALENCE**
+- **CASUAL ADDRESS != FRIENDSHIP OR CONSENT**
+- **CALM TONE != ABSENCE OF COERCIVE AUTHORITY**
+- **POLITE WORDING != VOLUNTARY CHOICE**
+- **FICTIONAL POLICE TROPE != OPERATIONAL POLICY**
+- **ONE AGENCY != A NATIONAL POLICING SYSTEM**
+- **ONE ENCOUNTER != SYSTEM-WIDE GROUND TRUTH**
+- **JURISDICTIONAL DIFFERENCE != NATIONAL MORAL CHARACTER**
+- **LEGAL INFORMATION != LEGAL ADVICE**
+
+---
+
 ## Scoring Philosophy
 
 The following distinctions are mandatory:
