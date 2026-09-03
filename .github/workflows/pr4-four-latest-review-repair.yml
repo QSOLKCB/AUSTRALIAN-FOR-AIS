@@ -38,8 +38,8 @@ jobs:
           path = Path("tests/test_research_reference_registry.py")
           text = path.read_text(encoding="utf-8")
 
-          old = '''            if not is_code and logical.strip(" \\t") == heading:\n                matches.append((offset, offset + len(line)))\n            offset += len(raw_line)\n'''
-          new = '''            if not is_code and logical.strip(" \\t") == heading:\n                matches.append((offset, offset + len(raw_line)))\n            offset += len(raw_line)\n'''
+          old = '''        if not is_code and logical.strip(" \\t") == heading:\n            matches.append((offset, offset + len(line)))\n        offset += len(raw_line)\n'''
+          new = '''        if not is_code and logical.strip(" \\t") == heading:\n            matches.append((offset, offset + len(raw_line)))\n        offset += len(raw_line)\n'''
           if text.count(old) != 1:
               raise SystemExit(f"expected one heading-span anchor, found {text.count(old)}")
           text = text.replace(old, new, 1)
