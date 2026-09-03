@@ -4,11 +4,15 @@ from pathlib import Path
 import html
 from html.parser import HTMLParser
 import re
+import runpy
 
 
 ROOT = Path(__file__).parent.parent
 ROADMAP = ROOT / "ROADMAP.md"
 METHODOLOGY = ROOT / "docs" / "METHODOLOGY.md"
+POLICING_TEST = Path(__file__).parent / "test_policing_context_roadmap.py"
+WORKSTREAM_H_HEADING = "### H. Slang density, register compression, and operational intelligibility"
+WORKSTREAM_I_HEADING = "### I. Australian and United States policing-context transfer"
 
 MARKDOWN_IMAGE_PATTERN = re.compile(
     r"!\[[^\]\r\n]*\]\([^\r\n)]*(?:\)[^\r\n)]*)?\)"
@@ -263,9 +267,17 @@ def _visible_markdown_text(markdown: str) -> str:
     return " ".join(visible.split())
 
 
+def _rendered_heading_span(text: str, heading: str) -> tuple[int, int]:
+    """Locate one browser-visible heading using the hardened structural renderer."""
+    namespace = runpy.run_path(str(POLICING_TEST))
+    structure = namespace["_rendered_structure"](text)
+    return namespace["_visible_markdown_heading_span"](structure, heading)
+
+
 def _workstream_h(text: str) -> str:
-    start = text.index("### H. Slang density")
-    end = text.index("### I. Australian and United States policing-context transfer", start)
+    start, _ = _rendered_heading_span(text, WORKSTREAM_H_HEADING)
+    end, _ = _rendered_heading_span(text, WORKSTREAM_I_HEADING)
+    assert start < end, "rendered Workstream H boundary is invalid"
     return _visible_markdown_text(text[start:end])
 
 
@@ -335,3 +347,22 @@ def test_workstream_h_and_methodology_safeguards_must_be_browser_visible():
     ):
         mutated = methodology.replace(stereotype_clause, hidden, 1)
         assert stereotype_clause not in _trans_tasman_methodology(mutated)
+
+
+def test_workstream_h_start_must_be_a_visible_heading():
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    start = roadmap.index(WORKSTREAM_H_HEADING)
+    end = roadmap.index(WORKSTREAM_I_HEADING, start)
+    body = roadmap[start + len(WORKSTREAM_H_HEADING):end]
+    mutated = (
+        roadmap[:start]
+        + f'[boundary](# "{WORKSTREAM_H_HEADING}")'
+        + body
+        + "\n"
+        + WORKSTREAM_H_HEADING
+        + "\n\n"
+        + roadmap[end:]
+    )
+    section = _workstream_h(mutated)
+    assert "nationality and first-language identity must not define the comparison cohorts" not in section
+    assert "orientation/community-attestation sources with explicit non-representative status" not in section

@@ -1679,6 +1679,47 @@ def _strip_composed_container_prefixes(line: str) -> tuple[str, bool]:
     return logical, is_code
 
 
+def _leading_wrapped_html_metadata_marker(text: str) -> tuple[str, int] | None:
+    """Return a leading visible strong metadata label through ordinary HTML wrappers."""
+    cursor = 0
+    strong_pattern = re.compile(
+        r"^<(?P<tag>strong|b)\b[^>]*>(?P<body>.*?)</(?P=tag)>",
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    closing_wrapper = re.compile(r"^[ \t]*</[A-Za-z][^>]*>", flags=re.IGNORECASE)
+
+    while cursor < len(text):
+        while cursor < len(text) and text[cursor] in " \t":
+            cursor += 1
+        strong = strong_pattern.match(text[cursor:])
+        if strong:
+            rendered_label = _visible_html_text(strong.group(0)).strip()
+            if not rendered_label.endswith(":"):
+                return None
+            label = rendered_label[:-1].strip()
+            if not label or ":" in label:
+                return None
+            end = cursor + strong.end()
+            # Consume only immediately closing wrapper tags. If a wrapper has
+            # additional visible payload after the strong label, that payload
+            # remains part of the field value instead of being discarded.
+            while True:
+                closing = closing_wrapper.match(text[end:])
+                if closing is None:
+                    break
+                end += closing.end()
+            return label, end
+
+        tag = HTML_TAG_PATTERN.match(text, cursor)
+        if tag is None:
+            return None
+        token = tag.group(0)
+        if token.startswith("</") or token.startswith("<!") or token.startswith("<?"):
+            return None
+        cursor = tag.end()
+    return None
+
+
 def _canonicalise_metadata_marker(line: str) -> str:
     """Canonicalise equivalent browser-rendered metadata labels."""
     # CommonMark resolves character references before rendering inline text.
@@ -1698,6 +1739,12 @@ def _canonicalise_metadata_marker(line: str) -> str:
         first_link = inline_links[0]
         if first_link.start == 0 and not first_link.image:
             decoded = first_link.label + decoded[first_link.end:]
+
+    wrapped_html = _leading_wrapped_html_metadata_marker(decoded)
+    if wrapped_html is not None:
+        label, end = wrapped_html
+        return f"**{label}:**" + decoded[end:]
+
     match = STRONG_METADATA_FIELD_PATTERN.match(decoded)
     if match:
         canonical = f"**{match.group('label')}:**"
@@ -3239,6 +3286,20 @@ def test_html_anchor_wrapped_metadata_label_is_counted():
         doi,
         doi
         + '\n\n<a href="#field"><strong>DOI:</strong></a> '
+        + "https://doi.org/10.0000/fabricated",
+        1,
+    )
+    with pytest.raises(AssertionError, match="exactly one mandatory field"):
+        _validate_registry_corpus(mutated)
+
+
+def test_arbitrary_html_wrapper_metadata_label_is_counted():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    doi = "**DOI:** https://doi.org/10.7592/EJHR2021.9.4.560"
+    mutated = corpus.replace(
+        doi,
+        doi
+        + "\n\n<span><strong>DOI:</strong></span> "
         + "https://doi.org/10.0000/fabricated",
         1,
     )

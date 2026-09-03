@@ -56,6 +56,12 @@ HIGH_STAKES_REVIEW_SENTENCE = (
     "are current for the recorded jurisdiction and date and obtain appropriate review from "
     "relevant Australian and United States legal, policing, civil-liberties, and community expertise;"
 )
+CANONICAL_HIGH_STAKES_REVIEW_SENTENCE = (
+    "Before publication of a family involving coercion, consent, search, detention, questioning, "
+    "force, emergency powers, or legal rights, the project must verify the governing sources are "
+    "current for the recorded jurisdiction and date and obtain appropriate review from relevant "
+    "Australian and United States legal, policing, civil-liberties, and community expertise."
+)
 
 
 def _string_constants_in_tuple(name: str) -> tuple[str, ...]:
@@ -81,14 +87,26 @@ def _policing_methodology_section(methodology: str) -> str:
     return methodology[start:end]
 
 
-def _assert_canonical_policing_metadata(methodology: str) -> None:
-    policing_methodology = _policing_methodology_section(methodology)
+def _visible_policing_methodology(methodology: str) -> str:
     policing_namespace = runpy.run_path(str(POLICING_TEST))
     visible_text = policing_namespace["_visible_text"]
-    rendered = visible_text(policing_methodology)
+    return visible_text(_policing_methodology_section(methodology))
+
+
+def _assert_canonical_policing_metadata(methodology: str) -> None:
+    rendered = _visible_policing_methodology(methodology)
     assert POLICING_METADATA_INTRO in rendered
     for field in CANONICAL_METADATA_FIELDS:
         assert field in rendered
+
+
+def _assert_canonical_high_stakes_gate(methodology: str) -> None:
+    rendered = _visible_policing_methodology(methodology)
+    assert CANONICAL_HIGH_STAKES_REVIEW_SENTENCE in rendered
+    assert (
+        "obtain appropriate review from relevant Australian and United States legal, policing, "
+        "civil-liberties, and community expertise"
+    ) in rendered
 
 
 def test_all_policing_invariants_are_required_and_affirmative():
@@ -133,9 +151,7 @@ def test_policing_metadata_cannot_be_satisfied_outside_canonical_section():
 
 def test_high_stakes_family_review_gate_matches_canonical_methodology():
     roadmap = ROADMAP.read_text(encoding="utf-8")
-    methodology = _policing_methodology_section(
-        METHODOLOGY.read_text(encoding="utf-8")
-    )
+    methodology = METHODOLOGY.read_text(encoding="utf-8")
     required = set(_string_constants_in_tuple("REQUIRED_CLAUSES"))
     affirmative = set(_string_constants_in_tuple("AFFIRMATIVE_LINE_PREFIX_CLAUSES"))
 
@@ -143,8 +159,7 @@ def test_high_stakes_family_review_gate_matches_canonical_methodology():
     assert HIGH_STAKES_REVIEW_SENTENCE in roadmap
     assert HIGH_STAKES_REVIEW_SENTENCE in required
     assert HIGH_STAKES_REVIEW_SENTENCE in affirmative
-    assert "Before publication of a family involving coercion, consent, search, detention, questioning, force, emergency powers, or legal rights" in methodology
-    assert "obtain appropriate review from relevant Australian and United States legal, policing, civil-liberties, and community expertise" in methodology
+    _assert_canonical_high_stakes_gate(methodology)
 
 
 def test_policing_metadata_fields_must_be_browser_visible():
@@ -161,3 +176,15 @@ def test_policing_metadata_fields_must_be_browser_visible():
 
     with pytest.raises(AssertionError):
         _assert_canonical_policing_metadata(mutated)
+
+
+def test_high_stakes_methodology_gate_must_be_browser_visible():
+    methodology = METHODOLOGY.read_text(encoding="utf-8")
+    assert CANONICAL_HIGH_STAKES_REVIEW_SENTENCE in methodology
+    mutated = methodology.replace(
+        CANONICAL_HIGH_STAKES_REVIEW_SENTENCE,
+        f"<!-- {CANONICAL_HIGH_STAKES_REVIEW_SENTENCE} -->",
+        1,
+    )
+    with pytest.raises(AssertionError):
+        _assert_canonical_high_stakes_gate(mutated)
