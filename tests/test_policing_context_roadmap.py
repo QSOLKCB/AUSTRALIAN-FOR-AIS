@@ -1,7 +1,7 @@
 """Regression checks for the proposed policing-context research workstream."""
 
-from dataclasses import dataclass
 from pathlib import Path
+import html
 import re
 
 import pytest
@@ -25,136 +25,106 @@ REQUIRED_CLAUSES = (
     "register official and current sources for each Australian and United States jurisdictional claim",
 )
 
-LIST_CONTAINER_PREFIX_PATTERN = re.compile(r"(?:[-+*]|\d{1,9}[.)])[ \t]+")
 FENCE_PATTERN = re.compile(r"(?P<fence>`{3,}|~{3,})(?P<info>.*)")
+LIST_MARKER_PATTERN = re.compile(r"(?:[-+*]|\d{1,9}[.)])(?:[ \t]+|$)")
 THEMATIC_BREAK_PATTERN = re.compile(
     r"(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|(?:-[ \t]*){3,}"
 )
-
-
-@dataclass(frozen=True)
-class LineContext:
-    quote_depth: int
-    after_quotes: str
-    leading_spaces: int
-    logical: str
-    list_indent: int | None
-    indented_code: bool
-
-
-@dataclass(frozen=True)
-class FenceState:
-    character: str
-    minimum_length: int
-    quote_depth: int
-    list_indent: int | None
+MARKDOWN_IMAGE_PATTERN = re.compile(
+    r"!\[[^\]\r\n]*\]\([^\r\n)]*(?:\)[^\r\n)]*)?\)"
+)
+MARKDOWN_LINK_PATTERN = re.compile(
+    r"(?<!!)\[(?P<label>[^\]\r\n]*)\]\("
+    r"[ \t]*(?:<[^>\r\n]+>|[^\s)\r\n]+)"
+    r"(?:[ \t]+(?:\"[^\"\r\n]*\"|'[^'\r\n]*'|\([^)]*\)))?"
+    r"[ \t]*\)"
+)
+AUTOLINK_PATTERN = re.compile(r"<(?P<url>https?://[^>\s]+)>")
+HTML_TAG_PATTERN = re.compile(r"</?[A-Za-z][^>]*>|<![A-Za-z][^>]*>|<\?[\s\S]*?\?>")
+NON_RENDERING_HTML_PATTERN = re.compile(
+    r"<(script|style|template)\b[^>]*>.*?</\1\s*>",
+    flags=re.IGNORECASE | re.DOTALL,
+)
 
 
 def _mask_non_newline(text: str) -> str:
     return "".join(character if character in "\r\n" else " " for character in text)
 
 
-def _line_context(line: str) -> LineContext:
-    """Describe CommonMark quote/list prefixes without erasing code indentation."""
+def _indent_columns(value: str, start: int = 0) -> tuple[int, int]:
+    """Return source index and CommonMark-style indentation columns."""
+    index = start
+    columns = 0
+    while index < len(value) and value[index] in " \t":
+        if value[index] == " ":
+            columns += 1
+        else:
+            columns += 4 - (columns % 4)
+        index += 1
+    return index, columns
+
+
+def _strip_container_prefixes(line: str) -> tuple[str, int]:
+    """Strip arbitrarily composed list/quote prefixes and report residual indent."""
     value = line.rstrip("\r\n")
     position = 0
-    quote_depth = 0
 
-    while True:
-        probe = position
-        spaces = 0
-        while spaces < 3 and probe < len(value) and value[probe] == " ":
-            probe += 1
-            spaces += 1
-        if probe >= len(value) or value[probe] != ">":
-            break
-        quote_depth += 1
-        probe += 1
-        if probe < len(value) and value[probe] in " \t":
-            probe += 1
-        position = probe
+    for _ in range(32):
+        before = position
+        probe, columns = _indent_columns(value, position)
+        if columns >= 4:
+            return value[position:], columns
 
-    after_quotes = value[position:]
-    leading_spaces = len(after_quotes) - len(after_quotes.lstrip(" "))
-    list_indent: int | None = None
-    logical_start = min(leading_spaces, 3)
+        if probe < len(value) and value[probe] == ">":
+            position = probe + 1
+            if position < len(value) and value[position] in " \t":
+                position += 1
+            continue
 
-    if leading_spaces <= 3:
-        marker = LIST_CONTAINER_PREFIX_PATTERN.match(after_quotes, leading_spaces)
+        marker = LIST_MARKER_PATTERN.match(value, probe)
         if marker:
-            list_indent = marker.end()
-            logical_start = marker.end()
+            position = marker.end()
+            continue
 
-    indented_code = list_indent is None and leading_spaces >= 4
-    return LineContext(
-        quote_depth=quote_depth,
-        after_quotes=after_quotes,
-        leading_spaces=leading_spaces,
-        logical=after_quotes[logical_start:],
-        list_indent=list_indent,
-        indented_code=indented_code,
-    )
+        position = before
+        break
+
+    probe, columns = _indent_columns(value, position)
+    return value[probe:], columns
 
 
-def _fence_opener(line: str) -> FenceState | None:
-    context = _line_context(line)
-    if context.indented_code:
+def _fence_marker(line: str) -> tuple[str, int] | None:
+    logical, indentation = _strip_container_prefixes(line)
+    if indentation >= 4:
         return None
-    match = FENCE_PATTERN.fullmatch(context.logical.rstrip(" \t"))
+    match = FENCE_PATTERN.fullmatch(logical.rstrip(" \t"))
     if not match:
         return None
     marker = match.group("fence")
     info = match.group("info")
     if marker[0] == "`" and "`" in info:
         return None
-    return FenceState(
-        character=marker[0],
-        minimum_length=len(marker),
-        quote_depth=context.quote_depth,
-        list_indent=context.list_indent,
-    )
+    return marker[0], len(marker)
 
 
-def _fence_container_continues(line: str, state: FenceState) -> bool:
-    if not line.strip():
-        return True
-    context = _line_context(line)
-    if context.quote_depth < state.quote_depth:
-        return False
-    if state.list_indent is not None:
-        if context.quote_depth != state.quote_depth:
-            return False
-        if context.list_indent is not None:
-            return False
-        return context.leading_spaces >= state.list_indent
-    return True
-
-
-def _fence_logical_line(line: str, state: FenceState) -> str:
-    context = _line_context(line)
-    if state.list_indent is not None:
-        return context.after_quotes[state.list_indent:]
-    return context.logical
-
-
-def _is_fence_closer(line: str, state: FenceState) -> bool:
-    logical = _fence_logical_line(line, state).rstrip(" \t")
+def _is_fence_closer(line: str, character: str, minimum_length: int) -> bool:
+    logical, _ = _strip_container_prefixes(line)
     return bool(
         re.fullmatch(
-            rf"{re.escape(state.character)}{{{state.minimum_length},}}[ \t]*",
-            logical,
+            rf"{re.escape(character)}{{{minimum_length},}}[ \t]*",
+            logical.rstrip(" \t"),
         )
     )
 
 
 def _line_opens_paragraph(line: str) -> bool:
-    context = _line_context(line)
-    logical = context.logical.strip()
-    if not logical or context.indented_code:
+    logical, indentation = _strip_container_prefixes(line)
+    stripped = logical.strip()
+    if not stripped or indentation >= 4:
         return False
-    if re.fullmatch(r"#{1,6}(?:[ \t]+.*)?", logical):
+    if re.fullmatch(r"#{1,6}(?:[ \t]+.*)?", stripped):
         return False
-    if THEMATIC_BREAK_PATTERN.fullmatch(logical):
+    if THEMATIC_BREAK_PATTERN.fullmatch(stripped):
         return False
     return True
 
@@ -193,10 +163,11 @@ def _mask_comments_on_line(raw_line: str, in_comment: bool) -> tuple[str, bool]:
 
 
 def _rendered_structure(markdown: str) -> str:
-    """Mask non-rendered Markdown containers while preserving source offsets."""
+    """Mask code and comments while preserving rendered prose for inspection."""
     parts: list[str] = []
     in_comment = False
-    fence: FenceState | None = None
+    fence_character: str | None = None
+    fence_length = 0
     paragraph_open = False
 
     for raw_line in markdown.splitlines(keepends=True):
@@ -204,42 +175,51 @@ def _rendered_structure(markdown: str) -> str:
         if not line.strip():
             paragraph_open = False
 
-        while fence is not None and not _fence_container_continues(line, fence):
-            fence = None
-
-        if fence is not None:
+        if fence_character is not None:
             parts.append(_mask_non_newline(raw_line))
+            if _is_fence_closer(line, fence_character, fence_length):
+                fence_character = None
+                fence_length = 0
             paragraph_open = False
-            if _is_fence_closer(line, fence):
-                fence = None
             continue
 
         if in_comment:
             rendered_line, in_comment = _mask_comments_on_line(raw_line, True)
             parts.append(rendered_line)
             if not in_comment:
-                paragraph_open = _line_opens_paragraph(
-                    rendered_line.rstrip("\r\n")
-                )
+                paragraph_open = _line_opens_paragraph(rendered_line)
             continue
 
-        context = _line_context(line)
-        if context.indented_code and not paragraph_open:
+        logical, indentation = _strip_container_prefixes(line)
+        if indentation >= 4 and not paragraph_open:
             parts.append(_mask_non_newline(raw_line))
             continue
 
-        opener = _fence_opener(line)
+        opener = _fence_marker(line)
         if opener is not None:
-            fence = opener
+            fence_character, fence_length = opener
             parts.append(_mask_non_newline(raw_line))
             paragraph_open = False
             continue
 
         rendered_line, in_comment = _mask_comments_on_line(raw_line, False)
         parts.append(rendered_line)
-        paragraph_open = _line_opens_paragraph(rendered_line.rstrip("\r\n"))
+        paragraph_open = _line_opens_paragraph(rendered_line)
 
     return "".join(parts)
+
+
+def _visible_text(markdown: str) -> str:
+    """Return visible text without link metadata or non-rendering HTML content."""
+    visible = NON_RENDERING_HTML_PATTERN.sub(" ", markdown)
+    visible = MARKDOWN_IMAGE_PATTERN.sub(" ", visible)
+    visible = MARKDOWN_LINK_PATTERN.sub(lambda match: match.group("label"), visible)
+    visible = AUTOLINK_PATTERN.sub(lambda match: match.group("url"), visible)
+    visible = HTML_TAG_PATTERN.sub(" ", visible)
+    visible = html.unescape(visible)
+    visible = visible.replace("**", "").replace("__", "")
+    visible = visible.replace("*", "").replace("_", "")
+    return " ".join(visible.split())
 
 
 def _rendered_policing_workstream(roadmap: str) -> str:
@@ -251,9 +231,11 @@ def _rendered_policing_workstream(roadmap: str) -> str:
 
 
 def _validate_policing_workstream(roadmap: str) -> None:
-    workstream = _rendered_policing_workstream(roadmap)
+    workstream = _visible_text(_rendered_policing_workstream(roadmap))
     for clause in REQUIRED_CLAUSES:
-        assert clause in workstream, f"missing policing-workstream safeguard: {clause}"
+        assert _visible_text(clause) in workstream, (
+            f"missing policing-workstream safeguard: {clause}"
+        )
 
 
 def test_policing_context_workstream_remains_source_gated_and_noncomparative():
@@ -262,7 +244,15 @@ def test_policing_context_workstream_remains_source_gated_and_noncomparative():
 
 @pytest.mark.parametrize(
     "wrapper",
-    ("comment", "fence", "blockquote-fence", "list-fence", "indented-code"),
+    (
+        "comment",
+        "fence",
+        "blockquote-fence",
+        "list-fence",
+        "compound-list-quote-fence",
+        "indented-code",
+        "tab-indented-code",
+    ),
 )
 def test_policing_context_workstream_must_remain_rendered(wrapper: str):
     roadmap = ROADMAP.read_text(encoding="utf-8")
@@ -275,11 +265,28 @@ def test_policing_context_workstream_must_remain_rendered(wrapper: str):
     elif wrapper == "fence":
         hidden = f"````\n{section}\n````"
     elif wrapper == "blockquote-fence":
-        quoted = "".join(f"> {line}" if line.strip() else ">\n" for line in section.splitlines(keepends=True))
+        quoted = "".join(
+            f"> {line}" if line.strip() else ">\n"
+            for line in section.splitlines(keepends=True)
+        )
         hidden = f"> ````\n{quoted}> ````\n"
     elif wrapper == "list-fence":
-        nested = "".join(f"  {line}" if line.strip() else "  \n" for line in section.splitlines(keepends=True))
+        nested = "".join(
+            f"  {line}" if line.strip() else "  \n"
+            for line in section.splitlines(keepends=True)
+        )
         hidden = f"- ````\n{nested}  ````\n"
+    elif wrapper == "compound-list-quote-fence":
+        nested = "".join(
+            f"  > {line}" if line.strip() else "  >\n"
+            for line in section.splitlines(keepends=True)
+        )
+        hidden = f"- > ````\n{nested}  > ````\n"
+    elif wrapper == "tab-indented-code":
+        hidden = "".join(
+            f"\t{line}" if line.strip() else line
+            for line in section.splitlines(keepends=True)
+        )
     else:
         hidden = "".join(
             f"    {line}" if line.strip() else line
@@ -288,4 +295,13 @@ def test_policing_context_workstream_must_remain_rendered(wrapper: str):
 
     mutated = roadmap[:start] + hidden + roadmap[end:]
     with pytest.raises(AssertionError, match="rendered policing workstream"):
+        _validate_policing_workstream(mutated)
+
+
+def test_policing_safeguard_cannot_hide_in_link_title():
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    clause = "register official and current sources for each Australian and United States jurisdictional claim"
+    replacement = f'[sources required](# "{clause}")'
+    mutated = roadmap.replace(clause, replacement, 1)
+    with pytest.raises(AssertionError, match="missing policing-workstream safeguard"):
         _validate_policing_workstream(mutated)
