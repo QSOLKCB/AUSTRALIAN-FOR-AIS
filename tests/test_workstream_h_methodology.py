@@ -44,5 +44,6 @@ def test_trans_tasman_methodology_never_allows_exact_group_stereotype_wording():
     start = text.index("## Trans-Tasman and Slang/Operational Experiment Design")
     end = text.index("## Australian and United States Policing-Context Experiment Design", start)
     section = text[start:end]
+    assert "An attributable source may document that a stereotype existed" in section
     assert "exact group-stereotyping wording must not be reproduced" in section
     assert "unless exact material has an attributable source" not in section
