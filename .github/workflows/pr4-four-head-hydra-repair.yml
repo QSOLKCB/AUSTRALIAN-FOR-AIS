@@ -1,0 +1,62 @@
+name: PR4 four-head hydra guarded repair
+
+on:
+  push:
+    branches:
+      - research-corpus-governed-expansion
+    paths:
+      - .github/workflows/pr4-four-head-hydra-repair.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repair branch
+        uses: actions/checkout@v4
+        with:
+          ref: research-corpus-governed-expansion
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Apply guarded hydra repair
+        run: python .github/scripts/pr4-four-head-hydra-repair.py
+
+      - name: Focused governance regressions
+        run: |
+          pytest -q \
+            tests/test_research_reference_registry.py \
+            tests/test_workstream_h_methodology.py \
+            tests/test_policing_context_roadmap.py \
+            tests/test_policing_contract_receipt.py
+
+      - name: Full repository suite
+        run: pytest -q --disable-warnings --maxfail=1
+
+      - name: Commit verified repair and self-clean
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/test_research_reference_registry.py \
+                  tests/test_workstream_h_methodology.py \
+                  tests/test_policing_context_roadmap.py \
+                  tests/test_policing_contract_receipt.py
+          git rm .github/scripts/pr4-four-head-hydra-repair.py \
+                 .github/workflows/pr4-four-head-hydra-repair.yml
+          git commit -m "Slay four fresh PR4 review gaps"
+          git push origin HEAD:research-corpus-governed-expansion
