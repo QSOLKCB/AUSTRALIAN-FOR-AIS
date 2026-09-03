@@ -1,4 +1,4 @@
-"""Receipt regression for the complete policing-context invariant gate."""
+"""Receipt regressions for the policing-context governance contract."""
 
 from __future__ import annotations
 
@@ -6,7 +6,10 @@ import ast
 from pathlib import Path
 
 
+ROOT = Path(__file__).parent.parent
 POLICING_TEST = Path(__file__).parent / "test_policing_context_roadmap.py"
+ROADMAP = ROOT / "ROADMAP.md"
+METHODOLOGY = ROOT / "docs" / "METHODOLOGY.md"
 
 EXPECTED_POLICING_INVARIANTS = {
     "US POLICE SCRIPT != AUSTRALIAN LEGAL PROCEDURE",
@@ -20,6 +23,23 @@ EXPECTED_POLICING_INVARIANTS = {
     "JURISDICTIONAL DIFFERENCE != NATIONAL MORAL CHARACTER",
     "LEGAL INFORMATION != LEGAL ADVICE",
 }
+
+MANDATORY_ITEM_METADATA_SENTENCE = (
+    "Every implemented item must record, at minimum, the relevant country, "
+    "jurisdiction, agency or institutional role, encounter type, source date or "
+    "version, registered source identifiers or links supporting any legal or "
+    "procedural condition supplied to the model, and claim type."
+)
+
+CANONICAL_METADATA_FIELDS = (
+    "country",
+    "jurisdiction",
+    "agency or institutional role",
+    "encounter type",
+    "source date or version",
+    "registered source identifiers or links",
+    "claim type",
+)
 
 
 def _string_constants_in_tuple(name: str) -> tuple[str, ...]:
@@ -44,3 +64,17 @@ def test_all_policing_invariants_are_required_and_affirmative():
 
     assert EXPECTED_POLICING_INVARIANTS <= required
     assert EXPECTED_POLICING_INVARIANTS <= affirmative
+
+
+def test_roadmap_policing_metadata_matches_canonical_minimum():
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    methodology = METHODOLOGY.read_text(encoding="utf-8")
+    required = set(_string_constants_in_tuple("REQUIRED_CLAUSES"))
+    affirmative = set(_string_constants_in_tuple("AFFIRMATIVE_LINE_PREFIX_CLAUSES"))
+
+    assert "Every implemented item should record" not in roadmap
+    assert MANDATORY_ITEM_METADATA_SENTENCE in roadmap
+    assert MANDATORY_ITEM_METADATA_SENTENCE in required
+    assert MANDATORY_ITEM_METADATA_SENTENCE in affirmative
+    for field in CANONICAL_METADATA_FIELDS:
+        assert f"**{field}**" in methodology
