@@ -1,0 +1,89 @@
+name: PR4 final two review repair
+
+on:
+  push:
+    branches:
+      - research-corpus-governed-expansion
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research-corpus-governed-expansion
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test dependencies
+        run: python -m pip install -e '.[dev]'
+      - name: Apply final review repairs
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          test_path = Path('tests/test_research_reference_registry.py')
+          text = test_path.read_text(encoding='utf-8')
+
+          pattern_anchor = 'LIST_CONTAINER_PREFIX_PATTERN = re.compile(r"(?:[-+*]|\\d{1,9}[.)])[ \\t]+")\n'
+          pattern_insert = pattern_anchor + (
+              'STRONG_METADATA_FIELD_PATTERN = re.compile(\n'
+              '    r"^(?P<marker>\\*\\*|__)(?P<label>[^:\\r\\n]+):(?P=marker)(?=$|[ \\t])"\n'
+              ')\n'
+          )
+          if 'STRONG_METADATA_FIELD_PATTERN' not in text:
+              assert pattern_anchor in text
+              text = text.replace(pattern_anchor, pattern_insert, 1)
+
+          function_anchor = '\ndef _normalised_rendered_lines(section: str) -> list[tuple[str, str, bool]]:\n'
+          helper = '''\ndef _canonicalise_metadata_marker(line: str) -> str:\n    """Canonicalise equivalent CommonMark strong-emphasis field labels."""\n    match = STRONG_METADATA_FIELD_PATTERN.match(line)\n    if not match:\n        return line\n    canonical = f"**{match.group('label')}:**"\n    return canonical + line[match.end():]\n\n\ndef _normalised_rendered_lines(section: str) -> list[tuple[str, str, bool]]:\n'''
+          if '_canonicalise_metadata_marker' not in text:
+              assert function_anchor in text
+              text = text.replace(function_anchor, helper, 1)
+
+          old_records = '''        records.append(\n            (logical.lstrip(" \\t"), rendered_logical.lstrip(" \\t"), False)\n        )\n'''
+          new_records = '''        logical = _canonicalise_metadata_marker(logical.lstrip(" \\t"))\n        rendered_logical = _canonicalise_metadata_marker(\n            rendered_logical.lstrip(" \\t")\n        )\n        records.append((logical, rendered_logical, False))\n'''
+          if new_records not in text:
+              assert old_records in text
+              text = text.replace(old_records, new_records, 1)
+
+          test_name = 'def test_equivalent_strong_emphasis_doi_field_is_counted():'
+          if test_name not in text:
+              text = text.rstrip() + '''\n\n\ndef test_equivalent_strong_emphasis_doi_field_is_counted():\n    corpus = CORPUS.read_text(encoding="utf-8")\n    entry = "### Chey (2021), *Overcoming awkwardness: some interpretations of Australian humour*"\n    section = _registered_sections(corpus)[entry]\n    mutated = section.replace(\n        "**DOI:** https://doi.org/10.7592/EJHR2021.9.4.560",\n        "**DOI:** https://doi.org/10.7592/EJHR2021.9.4.560\\n\\n"\n        "__DOI:__ https://doi.org/10.0000/fabricated",\n        1,\n    )\n    with pytest.raises(AssertionError, match="exactly one mandatory field"):\n        _validate_registered_entry(entry, mutated)\n'''
+          test_path.write_text(text, encoding='utf-8')
+
+          changelog_path = Path('CHANGELOG.md')
+          changelog = changelog_path.read_text(encoding='utf-8')
+          phase1_heading = '## [Unreleased] — Phase 1 Research Substrate'
+          if phase1_heading not in changelog:
+              main_changelog = subprocess.check_output(
+                  ['git', 'show', 'origin/main:CHANGELOG.md'],
+                  text=True,
+              )
+              phase1_start = main_changelog.index(phase1_heading)
+              phase1 = main_changelog[phase1_start:].rstrip() + '\n'
+              changelog = changelog.rstrip() + '\n\n---\n\n' + phase1
+              changelog_path.write_text(changelog, encoding='utf-8')
+          PY
+      - name: Run focused registry tests
+        run: python -m pytest -q tests/test_research_reference_registry.py
+      - name: Run full test suite
+        run: python -m pytest -q
+      - name: Commit verified repairs and remove temporary workflow
+        run: |
+          rm .github/workflows/pr4-final-two-repair.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'No repair changes to commit.'
+            exit 0
+          fi
+          git commit -m 'Close final registry review gaps'
+          git push origin HEAD:research-corpus-governed-expansion
