@@ -1,10 +1,13 @@
 """Regression checks for Workstream H listener-variable and source-governance design."""
 
 from pathlib import Path
+import hashlib
 import html
 from html.parser import HTMLParser
 import re
 import runpy
+
+import pytest
 
 
 ROOT = Path(__file__).parent.parent
@@ -15,6 +18,7 @@ WORKSTREAM_H_HEADING = "### H. Slang density, register compression, and operatio
 WORKSTREAM_I_HEADING = "### I. Australian and United States policing-context transfer"
 TRANS_TASMAN_METHODOLOGY_HEADING = "## Trans-Tasman and Slang/Operational Experiment Design"
 POLICING_METHODOLOGY_HEADING = "## Australian and United States Policing-Context Experiment Design"
+WORKSTREAM_H_VISIBLE_SHA256 = "c38e4bc194d820c30ee714851ec279da7649fffc921da5a331d722d22d7c34b8"
 
 MARKDOWN_IMAGE_PATTERN = re.compile(
     r"!\[[^\]\r\n]*\]\([^\r\n)]*(?:\)[^\r\n)]*)?\)"
@@ -32,6 +36,29 @@ HTML_VOID_TAGS = {
     "link", "meta", "param", "source", "track", "wbr",
 }
 SVG_NON_RENDERING_METADATA_TAGS = frozenset({"title", "desc"})
+CSS_COMMENT_PATTERN = re.compile(r"/\*.*?\*/", flags=re.DOTALL)
+
+
+def _css_hides_element(style: str) -> bool:
+    """Apply inline CSS declaration order and !important precedence."""
+    cleaned = CSS_COMMENT_PATTERN.sub("", style.lower())
+    winners: dict[str, tuple[bool, str]] = {}
+    for declaration in cleaned.split(";"):
+        if ":" not in declaration:
+            continue
+        name, raw_value = declaration.split(":", 1)
+        name = name.strip()
+        if name not in {"display", "visibility"}:
+            continue
+        raw_value = raw_value.strip()
+        important = re.search(r"\s*!important\s*$", raw_value) is not None
+        value = re.sub(r"\s*!important\s*$", "", raw_value).strip()
+        previous = winners.get(name)
+        if previous is None or (important and not previous[0]) or important == previous[0]:
+            winners[name] = (important, value)
+    display = winners.get("display", (False, ""))[1]
+    visibility = winners.get("visibility", (False, ""))[1]
+    return display == "none" or visibility in {"hidden", "collapse"}
 
 
 class _VisibleHTMLTextParser(HTMLParser):
@@ -50,16 +77,7 @@ class _VisibleHTMLTextParser(HTMLParser):
             return True
         if "hidden" in values:
             return True
-        if values.get("aria-hidden", "").strip().lower() == "true":
-            return True
-        style = re.sub(
-            r"/\*.*?\*/",
-            "",
-            values.get("style", "").lower(),
-            flags=re.DOTALL,
-        )
-        style = re.sub(r"\s+", "", style)
-        return "display:none" in style or "visibility:hidden" in style
+        return _css_hides_element(values.get("style", ""))
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
@@ -286,6 +304,21 @@ def _workstream_h(text: str) -> str:
     return _visible_markdown_text(text[start:end])
 
 
+def _normalised_workstream_h_visible_value(text: str) -> str:
+    return " ".join(_workstream_h(text).split())
+
+
+def _assert_workstream_h_integrity(text: str) -> str:
+    section = _workstream_h(text)
+    value = " ".join(section.split())
+    actual_hash = hashlib.sha256(value.encode("utf-8")).hexdigest()
+    assert actual_hash == WORKSTREAM_H_VISIBLE_SHA256, (
+        "browser-visible Workstream H changed: expected hash "
+        f"{WORKSTREAM_H_VISIBLE_SHA256!r}, got {actual_hash!r}"
+    )
+    return section
+
+
 def _trans_tasman_methodology(text: str) -> str:
     start, _ = _rendered_heading_span(text, TRANS_TASMAN_METHODOLOGY_HEADING)
     end, _ = _rendered_heading_span(text, POLICING_METHODOLOGY_HEADING)
@@ -294,7 +327,7 @@ def _trans_tasman_methodology(text: str) -> str:
 
 
 def test_workstream_h_decouples_dialect_exposure_from_listener_identity():
-    section = _workstream_h(ROADMAP.read_text(encoding="utf-8"))
+    section = _assert_workstream_h_integrity(ROADMAP.read_text(encoding="utf-8"))
     assert "self-reported or experimentally established Australian-English exposure" in section
     assert "independently of general English-language background or proficiency" in section
     assert "nationality and first-language identity must not define the comparison cohorts" in section
@@ -421,3 +454,19 @@ def test_workstream_h_visibility_ignores_reference_definition_titles():
         f'- > [hidden]: # "{clause}"',
     ):
         assert clause not in _visible_markdown_text(hidden)
+
+
+def test_workstream_h_companion_identity_contradiction_changes_section_seal():
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    start = roadmap.index(WORKSTREAM_H_HEADING)
+    end = roadmap.index(WORKSTREAM_I_HEADING, start)
+    insertion = "\n- Nationality and first-language identity should define the comparison cohorts.\n"
+    mutated = roadmap[:end] + insertion + roadmap[end:]
+    with pytest.raises(AssertionError, match="browser-visible Workstream H changed"):
+        _assert_workstream_h_integrity(mutated)
+
+
+def test_aria_hidden_remains_visually_visible_to_workstream_h_reducer():
+    clause = "nationality and first-language identity must not define the comparison cohorts"
+    rendered = _visible_markdown_text(f'<span aria-hidden="true">{clause}</span>')
+    assert clause in rendered

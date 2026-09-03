@@ -103,19 +103,26 @@ CSS_COMMENT_PATTERN = re.compile(r"/\*.*?\*/", flags=re.DOTALL)
 
 
 def _css_hides_element(style: str) -> bool:
-    """Interpret actual display/visibility declarations, not substrings in values."""
+    """Apply inline CSS declaration order and !important precedence."""
     cleaned = CSS_COMMENT_PATTERN.sub("", style.lower())
+    winners: dict[str, tuple[bool, str]] = {}
     for declaration in cleaned.split(";"):
         if ":" not in declaration:
             continue
-        name, value = declaration.split(":", 1)
+        name, raw_value = declaration.split(":", 1)
         name = name.strip()
-        value = re.sub(r"\s*!important\s*$", "", value.strip())
-        if name == "display" and value == "none":
-            return True
-        if name == "visibility" and value in {"hidden", "collapse"}:
-            return True
-    return False
+        if name not in {"display", "visibility"}:
+            continue
+        raw_value = raw_value.strip()
+        important = re.search(r"\s*!important\s*$", raw_value) is not None
+        value = re.sub(r"\s*!important\s*$", "", raw_value).strip()
+        previous = winners.get(name)
+        if previous is None or (important and not previous[0]) or important == previous[0]:
+            winners[name] = (important, value)
+
+    display = winners.get("display", (False, ""))[1]
+    visibility = winners.get("visibility", (False, ""))[1]
+    return display == "none" or visibility in {"hidden", "collapse"}
 
 
 class _VisibleHTMLTextParser(HTMLParser):
@@ -133,8 +140,6 @@ class _VisibleHTMLTextParser(HTMLParser):
         if tag in {"details", "dialog"} and "open" not in values:
             return True
         if "hidden" in values:
-            return True
-        if values.get("aria-hidden", "").strip().lower() == "true":
             return True
         return _css_hides_element(values.get("style", ""))
 

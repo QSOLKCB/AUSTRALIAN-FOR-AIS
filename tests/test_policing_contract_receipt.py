@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 from pathlib import Path
 import runpy
 
@@ -48,6 +49,7 @@ POLICING_METHODOLOGY_HEADING = (
     "## Australian and United States Policing-Context Experiment Design"
 )
 POLICING_METHODOLOGY_END_HEADING = "## Scoring Philosophy"
+POLICING_METHODOLOGY_VISIBLE_SHA256 = "07227f9c687d0632cc24eb5e73415a406048733a5718713faeb108f04cc4346b"
 POLICING_METADATA_INTRO = (
     "Every implemented policing-context item must record, at minimum:"
 )
@@ -97,7 +99,21 @@ def _visible_policing_methodology(methodology: str) -> str:
     return visible_text(_policing_methodology_section(methodology))
 
 
+def _normalised_visible_policing_methodology(methodology: str) -> str:
+    return " ".join(_visible_policing_methodology(methodology).split())
+
+
+def _assert_canonical_policing_integrity(methodology: str) -> None:
+    value = _normalised_visible_policing_methodology(methodology)
+    actual_hash = hashlib.sha256(value.encode("utf-8")).hexdigest()
+    assert actual_hash == POLICING_METHODOLOGY_VISIBLE_SHA256, (
+        "browser-visible canonical policing methodology changed: expected hash "
+        f"{POLICING_METHODOLOGY_VISIBLE_SHA256!r}, got {actual_hash!r}"
+    )
+
+
 def _assert_canonical_policing_metadata(methodology: str) -> None:
+    _assert_canonical_policing_integrity(methodology)
     rendered = _visible_policing_methodology(methodology)
     assert POLICING_METADATA_INTRO in rendered
     for field in CANONICAL_METADATA_FIELDS:
@@ -105,6 +121,7 @@ def _assert_canonical_policing_metadata(methodology: str) -> None:
 
 
 def _assert_canonical_high_stakes_gate(methodology: str) -> None:
+    _assert_canonical_policing_integrity(methodology)
     rendered = _visible_policing_methodology(methodology)
     assert CANONICAL_HIGH_STAKES_REVIEW_SENTENCE in rendered
     assert (
@@ -212,4 +229,16 @@ def test_policing_methodology_start_must_be_a_visible_heading():
     with pytest.raises(AssertionError):
         _assert_canonical_policing_metadata(mutated)
     with pytest.raises(AssertionError):
+        _assert_canonical_high_stakes_gate(mutated)
+
+
+def test_canonical_policing_methodology_rejects_companion_high_stakes_reversal():
+    methodology = METHODOLOGY.read_text(encoding="utf-8")
+    section = _policing_methodology_section(methodology)
+    mutated_section = (
+        section.rstrip()
+        + "\n\nExpert review may be skipped even for coercion and legal-rights families.\n\n"
+    )
+    mutated = methodology.replace(section, mutated_section, 1)
+    with pytest.raises(AssertionError, match="browser-visible canonical policing methodology changed"):
         _assert_canonical_high_stakes_gate(mutated)

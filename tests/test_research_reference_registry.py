@@ -631,19 +631,26 @@ GOVERNED_INTERACTIVE_HTML_PATTERN = re.compile(
 
 
 def _css_hides_element(style: str) -> bool:
-    """Interpret actual display/visibility declarations, not substrings in values."""
+    """Apply inline CSS declaration order and !important precedence."""
     cleaned = CSS_COMMENT_PATTERN.sub("", style.lower())
+    winners: dict[str, tuple[bool, str]] = {}
     for declaration in cleaned.split(";"):
         if ":" not in declaration:
             continue
-        name, value = declaration.split(":", 1)
+        name, raw_value = declaration.split(":", 1)
         name = name.strip()
-        value = re.sub(r"\s*!important\s*$", "", value.strip())
-        if name == "display" and value == "none":
-            return True
-        if name == "visibility" and value in {"hidden", "collapse"}:
-            return True
-    return False
+        if name not in {"display", "visibility"}:
+            continue
+        raw_value = raw_value.strip()
+        important = re.search(r"\s*!important\s*$", raw_value) is not None
+        value = re.sub(r"\s*!important\s*$", "", raw_value).strip()
+        previous = winners.get(name)
+        if previous is None or (important and not previous[0]) or important == previous[0]:
+            winners[name] = (important, value)
+
+    display = winners.get("display", (False, ""))[1]
+    visibility = winners.get("visibility", (False, ""))[1]
+    return display == "none" or visibility in {"hidden", "collapse"}
 
 
 class _VisibleHTMLTextParser(HTMLParser):
@@ -681,8 +688,6 @@ class _VisibleHTMLTextParser(HTMLParser):
         if tag in {"details", "dialog"} and "open" not in values:
             return True
         if "hidden" in values:
-            return True
-        if values.get("aria-hidden", "").strip().lower() == "true":
             return True
         return _css_hides_element(values.get("style", ""))
 
@@ -741,6 +746,31 @@ def _visible_html_links(text: str) -> tuple[str, ...]:
     except Exception:
         return ()
     return tuple(parser.hrefs)
+
+
+class _VisuallyHiddenTableDetector(HTMLParser):
+    """Detect hidden raw tables whose HTML5 foster-parenting semantics are ambiguous here."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.found = False
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() == "table" and _VisibleHTMLTextParser._is_hidden(tag, attrs):
+            self.found = True
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.handle_starttag(tag, attrs)
+
+
+def _contains_visually_hidden_table(text: str) -> bool:
+    detector = _VisuallyHiddenTableDetector()
+    try:
+        detector.feed(text)
+        detector.close()
+    except Exception:
+        return True
+    return detector.found
 
 
 HTML_VOID_TAGS = {
@@ -2356,6 +2386,12 @@ def _require_complete_entry_integrity(entry: str, section: str) -> None:
     expected_hash = ENTRY_RENDERED_VALUE_HASHES.get(entry)
     assert expected_hash is not None, f"{entry} has no complete rendered-entry integrity fixture"
     rendered_section = _rendered_registry_text(section)
+    structural_section = _structural_registry_text(section)
+    assert not _contains_visually_hidden_table(structural_section), (
+        f"{entry} contains a visually hidden raw HTML table; governed entries reject "
+        "this construct because HTML5 foster parenting can render descendants outside "
+        "the table's visual-hiding boundary"
+    )
     assert GOVERNED_INTERACTIVE_HTML_PATTERN.search(rendered_section) is None, (
         f"{entry} contains interactive HTML that is not permitted in governed entries"
     )
@@ -3738,4 +3774,54 @@ def test_interactive_form_control_cannot_bypass_complete_entry_integrity():
     )
     mutated = corpus.replace(heading, heading + "\n\n" + payload, 1)
     with pytest.raises(AssertionError, match="interactive HTML"):
+        _validate_registry_corpus(mutated)
+
+
+def test_css_cascade_uses_winning_visual_declaration():
+    assert not _css_hides_element("display:none; display:inline")
+    assert _css_hides_element("display:none !important; display:inline")
+    assert not _css_hides_element("display:none; display:inline !important")
+    assert not _css_hides_element("visibility:hidden; visibility:visible")
+
+    corpus = CORPUS.read_text(encoding="utf-8")
+    heading = (
+        "### Chey (2021), *Overcoming awkwardness: some interpretations of "
+        "Australian humour*"
+    )
+    payload = (
+        '<span style="display:none; display:inline"><strong>DOI:</strong> '
+        'https://doi.org/10.0000/fabricated</span>'
+    )
+    mutated = corpus.replace(heading, heading + "\n\n" + payload, 1)
+    with pytest.raises(AssertionError):
+        _validate_registry_corpus(mutated)
+
+
+def test_aria_hidden_does_not_hide_visually_rendered_duplicate_doi():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    heading = (
+        "### Chey (2021), *Overcoming awkwardness: some interpretations of "
+        "Australian humour*"
+    )
+    payload = (
+        '<span aria-hidden="true"><strong>DOI:</strong> '
+        'https://doi.org/10.0000/fabricated</span>'
+    )
+    mutated = corpus.replace(heading, heading + "\n\n" + payload, 1)
+    with pytest.raises(AssertionError):
+        _validate_registry_corpus(mutated)
+
+
+def test_hidden_table_foster_parenting_is_rejected_fail_closed():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    heading = (
+        "### Chey (2021), *Overcoming awkwardness: some interpretations of "
+        "Australian humour*"
+    )
+    payload = (
+        '<table hidden><p><strong>DOI:</strong> '
+        'https://doi.org/10.0000/fabricated</p></table>'
+    )
+    mutated = corpus.replace(heading, heading + "\n\n" + payload, 1)
+    with pytest.raises(AssertionError, match="visually hidden raw HTML table"):
         _validate_registry_corpus(mutated)
