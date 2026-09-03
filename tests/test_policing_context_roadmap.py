@@ -17,7 +17,7 @@ REQUIRED_CLAUSES = (
     WORKSTREAM_HEADING,
     "source-gated research proposal",
     "not legal advice",
-    "Every implemented item should record the relevant country, jurisdiction, institutional role, encounter type, and source date.",
+    "Every implemented item must record, at minimum, the relevant country, jurisdiction, agency or institutional role, encounter type, source date or version, registered source identifiers or links supporting any legal or procedural condition supplied to the model, and claim type.",
     "US POLICE SCRIPT != AUSTRALIAN LEGAL PROCEDURE",
     "POLICE TERMINOLOGY != CROSS-JURISDICTION EQUIVALENCE",
     "CASUAL ADDRESS != FRIENDSHIP OR CONSENT",
@@ -32,6 +32,7 @@ REQUIRED_CLAUSES = (
 )
 
 AFFIRMATIVE_LINE_PREFIX_CLAUSES = (
+    "Every implemented item must record, at minimum, the relevant country, jurisdiction, agency or institutional role, encounter type, source date or version, registered source identifiers or links supporting any legal or procedural condition supplied to the model, and claim type.",
     "US POLICE SCRIPT != AUSTRALIAN LEGAL PROCEDURE",
     "POLICE TERMINOLOGY != CROSS-JURISDICTION EQUIVALENCE",
     "CASUAL ADDRESS != FRIENDSHIP OR CONSENT",
@@ -319,6 +320,19 @@ def _validate_policing_workstream(roadmap: str) -> None:
 
 def test_policing_context_workstream_remains_source_gated_and_noncomparative():
     _validate_policing_workstream(ROADMAP.read_text(encoding="utf-8"))
+
+
+def test_policing_item_metadata_contract_is_mandatory_and_complete():
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    rendered = _rendered_policing_workstream(roadmap)
+    visible = _visible_text(rendered)
+    assert "Every implemented item should record" not in visible
+    assert (
+        "Every implemented item must record, at minimum, the relevant country, "
+        "jurisdiction, agency or institutional role, encounter type, source date or "
+        "version, registered source identifiers or links supporting any legal or "
+        "procedural condition supplied to the model, and claim type."
+    ) in visible
 
 
 @pytest.mark.parametrize(

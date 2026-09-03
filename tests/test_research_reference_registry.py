@@ -517,7 +517,8 @@ THEMATIC_BREAK_PATTERN = re.compile(
 FENCE_PATTERN = re.compile(r"(?P<fence>`{3,}|~{3,})(?P<info>.*)")
 LIST_CONTAINER_PREFIX_PATTERN = re.compile(r"(?:[-+*]|\d{1,9}[.)])[ \t]+")
 STRONG_METADATA_FIELD_PATTERN = re.compile(
-    r"^(?P<marker>\*\*|__)(?P<label>[^:\r\n]+):(?P=marker)(?=$|[ \t])"
+    r"^(?P<outer>\*\*|__|\*|_)(?P<inner>\*\*|__|\*|_)"
+    r"(?P<label>[^:\r\n]+):(?P=inner)(?P=outer)(?=$|[ \t])"
 )
 HTML_STRONG_METADATA_FIELD_PATTERN = re.compile(
     r"^<(?P<tag>strong|b)\b(?P<attrs>[^>]*)>"
@@ -548,6 +549,10 @@ class _VisibleHTMLTextParser(HTMLParser):
         if tag in {"script", "style", "template"}:
             return True
         values = {key.lower(): (value or "") for key, value in attrs}
+        # A closed HTML disclosure renders its descendants collapsed until the
+        # reader explicitly opens it. Governance text must be visible by default.
+        if tag == "details" and "open" not in values:
+            return True
         if "hidden" in values:
             return True
         if values.get("aria-hidden", "").strip().lower() == "true":
@@ -2357,6 +2362,32 @@ def test_equivalent_strong_emphasis_doi_field_is_counted():
         _validate_registered_entry(entry, mutated)
 
 
+@pytest.mark.parametrize(
+    ("opener", "closer"),
+    (
+        ("***", "***"),
+        ("___", "___"),
+        ("**_", "_**"),
+        ("__*", "*__"),
+        ("*__", "__*"),
+        ("_**", "**_"),
+    ),
+)
+def test_nested_emphasis_doi_field_is_counted(opener: str, closer: str):
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = "### Chey (2021), *Overcoming awkwardness: some interpretations of Australian humour*"
+    section = _registered_sections(corpus)[entry]
+    expected = "**DOI:** https://doi.org/10.7592/EJHR2021.9.4.560"
+    mutated = section.replace(
+        expected,
+        expected
+        + f"\n\n{opener}DOI:{closer} https://doi.org/10.0000/fabricated",
+        1,
+    )
+    with pytest.raises(AssertionError, match="exactly one mandatory field"):
+        _validate_registered_entry(entry, mutated)
+
+
 def test_compound_container_fence_cannot_hide_scalar_metadata():
     corpus = CORPUS.read_text(encoding="utf-8")
     entry = "### *Black Comedy* (ABC, 2014-2020)"
@@ -2453,6 +2484,35 @@ def test_hidden_html_container_cannot_hide_complete_governed_batch():
     )
     with pytest.raises(AssertionError, match="registered post-Phase-2 batch contains no entries"):
         _validate_registry_corpus(mutated)
+
+
+def test_closed_details_cannot_hide_complete_governed_batch():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    start = corpus.index(BATCH_HEADING) + len(BATCH_HEADING)
+    end = corpus.index(BATCH_END, start)
+    mutated = (
+        corpus[:start]
+        + "\n<details>\n<summary>Governed references</summary>\n"
+        + corpus[start:end]
+        + "\n</details>\n"
+        + corpus[end:]
+    )
+    with pytest.raises(AssertionError, match="registered post-Phase-2 batch contains no entries"):
+        _validate_registry_corpus(mutated)
+
+
+def test_open_details_keep_governed_batch_visible():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    start = corpus.index(BATCH_HEADING) + len(BATCH_HEADING)
+    end = corpus.index(BATCH_END, start)
+    mutated = (
+        corpus[:start]
+        + "\n<details open>\n<summary>Governed references</summary>\n"
+        + corpus[start:end]
+        + "\n</details>\n"
+        + corpus[end:]
+    )
+    _validate_registry_corpus(mutated)
 
 
 def test_reference_style_source_destination_is_included_in_pinned_set():
