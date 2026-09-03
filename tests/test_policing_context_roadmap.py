@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+import hashlib
 import html
 from html.parser import HTMLParser
 import re
@@ -13,6 +14,7 @@ ROADMAP = Path(__file__).parent.parent / "ROADMAP.md"
 WORKSTREAM_HEADING = "### I. Australian and United States policing-context transfer"
 WORKSTREAM_END = "\n---\n\n## Phase 3"
 WORKSTREAM_END_HEADING = "## Phase 3 — Multi-Annotator Culturally Contextualised Dataset"
+POLICING_WORKSTREAM_VISIBLE_SHA256 = "d43f7d255da2792106d69048e617d96d9f8933204bc3dd4623b2482e5a4600e8"
 
 
 REQUIRED_CLAUSES = (
@@ -97,6 +99,23 @@ NON_RENDERING_HTML_PATTERN = re.compile(
     flags=re.IGNORECASE | re.DOTALL,
 )
 SVG_NON_RENDERING_METADATA_TAGS = frozenset({"title", "desc"})
+CSS_COMMENT_PATTERN = re.compile(r"/\*.*?\*/", flags=re.DOTALL)
+
+
+def _css_hides_element(style: str) -> bool:
+    """Interpret actual display/visibility declarations, not substrings in values."""
+    cleaned = CSS_COMMENT_PATTERN.sub("", style.lower())
+    for declaration in cleaned.split(";"):
+        if ":" not in declaration:
+            continue
+        name, value = declaration.split(":", 1)
+        name = name.strip()
+        value = re.sub(r"\s*!important\s*$", "", value.strip())
+        if name == "display" and value == "none":
+            return True
+        if name == "visibility" and value in {"hidden", "collapse"}:
+            return True
+    return False
 
 
 class _VisibleHTMLTextParser(HTMLParser):
@@ -117,14 +136,7 @@ class _VisibleHTMLTextParser(HTMLParser):
             return True
         if values.get("aria-hidden", "").strip().lower() == "true":
             return True
-        style = re.sub(
-            r"/\*.*?\*/",
-            "",
-            values.get("style", "").lower(),
-            flags=re.DOTALL,
-        )
-        style = re.sub(r"\s+", "", style)
-        return "display:none" in style or "visibility:hidden" in style
+        return _css_hides_element(values.get("style", ""))
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
@@ -775,15 +787,21 @@ def _rendered_policing_workstream(roadmap: str) -> str:
 
 
 
-def _validate_policing_workstream(roadmap: str) -> None:
-    rendered = _rendered_policing_workstream(roadmap)
-    workstream = _visible_text(rendered)
+def _normalised_visible_workstream_lines(rendered: str) -> list[str]:
+    """Return the canonical browser-visible line sequence used by Workstream I integrity."""
     visible_lines: list[str] = []
     for raw_line in rendered.splitlines():
         line = _visible_text(raw_line).strip()
         line = re.sub(r"^(?:[-+*]|\d{1,9}[.)])\s+", "", line)
         if line:
             visible_lines.append(line)
+    return visible_lines
+
+
+def _validate_policing_workstream(roadmap: str) -> None:
+    rendered = _rendered_policing_workstream(roadmap)
+    workstream = _visible_text(rendered)
+    visible_lines = _normalised_visible_workstream_lines(rendered)
 
     for clause in REQUIRED_CLAUSES:
         visible_clause = _visible_text(clause)
@@ -796,6 +814,14 @@ def _validate_policing_workstream(roadmap: str) -> None:
             )
         else:
             assert visible_clause in workstream, f"missing policing-workstream safeguard: {clause}"
+
+
+    integrity_value = "\n".join(visible_lines)
+    integrity_hash = hashlib.sha256(integrity_value.encode("utf-8")).hexdigest()
+    assert integrity_hash == POLICING_WORKSTREAM_VISIBLE_SHA256, (
+        "browser-visible policing workstream changed: expected hash "
+        f"{POLICING_WORKSTREAM_VISIBLE_SHA256!r}, got {integrity_hash!r}"
+    )
 
 def test_policing_context_workstream_remains_source_gated_and_noncomparative():
     _validate_policing_workstream(ROADMAP.read_text(encoding="utf-8"))
@@ -1008,3 +1034,19 @@ def test_policing_visibility_ignores_reference_definition_titles():
         f'- > [hidden]: # "{clause}"',
     ):
         assert clause not in _visible_text(hidden)
+
+
+
+def test_policing_companion_contradiction_changes_complete_visible_section():
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    source_gate = AFFIRMATIVE_EXACT_LINE_OVERRIDES[
+        "register official and current sources for each Australian and United States jurisdictional claim"
+    ]
+    mutated = roadmap.replace(
+        source_gate,
+        source_gate
+        + "\n- Official and current sources are optional for every jurisdictional claim.",
+        1,
+    )
+    with pytest.raises(AssertionError, match="browser-visible policing workstream changed"):
+        _validate_policing_workstream(mutated)

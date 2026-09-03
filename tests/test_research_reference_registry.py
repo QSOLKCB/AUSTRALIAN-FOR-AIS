@@ -598,8 +598,52 @@ HTML_P_IMPLIED_END_START_TAGS = frozenset({
     "section", "table", "ul",
 })
 
+HTML_IMPLIED_END_TARGETS = {
+    "li": frozenset({"li"}),
+    "dt": frozenset({"dt", "dd"}),
+    "dd": frozenset({"dt", "dd"}),
+    "rt": frozenset({"rt", "rp"}),
+    "rp": frozenset({"rt", "rp"}),
+    "option": frozenset({"option"}),
+    "optgroup": frozenset({"option", "optgroup"}),
+    "thead": frozenset({"thead", "tbody", "tfoot"}),
+    "tbody": frozenset({"thead", "tbody", "tfoot"}),
+    "tfoot": frozenset({"thead", "tbody", "tfoot"}),
+    "tr": frozenset({"tr"}),
+    "td": frozenset({"td", "th"}),
+    "th": frozenset({"td", "th"}),
+}
+
+
 SVG_NON_RENDERING_METADATA_TAGS = frozenset({"title", "desc"})
 RAW_HTML_BLOCK_TAGS = frozenset({"pre", "script", "style", "textarea"})
+RAW_HTML_PROCESSING_INSTRUCTION = "__processing_instruction__"
+RAW_HTML_DECLARATION = "__declaration__"
+RAW_HTML_CDATA = "__cdata__"
+CSS_COMMENT_PATTERN = re.compile(r"/\*.*?\*/", flags=re.DOTALL)
+COMMONMARK_CHARACTER_REFERENCE_PATTERN = re.compile(
+    r"&(?:#[0-9]{1,7}|#[xX][0-9A-Fa-f]{1,6}|[A-Za-z][A-Za-z0-9]{1,31});"
+)
+GOVERNED_INTERACTIVE_HTML_PATTERN = re.compile(
+    r"<(?:form|input|button|select|textarea|option|optgroup)\b",
+    flags=re.IGNORECASE,
+)
+
+
+def _css_hides_element(style: str) -> bool:
+    """Interpret actual display/visibility declarations, not substrings in values."""
+    cleaned = CSS_COMMENT_PATTERN.sub("", style.lower())
+    for declaration in cleaned.split(";"):
+        if ":" not in declaration:
+            continue
+        name, value = declaration.split(":", 1)
+        name = name.strip()
+        value = re.sub(r"\s*!important\s*$", "", value.strip())
+        if name == "display" and value == "none":
+            return True
+        if name == "visibility" and value in {"hidden", "collapse"}:
+            return True
+    return False
 
 
 class _VisibleHTMLTextParser(HTMLParser):
@@ -612,10 +656,17 @@ class _VisibleHTMLTextParser(HTMLParser):
         self.stack: list[tuple[str, bool]] = []
 
     def _apply_implied_paragraph_end(self, tag: str) -> None:
-        if tag not in HTML_P_IMPLIED_END_START_TAGS:
+        if tag in HTML_P_IMPLIED_END_START_TAGS:
+            for index in range(len(self.stack) - 1, -1, -1):
+                if self.stack[index][0] == "p":
+                    del self.stack[index:]
+                    return
+
+        targets = HTML_IMPLIED_END_TARGETS.get(tag)
+        if not targets:
             return
         for index in range(len(self.stack) - 1, -1, -1):
-            if self.stack[index][0] == "p":
+            if self.stack[index][0] in targets:
                 del self.stack[index:]
                 return
 
@@ -633,14 +684,7 @@ class _VisibleHTMLTextParser(HTMLParser):
             return True
         if values.get("aria-hidden", "").strip().lower() == "true":
             return True
-        style = re.sub(
-            r"/\*.*?\*/",
-            "",
-            values.get("style", "").lower(),
-            flags=re.DOTALL,
-        )
-        style = re.sub(r"\s+", "", style)
-        return "display:none" in style or "visibility:hidden" in style
+        return _css_hides_element(values.get("style", ""))
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
@@ -727,10 +771,16 @@ class _HiddenHTMLRegionParser(HTMLParser):
         return len(self.text) if close < 0 else close + 1
 
     def _apply_implied_paragraph_end(self, tag: str, start: int) -> None:
-        if tag not in HTML_P_IMPLIED_END_START_TAGS:
+        targets: frozenset[str] | None = None
+        if tag in HTML_P_IMPLIED_END_START_TAGS:
+            targets = frozenset({"p"})
+        else:
+            targets = HTML_IMPLIED_END_TARGETS.get(tag)
+        if not targets:
             return
+
         for index in range(len(self.stack) - 1, -1, -1):
-            if self.stack[index][0] != "p":
+            if self.stack[index][0] not in targets:
                 continue
             popped = self.stack[index:]
             del self.stack[index:]
@@ -1043,11 +1093,22 @@ def _is_fence_closer(line: str, state: FenceState) -> bool:
 
 
 def _raw_html_block_opener(line: str) -> RawHTMLBlockState | None:
-    """Return a CommonMark type-1 raw HTML block opener."""
+    """Return a CommonMark raw HTML block opener with its terminator family."""
     logical, indented_code, containers = _parse_composed_container_prefixes(line)
     if indented_code:
         return None
     candidate = logical.lstrip(" \t")
+
+    if candidate.startswith("<?"):
+        return RawHTMLBlockState(
+            tag=RAW_HTML_PROCESSING_INSTRUCTION,
+            containers=containers,
+        )
+    if candidate.startswith("<![CDATA["):
+        return RawHTMLBlockState(tag=RAW_HTML_CDATA, containers=containers)
+    if re.match(r"<![A-Z]", candidate):
+        return RawHTMLBlockState(tag=RAW_HTML_DECLARATION, containers=containers)
+
     match = re.match(
         r"<(?P<tag>pre|script|style|textarea)(?:[ \t]|>|$)",
         candidate,
@@ -1080,6 +1141,12 @@ def _raw_html_block_logical_line(line: str, state: RawHTMLBlockState) -> str:
 
 def _raw_html_block_closes(line: str, state: RawHTMLBlockState) -> bool:
     logical = _raw_html_block_logical_line(line, state)
+    if state.tag == RAW_HTML_PROCESSING_INSTRUCTION:
+        return "?>" in logical
+    if state.tag == RAW_HTML_CDATA:
+        return "]]>" in logical
+    if state.tag == RAW_HTML_DECLARATION:
+        return ">" in logical
     return bool(
         re.search(
             rf"</{re.escape(state.tag)}[ \t]*>",
@@ -1373,8 +1440,30 @@ MARKDOWN_BACKSLASH_ESCAPE_PATTERN = re.compile(
 )
 
 
+NON_COMMONMARK_CHARACTER_REFERENCE_CANDIDATE = re.compile(
+    r"&(?:#[xX][0-9A-Fa-f]+|#[0-9]+|[A-Za-z][A-Za-z0-9]*)"
+)
+
+
+def _reject_non_commonmark_character_references(text: str) -> None:
+    """Reject semicolonless references that Python would decode but CommonMark would not."""
+    visible = _mask_hidden_html_regions(_rendered_registry_text(text))
+    for match in NON_COMMONMARK_CHARACTER_REFERENCE_CANDIDATE.finditer(visible):
+        if match.end() < len(visible) and visible[match.end()] == ";":
+            continue
+        candidate = match.group(0)
+        if html.unescape(candidate) != candidate:
+            raise AssertionError(
+                "non-CommonMark character reference is not permitted in a governed entry: "
+                f"{candidate!r}"
+            )
+
+
 def _normalise_https_destination(candidate: str) -> str | None:
-    value = html.unescape(candidate)
+    value = COMMONMARK_CHARACTER_REFERENCE_PATTERN.sub(
+        lambda match: html.unescape(match.group(0)),
+        candidate,
+    )
     value = MARKDOWN_BACKSLASH_ESCAPE_PATTERN.sub(r"\1", value)
     value = value.strip().strip("<>").rstrip(".,;:!?")
     try:
@@ -2266,6 +2355,10 @@ def _normalise_complete_entry_integrity(section: str) -> str:
 def _require_complete_entry_integrity(entry: str, section: str) -> None:
     expected_hash = ENTRY_RENDERED_VALUE_HASHES.get(entry)
     assert expected_hash is not None, f"{entry} has no complete rendered-entry integrity fixture"
+    rendered_section = _rendered_registry_text(section)
+    assert GOVERNED_INTERACTIVE_HTML_PATTERN.search(rendered_section) is None, (
+        f"{entry} contains interactive HTML that is not permitted in governed entries"
+    )
     value = _normalise_complete_entry_integrity(section)
     actual_hash = hashlib.sha256(value.encode("utf-8")).hexdigest()
     assert actual_hash == expected_hash, (
@@ -2280,6 +2373,7 @@ def _validate_registered_entry(
     *,
     reference_scope: str | None = None,
 ) -> None:
+    _reject_non_commonmark_character_references(section)
     destinations = _require_registered_source_link(
         entry,
         section,
@@ -3563,4 +3657,85 @@ def test_raw_html_block_cannot_supply_governed_batch_structure():
         + corpus[end:]
     )
     with pytest.raises(AssertionError):
+        _validate_registry_corpus(mutated)
+
+
+
+def test_css_custom_property_cannot_hide_visible_duplicate_doi():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    heading = (
+        "### Chey (2021), *Overcoming awkwardness: some interpretations of "
+        "Australian humour*"
+    )
+    mutated = corpus.replace(
+        heading,
+        heading
+        + '\n\n<span style="--note:display:none"><strong>DOI:</strong> '
+        + "https://doi.org/10.0000/fabricated</span>",
+        1,
+    )
+    with pytest.raises(AssertionError):
+        _validate_registry_corpus(mutated)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    (
+        "<ul><li hidden>masked<li><strong>DOI:</strong> "
+        "https://doi.org/10.0000/fabricated</ul>",
+        "<dl><dt hidden>masked<dd><strong>DOI:</strong> "
+        "https://doi.org/10.0000/fabricated</dl>",
+    ),
+)
+def test_html_implied_item_end_cannot_hide_duplicate_doi(payload):
+    corpus = CORPUS.read_text(encoding="utf-8")
+    heading = (
+        "### Chey (2021), *Overcoming awkwardness: some interpretations of "
+        "Australian humour*"
+    )
+    mutated = corpus.replace(heading, heading + "\n\n" + payload, 1)
+    with pytest.raises(AssertionError):
+        _validate_registry_corpus(mutated)
+
+
+@pytest.mark.parametrize(
+    ("open_marker", "close_marker"),
+    (
+        ("<?hidden", "?>"),
+        ("<![CDATA[", "]]>")
+    ),
+)
+def test_non_type1_raw_html_block_cannot_supply_governed_batch_structure(
+    open_marker,
+    close_marker,
+):
+    corpus = CORPUS.read_text(encoding="utf-8")
+    start = corpus.index(BATCH_HEADING)
+    end = corpus.index(BATCH_END, start) + len(BATCH_END)
+    governed = corpus[start:end]
+    mutated = corpus[:start] + open_marker + "\n" + governed + "\n" + close_marker + corpus[end:]
+    with pytest.raises(AssertionError):
+        _validate_registry_corpus(mutated)
+
+
+def test_malformed_character_reference_does_not_create_https_doi_destination():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    expected = "https://doi.org/10.7592/EJHR2021.9.4.560"
+    replacement = (
+        "[https://doi.org/10.7592/EJHR2021.9.4.560]"
+        "(https&#58//doi.org/10.7592/EJHR2021.9.4.560)"
+    )
+    mutated = corpus.replace(f"**DOI:** {expected}", f"**DOI:** {replacement}", 1)
+    with pytest.raises(AssertionError):
+        _validate_registry_corpus(mutated)
+
+
+def test_interactive_form_control_cannot_bypass_complete_entry_integrity():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    heading = "### *Black Comedy* (ABC, 2014-2020)"
+    payload = (
+        '<input value="This work proves universal facts about all Aboriginal speakers.">'
+    )
+    mutated = corpus.replace(heading, heading + "\n\n" + payload, 1)
+    with pytest.raises(AssertionError, match="interactive HTML"):
         _validate_registry_corpus(mutated)
