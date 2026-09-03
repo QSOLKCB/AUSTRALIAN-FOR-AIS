@@ -19,6 +19,7 @@ SOURCE_TYPE_FIELD = "**Source type:**"
 RIGHTS_FIELD = "**Rights and provenance boundary:**"
 EPISTEMIC_FIELD = "**Epistemic status:**"
 SAFE_FIELD = "**Safe benchmark abstraction:**"
+DOI_FIELD = "**DOI:**"
 SCALAR_FIELDS = (
     SOURCE_TYPE_FIELD,
     RIGHTS_FIELD,
@@ -36,9 +37,10 @@ def _entry_contract(
     rights: str,
     epistemic: str,
     safe: str,
+    doi: str | None = None,
 ) -> dict[str, object]:
     """Build one explicit governed-entry contract."""
-    return {
+    contract: dict[str, object] = {
         SOURCES_KEY: sources,
         SOURCE_TYPE_FIELD: source_type,
         "governance": governance,
@@ -46,6 +48,9 @@ def _entry_contract(
         EPISTEMIC_FIELD: epistemic,
         SAFE_FIELD: safe,
     }
+    if doi is not None:
+        contract[DOI_FIELD] = doi
+    return contract
 
 
 ENTRY_CONTRACTS: dict[str, dict[str, object]] = {
@@ -414,14 +419,14 @@ CONSULTATION_BOUNDARY = (
 
 ENTRY_HEADING_PATTERN = re.compile(r"(?m)^ {0,3}(?P<heading>### .+?)[ \t]*$")
 GOVERNANCE_FIELD_PATTERN = re.compile(
-    r"(?m)^ {0,3}\*\*Community-specific governance:\*\*"
+    r"(?m)^[ \t]*\*\*Community-specific governance:\*\*"
 )
 GOVERNANCE_PATTERN = re.compile(
-    r"(?m)^ {0,3}\*\*Community-specific governance:\*\*[ \t]*"
+    r"(?m)^[ \t]*\*\*Community-specific governance:\*\*[ \t]*"
     r"(required|not-required):(?P<rationale>[^\r\n]*)$"
 )
 REGISTERED_SOURCE_FIELD_PATTERN = re.compile(
-    r"(?m)^ {0,3}\*\*Registered sources?:\*\*"
+    r"(?m)^[ \t]*\*\*Registered sources?:\*\*"
 )
 RESEARCH_MAPPING_HEADING_PATTERN = re.compile(
     r"(?m)^ {0,3}(?:Candidate research mappings:|Research mappings:)[ \t]*$"
@@ -430,16 +435,20 @@ PROJECT_MAPPING_HEADING_PATTERN = re.compile(
     r"(?m)^ {0,3}Relevant project mappings:[ \t]*$"
 )
 MARKDOWN_LINK_PATTERN = re.compile(
-    r"!?\[(?P<label>[^\]\r\n]*)\]\("
+    r"(?P<image>!?)\[(?P<label>[^\]\r\n]*)\]\("
     r"[ \t]*(?P<destination><[^>\r\n]+>|[^\s)\r\n]+)"
     r"(?:[ \t]+(?:\"[^\"\r\n]*\"|'[^'\r\n]*'|\([^)]*\)))?"
     r"[ \t]*\)"
 )
 BARE_HTTPS_LINE_PATTERN = re.compile(
-    r"(?m)^ {0,3}(?:(?:[-+*]|\d{1,9}[.)])[ \t]+)?"
+    r"(?m)^[ \t]*(?:(?:[-+*]|\d{1,9}[.)])[ \t]+)?"
     r"(?P<url>https://\S+)[ \t]*$"
 )
 AUTOLINK_PATTERN = re.compile(r"<(?P<url>https://[^>\s]+)>")
+LINK_REFERENCE_DEFINITION_PATTERN = re.compile(
+    r"\[[^\]\r\n]+\]:[ \t]*(?:<[^>\r\n]+>|\S+)"
+    r"(?:[ \t]+(?:\"[^\"\r\n]*\"|'[^'\r\n]*'|\([^)]*\)))?[ \t]*"
+)
 HOST_LABEL_PATTERN = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?")
 NUMERIC_HOST_LABEL_PATTERN = re.compile(r"(?:0[xX][0-9A-Fa-f]+|[0-9]+)")
 SPECIAL_USE_HOST_SUFFIXES = (
@@ -524,6 +533,21 @@ def _line_context(line: str) -> LineContext:
         list_indent=list_indent,
         indented_code=indented_code,
     )
+
+
+def _line_opens_paragraph(line: str) -> bool:
+    """Return whether a rendered line can keep a CommonMark paragraph open."""
+    context = _line_context(line)
+    logical = context.logical.strip()
+    if not logical or context.indented_code:
+        return False
+    if re.fullmatch(r"#{1,6}(?:[ \t]+.*)?", logical):
+        return False
+    if THEMATIC_BREAK_PATTERN.fullmatch(logical):
+        return False
+    if LINK_REFERENCE_DEFINITION_PATTERN.fullmatch(logical):
+        return False
+    return True
 
 
 def _fence_opener(line: str) -> FenceState | None:
@@ -651,9 +675,12 @@ def _markdown_views(text: str) -> tuple[str, str]:
     structural_parts: list[str] = []
     in_comment = False
     fence: FenceState | None = None
+    paragraph_open = False
 
     for raw_line in text.splitlines(keepends=True):
         line = raw_line.rstrip("\r\n")
+        if not line.strip():
+            paragraph_open = False
 
         while fence is not None and not _fence_container_continues(line, fence):
             fence = None
@@ -793,6 +820,8 @@ def _usable_https_destinations(text: str) -> tuple[str, ...]:
     destinations: list[str] = []
 
     for match in MARKDOWN_LINK_PATTERN.finditer(structure):
+        if match.group("image"):
+            continue
         destination = _normalise_https_destination(
             match.group("destination").strip("<>")
         )
@@ -843,7 +872,7 @@ def _registered_sections(corpus: str) -> dict[str, str]:
 
 def _scalar_value(entry: str, section: str, field: str) -> str:
     rendered, structure = _markdown_views(section)
-    prefix = rf"(?m)^ {{0,3}}{re.escape(field)}"
+    prefix = rf"(?m)^[ \t]*{re.escape(field)}"
     occurrences = list(re.finditer(prefix, structure))
     assert len(occurrences) == 1, (
         f"{entry} must contain exactly one mandatory field {field}"
@@ -945,8 +974,8 @@ def _require_registered_source_link(entry: str, section: str) -> tuple[str, ...]
         f"{entry} must contain exactly one registered-source field"
     )
     source_block = re.search(
-        r"(?ms)^ {0,3}\*\*Registered sources?:\*\*(.*?)"
-        r"(?=^ {0,3}\*\*[^*\n]+:\*\*|\Z)",
+        r"(?ms)^[ \t]*\*\*Registered sources?:\*\*(.*?)"
+        r"(?=^[ \t]*\*\*[^*\n]+:\*\*|\Z)",
         structure,
     )
     assert source_block, f"{entry} has an empty registered-source field"
@@ -1022,6 +1051,20 @@ def _validate_registered_entry(entry: str, section: str) -> None:
         field: _scalar_value(entry, section, field)
         for field in SCALAR_FIELDS
     }
+    contract = ENTRY_CONTRACTS.get(entry)
+    assert contract is not None, f"{entry} has no pinned source-governance contract"
+    if DOI_FIELD in contract:
+        doi_value = _scalar_value(entry, section, DOI_FIELD)
+        assert doi_value == contract[DOI_FIELD], (
+            f"{entry} DOI metadata changed: expected {contract[DOI_FIELD]!r}, "
+            f"got {doi_value!r}"
+        )
+    else:
+        structure = _structural_registry_text(section)
+        assert not re.search(
+            rf"(?m)^[ \t]*{re.escape(DOI_FIELD)}",
+            structure,
+        ), f"{entry} has unpinned DOI metadata"
     classification = _require_community_governance(entry, section)
     _require_pinned_entry_contract(
         entry,
@@ -1213,6 +1256,7 @@ def test_registered_source_rejects_duplicate_fields(section: str):
         "https://source.example",
         "https://router.local",
         "https://host.home.arpa",
+        "![source](https://example.com/source)",
     ),
 )
 def test_registered_source_rejects_unusable_destinations(destination: str):
@@ -1250,6 +1294,7 @@ def test_registered_source_rejects_unusable_destinations(destination: str):
         "<span> &nbsp; </span>",
         "- <!-- placeholder -->",
         "<!--\n- placeholder\n-->",
+        "[placeholder]: https://example.com",
     ),
 )
 def test_mapping_blocks_reject_empty_rendered_content(container: str):
@@ -1392,4 +1437,46 @@ def test_inline_code_remains_visible_field_text_but_not_a_link():
     )
     with pytest.raises(AssertionError, match="no usable HTTPS destination"):
         _require_registered_source_link("### Example", source)
+
+def test_paragraph_continuation_cannot_hide_indented_metadata():
+    duplicate_source = (
+        "### Example\n\n"
+        "**Registered source:** https://example.com/source\n"
+        "    **Registered source:** https://example.com/other\n\n"
+        "**Source type:** example\n"
+    )
+    with pytest.raises(AssertionError, match="exactly one registered-source field"):
+        _require_registered_source_link("### Example", duplicate_source)
+
+    duplicate_scalar = (
+        "### Example\n\n"
+        "**Rights and provenance boundary:** restrictive value\n"
+        "    **Rights and provenance boundary:** contradictory value\n"
+    )
+    with pytest.raises(AssertionError, match="exactly one mandatory field"):
+        _scalar_value("### Example", duplicate_scalar, RIGHTS_FIELD)
+
+
+def test_published_doi_metadata_is_pinned_and_unique():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = (
+        "### Chey (2021), *Overcoming awkwardness: some interpretations of "
+        "Australian humour*"
+    )
+    section = _registered_sections(corpus)[entry]
+    fake = section.replace(
+        "https://doi.org/10.7592/EJHR2021.9.4.560",
+        "https://doi.org/10.0000/invented",
+        1,
+    )
+    with pytest.raises(AssertionError, match="DOI metadata changed"):
+        _validate_registered_entry(entry, fake)
+
+    duplicate = section.replace(
+        "**Source type:**",
+        "**DOI:** https://doi.org/10.0000/conflict\n\n**Source type:**",
+        1,
+    )
+    with pytest.raises(AssertionError, match="exactly one mandatory field"):
+        _validate_registered_entry(entry, duplicate)
 
