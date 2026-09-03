@@ -505,6 +505,9 @@ THEMATIC_BREAK_PATTERN = re.compile(
 )
 FENCE_PATTERN = re.compile(r"(?P<fence>`{3,}|~{3,})(?P<info>.*)")
 LIST_CONTAINER_PREFIX_PATTERN = re.compile(r"(?:[-+*]|\d{1,9}[.)])[ \t]+")
+STRONG_METADATA_FIELD_PATTERN = re.compile(
+    r"^(?P<marker>\*\*|__)(?P<label>[^:\r\n]+):(?P=marker)(?=$|[ \t])"
+)
 HTML_TAG_PATTERN = re.compile(
     r"</?[A-Za-z][^>]*>|<![A-Za-z][^>]*>|<\?[\s\S]*?\?>"
 )
@@ -1084,6 +1087,15 @@ def _strip_composed_container_prefixes(line: str) -> tuple[str, bool]:
 
 
 
+def _canonicalise_metadata_marker(line: str) -> str:
+    """Canonicalise equivalent CommonMark strong-emphasis field labels."""
+    match = STRONG_METADATA_FIELD_PATTERN.match(line)
+    if not match:
+        return line
+    canonical = f"**{match.group('label')}:**"
+    return canonical + line[match.end():]
+
+
 def _normalised_rendered_lines(section: str) -> list[tuple[str, str, bool]]:
     """Return structural/rendered logical lines with list continuations preserved."""
     rendered, structure = _markdown_views(section)
@@ -1125,9 +1137,11 @@ def _normalised_rendered_lines(section: str) -> list[tuple[str, str, bool]]:
             is_code = False
             rendered_is_code = False
 
-        records.append(
-            (logical.lstrip(" \t"), rendered_logical.lstrip(" \t"), False)
+        logical = _canonicalise_metadata_marker(logical.lstrip(" \t"))
+        rendered_logical = _canonicalise_metadata_marker(
+            rendered_logical.lstrip(" \t")
         )
+        records.append((logical, rendered_logical, False))
     return records
 
 
@@ -2041,3 +2055,17 @@ def test_boundary_hash_includes_paragraph_continuations():
 
 def test_mapping_content_normalises_compound_containers():
     assert not _has_non_heading_content("- > ---\n")
+
+
+def test_equivalent_strong_emphasis_doi_field_is_counted():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = "### Chey (2021), *Overcoming awkwardness: some interpretations of Australian humour*"
+    section = _registered_sections(corpus)[entry]
+    mutated = section.replace(
+        "**DOI:** https://doi.org/10.7592/EJHR2021.9.4.560",
+        "**DOI:** https://doi.org/10.7592/EJHR2021.9.4.560\n\n"
+        "__DOI:__ https://doi.org/10.0000/fabricated",
+        1,
+    )
+    with pytest.raises(AssertionError, match="exactly one mandatory field"):
+        _validate_registered_entry(entry, mutated)
