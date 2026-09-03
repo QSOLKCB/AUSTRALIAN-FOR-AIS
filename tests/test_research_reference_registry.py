@@ -1199,9 +1199,17 @@ def _normalise_reference_label(value: str) -> str:
     return " ".join(html.unescape(value).split()).casefold()
 
 
-def _usable_https_destinations(text: str) -> tuple[str, ...]:
-    """Extract usable rendered links while excluding code and link titles."""
+def _usable_https_destinations(
+    text: str,
+    *,
+    reference_scope: str | None = None,
+) -> tuple[str, ...]:
+    """Extract rendered links, resolving reference definitions at document scope."""
     structure = _mask_hidden_html_regions(_structural_registry_text(text))
+    definition_source = text if reference_scope is None else reference_scope
+    reference_structure = _mask_hidden_html_regions(
+        _structural_registry_text(definition_source)
+    )
     destinations: list[str] = []
 
     for candidate in _visible_html_links(structure):
@@ -1219,7 +1227,7 @@ def _usable_https_destinations(text: str) -> tuple[str, ...]:
             destinations.append(destination)
 
     definitions: dict[str, str] = {}
-    for match in LINK_REFERENCE_DEFINITION_PATTERN.finditer(structure):
+    for match in LINK_REFERENCE_DEFINITION_PATTERN.finditer(reference_structure):
         destination = _normalise_https_destination(
             match.group("destination").strip("<>")
         )
@@ -1531,7 +1539,12 @@ def _require_mapping_block(entry: str, section: str) -> None:
     assert _has_non_heading_content(rendered[project_value_start:project_end]), f"{entry} has empty project mappings"
 
 
-def _require_registered_source_link(entry: str, section: str) -> tuple[str, ...]:
+def _require_registered_source_link(
+    entry: str,
+    section: str,
+    *,
+    reference_scope: str | None = None,
+) -> tuple[str, ...]:
     source_count = _metadata_field_count(
         section,
         ("**Registered source:**", "**Registered sources:**"),
@@ -1548,7 +1561,10 @@ def _require_registered_source_link(entry: str, section: str) -> tuple[str, ...]
     source_value = rendered[source_block.start(1):source_block.end(1)]
     assert _visible_inline_text(source_value), f"{entry} has an empty registered-source field"
 
-    destinations = _usable_https_destinations(source_value)
+    destinations = _usable_https_destinations(
+        source_value,
+        reference_scope=reference_scope,
+    )
     assert destinations, f"{entry} has no usable HTTPS destination in its registered-source field"
     assert len(destinations) == len(set(destinations)), f"{entry} contains duplicate registered-source destinations"
     return destinations
@@ -1625,8 +1641,17 @@ def _require_pinned_entry_contract(
                 f"{expected_hash!r}, got {actual_hash!r}"
             )
 
-def _validate_registered_entry(entry: str, section: str) -> None:
-    destinations = _require_registered_source_link(entry, section)
+def _validate_registered_entry(
+    entry: str,
+    section: str,
+    *,
+    reference_scope: str | None = None,
+) -> None:
+    destinations = _require_registered_source_link(
+        entry,
+        section,
+        reference_scope=reference_scope,
+    )
     scalar_values = {field: _scalar_value(entry, section, field) for field in SCALAR_FIELDS}
     contract = ENTRY_CONTRACTS.get(entry)
     assert contract is not None, f"{entry} has no pinned source-governance contract"
@@ -1675,10 +1700,37 @@ def _validate_registry_corpus(corpus: str) -> None:
         "every rendered governed entry must have an explicit pinned source contract"
     )
     for entry, section in sections.items():
-        _validate_registered_entry(entry, section)
+        _validate_registered_entry(
+            entry,
+            section,
+            reference_scope=corpus,
+        )
 
 def test_post_phase2_registry_batch_preserves_governance_contract():
     _validate_registry_corpus(CORPUS.read_text(encoding="utf-8"))
+
+
+def test_registered_source_resolves_document_scoped_reference_definition():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = EXPECTED_GOVERNED_ENTRIES[0]
+    section = _registered_sections(corpus)[entry]
+    marker = (
+        "**Registered source:**"
+        if "**Registered source:**" in section
+        else "**Registered sources:**"
+    )
+    mutated_section = section.replace(
+        marker,
+        f"{marker} [alternate][external-provenance]\n",
+        1,
+    )
+    mutated = (
+        corpus.replace(section, mutated_section, 1)
+        + "\n[external-provenance]: https://www.wikipedia.org/\n"
+    )
+
+    with pytest.raises(AssertionError, match="registered-source destinations changed"):
+        _validate_registry_corpus(mutated)
 
 
 @pytest.mark.parametrize("wrapper", ("comment", "fence"))

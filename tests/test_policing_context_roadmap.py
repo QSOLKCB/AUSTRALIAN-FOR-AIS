@@ -19,8 +19,13 @@ REQUIRED_CLAUSES = (
     "not legal advice",
     "Every implemented item should record the relevant country, jurisdiction, institutional role, encounter type, and source date.",
     "US POLICE SCRIPT != AUSTRALIAN LEGAL PROCEDURE",
+    "POLICE TERMINOLOGY != CROSS-JURISDICTION EQUIVALENCE",
     "CASUAL ADDRESS != FRIENDSHIP OR CONSENT",
+    "CALM TONE != ABSENCE OF COERCIVE AUTHORITY",
+    "POLITE WORDING != VOLUNTARY CHOICE",
     "FICTIONAL POLICE TROPE != OPERATIONAL POLICY",
+    "ONE AGENCY != A NATIONAL POLICING SYSTEM",
+    "ONE ENCOUNTER != SYSTEM-WIDE GROUND TRUTH",
     "JURISDICTIONAL DIFFERENCE != NATIONAL MORAL CHARACTER",
     "LEGAL INFORMATION != LEGAL ADVICE",
     "register official and current sources for each Australian and United States jurisdictional claim",
@@ -28,8 +33,13 @@ REQUIRED_CLAUSES = (
 
 AFFIRMATIVE_LINE_PREFIX_CLAUSES = (
     "US POLICE SCRIPT != AUSTRALIAN LEGAL PROCEDURE",
+    "POLICE TERMINOLOGY != CROSS-JURISDICTION EQUIVALENCE",
     "CASUAL ADDRESS != FRIENDSHIP OR CONSENT",
+    "CALM TONE != ABSENCE OF COERCIVE AUTHORITY",
+    "POLITE WORDING != VOLUNTARY CHOICE",
     "FICTIONAL POLICE TROPE != OPERATIONAL POLICY",
+    "ONE AGENCY != A NATIONAL POLICING SYSTEM",
+    "ONE ENCOUNTER != SYSTEM-WIDE GROUND TRUTH",
     "JURISDICTIONAL DIFFERENCE != NATIONAL MORAL CHARACTER",
     "LEGAL INFORMATION != LEGAL ADVICE",
     "register official and current sources for each Australian and United States jurisdictional claim",
@@ -389,5 +399,23 @@ def test_policing_source_gate_cannot_be_negated():
     roadmap = ROADMAP.read_text(encoding="utf-8")
     clause = "register official and current sources for each Australian and United States jurisdictional claim"
     mutated = roadmap.replace(clause, "never " + clause, 1)
+    with pytest.raises(AssertionError, match="missing policing-workstream safeguard"):
+        _validate_policing_workstream(mutated)
+
+
+@pytest.mark.parametrize(
+    "clause",
+    (
+        "POLICE TERMINOLOGY != CROSS-JURISDICTION EQUIVALENCE",
+        "CALM TONE != ABSENCE OF COERCIVE AUTHORITY",
+        "POLITE WORDING != VOLUNTARY CHOICE",
+        "ONE AGENCY != A NATIONAL POLICING SYSTEM",
+        "ONE ENCOUNTER != SYSTEM-WIDE GROUND TRUTH",
+    ),
+)
+def test_policing_scope_boundaries_are_all_required(clause: str):
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    assert clause in roadmap
+    mutated = roadmap.replace(clause, "REMOVED POLICING BOUNDARY", 1)
     with pytest.raises(AssertionError, match="missing policing-workstream safeguard"):
         _validate_policing_workstream(mutated)
