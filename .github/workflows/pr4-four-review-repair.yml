@@ -33,8 +33,8 @@ jobs:
           from pathlib import Path
           path = Path('.github/scripts/pr4-four-review-repair.py')
           text = path.read_text(encoding='utf-8')
-          old = '    original = f"- {clause};"\n'
-          new = '    original = f"- {clause} before adopting it as benchmark context;"\n'
+          old = 'original = f"- {clause};"'
+          new = 'original = f"- {clause} before adopting it as benchmark context;"'
           if text.count(old) != 1:
               raise SystemExit(f'expected one fixture anchor, found {text.count(old)}')
           path.write_text(text.replace(old, new, 1), encoding='utf-8')
