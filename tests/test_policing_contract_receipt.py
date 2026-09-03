@@ -5,6 +5,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).parent.parent
 POLICING_TEST = Path(__file__).parent / "test_policing_context_roadmap.py"
@@ -65,6 +67,20 @@ def _string_constants_in_tuple(name: str) -> tuple[str, ...]:
     raise AssertionError(f"missing policing contract tuple: {name}")
 
 
+def _policing_methodology_section(methodology: str) -> str:
+    assert POLICING_METHODOLOGY_HEADING in methodology
+    start = methodology.index(POLICING_METHODOLOGY_HEADING)
+    end = methodology.index("\n---\n", start)
+    return methodology[start:end]
+
+
+def _assert_canonical_policing_metadata(methodology: str) -> None:
+    policing_methodology = _policing_methodology_section(methodology)
+    assert POLICING_METADATA_INTRO in policing_methodology
+    for field in CANONICAL_METADATA_FIELDS:
+        assert f"**{field}**" in policing_methodology
+
+
 def test_all_policing_invariants_are_required_and_affirmative():
     required = set(_string_constants_in_tuple("REQUIRED_CLAUSES"))
     affirmative = set(_string_constants_in_tuple("AFFIRMATIVE_LINE_PREFIX_CLAUSES"))
@@ -79,15 +95,27 @@ def test_roadmap_policing_metadata_matches_canonical_minimum():
     required = set(_string_constants_in_tuple("REQUIRED_CLAUSES"))
     affirmative = set(_string_constants_in_tuple("AFFIRMATIVE_LINE_PREFIX_CLAUSES"))
 
-    assert POLICING_METHODOLOGY_HEADING in methodology
-    start = methodology.index(POLICING_METHODOLOGY_HEADING)
-    end = methodology.index("\n---\n", start)
-    policing_methodology = methodology[start:end]
-
     assert "Every implemented item should record" not in roadmap
     assert MANDATORY_ITEM_METADATA_SENTENCE in roadmap
     assert MANDATORY_ITEM_METADATA_SENTENCE in required
     assert MANDATORY_ITEM_METADATA_SENTENCE in affirmative
-    assert POLICING_METADATA_INTRO in policing_methodology
-    for field in CANONICAL_METADATA_FIELDS:
-        assert f"**{field}**" in policing_methodology
+    _assert_canonical_policing_metadata(methodology)
+
+
+def test_policing_metadata_cannot_be_satisfied_outside_canonical_section():
+    methodology = METHODOLOGY.read_text(encoding="utf-8")
+    section = _policing_methodology_section(methodology)
+    stripped_lines = [
+        line
+        for line in section.splitlines()
+        if not any(f"**{field}**" in line for field in CANONICAL_METADATA_FIELDS)
+    ]
+    stripped_section = "\n".join(stripped_lines)
+    external_decoys = "\n".join(
+        f"Unrelated methodology prose mentioning **{field}**."
+        for field in CANONICAL_METADATA_FIELDS
+    )
+    mutated = methodology.replace(section, stripped_section, 1) + "\n" + external_decoys
+
+    with pytest.raises(AssertionError):
+        _assert_canonical_policing_metadata(mutated)
