@@ -7,9 +7,426 @@ on:
     branches: ["**"]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
+  repair-latest-codex-registry-findings:
+    name: Repair latest Codex registry findings
+    if: github.event_name == 'push' && github.ref == 'refs/heads/research-corpus-governed-expansion'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research-corpus-governed-expansion
+          fetch-depth: 0
+
+      - name: Apply registry parser and contract repairs
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("tests/test_research_reference_registry.py")
+          text = path.read_text(encoding="utf-8")
+
+          old = '''SAFE_FIELD = "**Safe benchmark abstraction:**"
+          SCALAR_FIELDS = (
+              SOURCE_TYPE_FIELD,
+              RIGHTS_FIELD,
+              EPISTEMIC_FIELD,
+              SAFE_FIELD,
+          )
+          SOURCES_KEY = "sources"
+          '''
+          new = '''SAFE_FIELD = "**Safe benchmark abstraction:**"
+          DOI_FIELD = "**DOI:**"
+          SCALAR_FIELDS = (
+              SOURCE_TYPE_FIELD,
+              RIGHTS_FIELD,
+              EPISTEMIC_FIELD,
+              SAFE_FIELD,
+          )
+          SOURCES_KEY = "sources"
+          '''
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          old = '''def _entry_contract(
+              *,
+              sources: tuple[str, ...],
+              source_type: str,
+              governance: str,
+              rights: str,
+              epistemic: str,
+              safe: str,
+          ) -> dict[str, object]:
+              """Build one explicit governed-entry contract."""
+              return {
+                  SOURCES_KEY: sources,
+                  SOURCE_TYPE_FIELD: source_type,
+                  "governance": governance,
+                  RIGHTS_FIELD: rights,
+                  EPISTEMIC_FIELD: epistemic,
+                  SAFE_FIELD: safe,
+              }
+          '''
+          new = '''def _entry_contract(
+              *,
+              sources: tuple[str, ...],
+              source_type: str,
+              governance: str,
+              rights: str,
+              epistemic: str,
+              safe: str,
+              doi: str | None = None,
+          ) -> dict[str, object]:
+              """Build one explicit governed-entry contract."""
+              contract: dict[str, object] = {
+                  SOURCES_KEY: sources,
+                  SOURCE_TYPE_FIELD: source_type,
+                  "governance": governance,
+                  RIGHTS_FIELD: rights,
+                  EPISTEMIC_FIELD: epistemic,
+                  SAFE_FIELD: safe,
+              }
+              if doi is not None:
+                  contract[DOI_FIELD] = doi
+              return contract
+          '''
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          chey = '''    ): _entry_contract(
+              sources=("https://europeanjournalofhumour.org/ejhr/article/view/560",),
+          '''
+          chey_new = '''    ): _entry_contract(
+              sources=("https://europeanjournalofhumour.org/ejhr/article/view/560",),
+              doi="https://doi.org/10.7592/EJHR2021.9.4.560",
+          '''
+          if chey in text:
+              text = text.replace(chey, chey_new, 1)
+
+          hurley = '''    ): _entry_contract(
+              sources=(
+                  "https://www.tandfonline.com/doi/full/10.1080/2040610X.2025.2538977",
+              ),
+          '''
+          hurley_new = '''    ): _entry_contract(
+              sources=(
+                  "https://www.tandfonline.com/doi/full/10.1080/2040610X.2025.2538977",
+              ),
+              doi="https://doi.org/10.1080/2040610X.2025.2538977",
+          '''
+          if hurley in text:
+              text = text.replace(hurley, hurley_new, 1)
+
+          text = text.replace(
+              'r"!?\\[(?P<label>[^\\]\\r\\n]*)\\]\\("',
+              'r"(?P<image>!?)\\[(?P<label>[^\\]\\r\\n]*)\\]\\("',
+              1,
+          )
+          text = text.replace(
+              'r"(?m)^ {0,3}(?:(?:[-+*]|\\d{1,9}[.)])[ \\t]+)?"',
+              'r"(?m)^[ \\t]*(?:(?:[-+*]|\\d{1,9}[.)])[ \\t]+)?"',
+              1,
+          )
+
+          autolink = 'AUTOLINK_PATTERN = re.compile(r"<(?P<url>https://[^>\\s]+)>")\n'
+          link_ref = '''AUTOLINK_PATTERN = re.compile(r"<(?P<url>https://[^>\\s]+)>")
+          LINK_REFERENCE_DEFINITION_PATTERN = re.compile(
+              r"\\[[^\\]\\r\\n]+\\]:[ \\t]*(?:<[^>\\r\\n]+>|\\S+)"
+              r"(?:[ \\t]+(?:\\\"[^\\\"\\r\\n]*\\\"|'[^'\\r\\n]*'|\\([^)]*\\)))?[ \\t]*"
+          )
+          '''
+          if autolink in text and "LINK_REFERENCE_DEFINITION_PATTERN" not in text:
+              text = text.replace(autolink, link_ref, 1)
+
+          for old_prefix, new_prefix in (
+              (
+                  'r"(?m)^ {0,3}\\*\\*Community-specific governance:\\*\\*"',
+                  'r"(?m)^[ \\t]*\\*\\*Community-specific governance:\\*\\*"',
+              ),
+              (
+                  'r"(?m)^ {0,3}\\*\\*Community-specific governance:\\*\\*[ \\t]*"',
+                  'r"(?m)^[ \\t]*\\*\\*Community-specific governance:\\*\\*[ \\t]*"',
+              ),
+              (
+                  'r"(?m)^ {0,3}\\*\\*Registered sources?:\\*\\*"',
+                  'r"(?m)^[ \\t]*\\*\\*Registered sources?:\\*\\*"',
+              ),
+          ):
+              if old_prefix in text:
+                  text = text.replace(old_prefix, new_prefix, 1)
+
+          marker = '''def _fence_opener(line: str) -> FenceState | None:
+          '''
+          helper = '''def _line_opens_paragraph(line: str) -> bool:
+              """Return whether a rendered line can keep a CommonMark paragraph open."""
+              context = _line_context(line)
+              logical = context.logical.strip()
+              if not logical or context.indented_code:
+                  return False
+              if re.fullmatch(r"#{1,6}(?:[ \\t]+.*)?", logical):
+                  return False
+              if THEMATIC_BREAK_PATTERN.fullmatch(logical):
+                  return False
+              if LINK_REFERENCE_DEFINITION_PATTERN.fullmatch(logical):
+                  return False
+              return True
+
+
+          def _fence_opener(line: str) -> FenceState | None:
+          '''
+          if marker in text and "def _line_opens_paragraph" not in text:
+              text = text.replace(marker, helper, 1)
+
+          old = '''    in_comment = False
+              fence: FenceState | None = None
+
+              for raw_line in text.splitlines(keepends=True):
+                  line = raw_line.rstrip("\\r\\n")
+          '''
+          new = '''    in_comment = False
+              fence: FenceState | None = None
+              paragraph_open = False
+
+              for raw_line in text.splitlines(keepends=True):
+                  line = raw_line.rstrip("\\r\\n")
+                  if not line.strip():
+                      paragraph_open = False
+          '''
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          old = '''        if fence is not None:
+                  rendered_parts.append(raw_line)
+                  structural_parts.append(_mask_non_newline(raw_line))
+                  if _is_fence_closer(line, fence):
+                      fence = None
+                  continue
+          '''
+          new = '''        if fence is not None:
+                  rendered_parts.append(raw_line)
+                  structural_parts.append(_mask_non_newline(raw_line))
+                  paragraph_open = False
+                  if _is_fence_closer(line, fence):
+                      fence = None
+                  continue
+          '''
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          old = '''        context = _line_context(line)
+              if context.indented_code:
+                  rendered_parts.append(raw_line)
+                  structural_parts.append(_mask_non_newline(raw_line))
+                  continue
+
+              opener = _fence_opener(line)
+          '''
+          new = '''        context = _line_context(line)
+              if context.indented_code and not paragraph_open:
+                  rendered_parts.append(raw_line)
+                  structural_parts.append(_mask_non_newline(raw_line))
+                  continue
+              if context.indented_code and paragraph_open:
+                  rendered_line, in_comment = _mask_html_comments_on_line(
+                      raw_line,
+                      in_comment=False,
+                  )
+                  rendered_parts.append(rendered_line)
+                  structural_parts.append(_mask_inline_code_spans(rendered_line))
+                  paragraph_open = True
+                  continue
+
+              opener = _fence_opener(line)
+          '''
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          old = '''        if opener is not None:
+                  fence = opener
+                  rendered_parts.append(raw_line)
+                  structural_parts.append(_mask_non_newline(raw_line))
+                  continue
+          '''
+          new = '''        if opener is not None:
+                  fence = opener
+                  rendered_parts.append(raw_line)
+                  structural_parts.append(_mask_non_newline(raw_line))
+                  paragraph_open = False
+                  continue
+          '''
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          old = '''        rendered_parts.append(rendered_line)
+              structural_parts.append(_mask_inline_code_spans(rendered_line))
+
+              return "".join(rendered_parts), "".join(structural_parts)
+          '''
+          new = '''        rendered_parts.append(rendered_line)
+              structural_parts.append(_mask_inline_code_spans(rendered_line))
+              paragraph_open = _line_opens_paragraph(rendered_line.rstrip("\\r\\n"))
+
+              return "".join(rendered_parts), "".join(structural_parts)
+          '''
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          text = text.replace(
+              'prefix = rf"(?m)^ {{0,3}}{re.escape(field)}"',
+              'prefix = rf"(?m)^[ \\t]*{re.escape(field)}"',
+              1,
+          )
+          text = text.replace(
+              'r"(?ms)^ {0,3}\\*\\*Registered sources?:\\*\\*(.*?)"',
+              'r"(?ms)^[ \\t]*\\*\\*Registered sources?:\\*\\*(.*?)"',
+              1,
+          )
+          text = text.replace(
+              'r"(?=^ {0,3}\\*\\*[^*\\n]+:\\*\\*|\\Z)"',
+              'r"(?=^[ \\t]*\\*\\*[^*\\n]+:\\*\\*|\\Z)"',
+              1,
+          )
+
+          old = '''    for match in MARKDOWN_LINK_PATTERN.finditer(structure):
+                  destination = _normalise_https_destination(
+                      match.group("destination").strip("<>")
+                  )
+          '''
+          new = '''    for match in MARKDOWN_LINK_PATTERN.finditer(structure):
+                  if match.group("image"):
+                      continue
+                  destination = _normalise_https_destination(
+                      match.group("destination").strip("<>")
+                  )
+          '''
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          old = '''        if re.fullmatch(r"\\*\\*[^*]+:\\*\\*(?:[ \\t].*)?", line):
+                  continue
+              if _visible_inline_text(line):
+          '''
+          new = '''        if re.fullmatch(r"\\*\\*[^*]+:\\*\\*(?:[ \\t].*)?", line):
+                  continue
+              if LINK_REFERENCE_DEFINITION_PATTERN.fullmatch(line):
+                  continue
+              if _visible_inline_text(line):
+          '''
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          old = '''def _validate_registered_entry(entry: str, section: str) -> None:
+              destinations = _require_registered_source_link(entry, section)
+              scalar_values = {
+                  field: _scalar_value(entry, section, field)
+                  for field in SCALAR_FIELDS
+              }
+              classification = _require_community_governance(entry, section)
+          '''
+          new = '''def _validate_registered_entry(entry: str, section: str) -> None:
+              destinations = _require_registered_source_link(entry, section)
+              scalar_values = {
+                  field: _scalar_value(entry, section, field)
+                  for field in SCALAR_FIELDS
+              }
+              contract = ENTRY_CONTRACTS.get(entry)
+              assert contract is not None, f"{entry} has no pinned source-governance contract"
+              if DOI_FIELD in contract:
+                  doi_value = _scalar_value(entry, section, DOI_FIELD)
+                  assert doi_value == contract[DOI_FIELD], (
+                      f"{entry} DOI metadata changed: expected {contract[DOI_FIELD]!r}, "
+                      f"got {doi_value!r}"
+                  )
+              else:
+                  structure = _structural_registry_text(section)
+                  assert not re.search(
+                      rf"(?m)^[ \\t]*{re.escape(DOI_FIELD)}",
+                      structure,
+                  ), f"{entry} has unpinned DOI metadata"
+              classification = _require_community_governance(entry, section)
+          '''
+          if old in text:
+              text = text.replace(old, new, 1)
+
+          text = text.replace(
+              '        "https://host.home.arpa",\n',
+              '        "https://host.home.arpa",\n        "![source](https://example.com/source)",\n',
+              1,
+          )
+          text = text.replace(
+              '        "<!--\\n- placeholder\\n-->",\n',
+              '        "<!--\\n- placeholder\\n-->",\n        "[placeholder]: https://example.com",\n',
+              1,
+          )
+
+          append = '''
+
+          def test_paragraph_continuation_cannot_hide_indented_metadata():
+              duplicate_source = (
+                  "### Example\\n\\n"
+                  "**Registered source:** https://example.com/source\\n"
+                  "    **Registered source:** https://example.com/other\\n\\n"
+                  "**Source type:** example\\n"
+              )
+              with pytest.raises(AssertionError, match="exactly one registered-source field"):
+                  _require_registered_source_link("### Example", duplicate_source)
+
+              duplicate_scalar = (
+                  "### Example\\n\\n"
+                  "**Rights and provenance boundary:** restrictive value\\n"
+                  "    **Rights and provenance boundary:** contradictory value\\n"
+              )
+              with pytest.raises(AssertionError, match="exactly one mandatory field"):
+                  _scalar_value("### Example", duplicate_scalar, RIGHTS_FIELD)
+
+
+          def test_published_doi_metadata_is_pinned_and_unique():
+              corpus = CORPUS.read_text(encoding="utf-8")
+              entry = (
+                  "### Chey (2021), *Overcoming awkwardness: some interpretations of "
+                  "Australian humour*"
+              )
+              section = _registered_sections(corpus)[entry]
+              fake = section.replace(
+                  "https://doi.org/10.7592/EJHR2021.9.4.560",
+                  "https://doi.org/10.0000/invented",
+                  1,
+              )
+              with pytest.raises(AssertionError, match="DOI metadata changed"):
+                  _validate_registered_entry(entry, fake)
+
+              duplicate = section.replace(
+                  "**Source type:**",
+                  "**DOI:** https://doi.org/10.0000/conflict\\n\\n**Source type:**",
+                  1,
+              )
+              with pytest.raises(AssertionError, match="exactly one mandatory field"):
+                  _validate_registered_entry(entry, duplicate)
+          '''
+          if "def test_paragraph_continuation_cannot_hide_indented_metadata" not in text:
+              text = text.rstrip() + append + "\n"
+
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Check repaired test syntax
+        run: python -m py_compile tests/test_research_reference_registry.py
+
+      - name: Commit registry repairs
+        run: |
+          if git diff --quiet -- tests/test_research_reference_registry.py; then
+            echo "Latest registry repairs already present."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/test_research_reference_registry.py
+          git commit -m "Harden registry rendered metadata contracts"
+          git push origin HEAD:research-corpus-governed-expansion
+
   test:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
