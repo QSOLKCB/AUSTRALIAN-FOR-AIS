@@ -30,6 +30,20 @@ jobs:
           pip install -e ".[dev]"
       - name: Apply four fresh review repairs
         run: python .github/scripts/pr4-four-fresh-review-repair.py
+      - name: Align exact-run sentinel checks
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("tests/test_research_reference_registry.py")
+          text = path.read_text(encoding="utf-8")
+          old = "        if close < 0:\n"
+          new = "        if close is None:\n"
+          count = text.count(old)
+          if count != 3:
+              raise SystemExit(f"expected 3 exact-run sentinel checks, found {count}")
+          path.write_text(text.replace(old, new), encoding="utf-8")
+          PY
       - name: Run focused regressions
         run: pytest -q tests/test_research_reference_registry.py tests/test_workstream_h_methodology.py tests/test_policing_contract_receipt.py tests/test_policing_context_roadmap.py
       - name: Run full suite
