@@ -34,7 +34,9 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Apply guarded hydra repair
-        run: python .github/scripts/pr4-four-head-hydra-repair.py
+        run: |
+          python .github/scripts/pr4-four-head-hydra-repair.py
+          python .github/scripts/pr4-four-head-hydra-repair-v2.py
 
       - name: Focused governance regressions
         run: |
@@ -57,6 +59,7 @@ jobs:
                   tests/test_policing_context_roadmap.py \
                   tests/test_policing_contract_receipt.py
           git rm .github/scripts/pr4-four-head-hydra-repair.py \
+                 .github/scripts/pr4-four-head-hydra-repair-v2.py \
                  .github/workflows/pr4-four-head-hydra-repair.yml
           git commit -m "Slay four fresh PR4 review gaps"
           git push origin HEAD:research-corpus-governed-expansion
