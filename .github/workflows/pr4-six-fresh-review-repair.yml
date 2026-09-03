@@ -42,6 +42,11 @@ jobs:
         run: |
           set -euo pipefail
           python .github/scripts/pr4-six-fresh-review-repair.py
+
+      - name: Apply final semantic corrections
+        run: |
+          set -euo pipefail
+          python .github/scripts/pr4-six-fresh-review-repair-v3.py
           git diff --check
 
       - name: Run focused governance suites
@@ -66,10 +71,9 @@ jobs:
           git rm -f \
             .github/scripts/pr4-six-fresh-review-repair.py \
             .github/scripts/pr4-six-fresh-review-repair-v2.py \
+            .github/scripts/pr4-six-fresh-review-repair-v3.py \
             .github/workflows/pr4-six-fresh-review-repair.yml
           git add tests/test_research_reference_registry.py tests/test_policing_context_roadmap.py
           git diff --cached --check
           git commit -m "Close six fresh PR4 review gaps"
           git push origin HEAD:research-corpus-governed-expansion
-
-# retry-v3: corrected generated newline escaping
