@@ -1,0 +1,67 @@
+name: PR4 six-fresh-review guarded repair
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research-corpus-governed-expansion
+    paths:
+      - .github/workflows/pr4-six-fresh-review-repair.yml
+
+permissions:
+  contents: write
+
+jobs:
+  guarded-repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact triggering head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install test dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Apply exact guarded repair
+        run: |
+          set -euo pipefail
+          python .github/scripts/pr4-six-fresh-review-repair.py
+          git diff --check
+
+      - name: Run focused governance suites
+        run: |
+          set -euo pipefail
+          pytest -q \
+            tests/test_research_reference_registry.py \
+            tests/test_policing_context_roadmap.py \
+            tests/test_workstream_h_methodology.py \
+            tests/test_policing_contract_receipt.py
+
+      - name: Run full repository suite
+        run: |
+          set -euo pipefail
+          pytest -q
+
+      - name: Self-clean and push only the verified repair
+        run: |
+          set -euo pipefail
+          git config user.name "chatgpt-codex-connector"
+          git config user.email "chatgpt-codex-connector@users.noreply.github.com"
+          git rm -f \
+            .github/scripts/pr4-six-fresh-review-repair.py \
+            .github/workflows/pr4-six-fresh-review-repair.yml
+          git add tests/test_research_reference_registry.py tests/test_policing_context_roadmap.py
+          git diff --cached --check
+          git commit -m "Close six fresh PR4 review gaps"
+          git push origin HEAD:research-corpus-governed-expansion
