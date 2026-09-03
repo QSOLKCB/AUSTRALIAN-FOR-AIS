@@ -12,6 +12,7 @@ import pytest
 ROADMAP = Path(__file__).parent.parent / "ROADMAP.md"
 WORKSTREAM_HEADING = "### I. Australian and United States policing-context transfer"
 WORKSTREAM_END = "\n---\n\n## Phase 3"
+WORKSTREAM_END_HEADING = "## Phase 3 — Multi-Annotator Culturally Contextualised Dataset"
 
 
 REQUIRED_CLAUSES = (
@@ -104,7 +105,13 @@ class _VisibleHTMLTextParser(HTMLParser):
             return True
         if values.get("aria-hidden", "").strip().lower() == "true":
             return True
-        style = re.sub(r"\s+", "", values.get("style", "").lower())
+        style = re.sub(
+            r"/\*.*?\*/",
+            "",
+            values.get("style", "").lower(),
+            flags=re.DOTALL,
+        )
+        style = re.sub(r"\s+", "", style)
         return "display:none" in style or "visibility:hidden" in style
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
@@ -626,11 +633,31 @@ def _visible_text(markdown: str) -> str:
     visible = visible.replace("*", "").replace("_", "")
     return " ".join(visible.split())
 
+def _visible_markdown_heading_span(structure: str, heading: str) -> tuple[int, int]:
+    """Return the unique browser-visible Markdown heading span with preserved offsets."""
+    visible_structure = _mask_hidden_html_regions(structure)
+    matches: list[tuple[int, int]] = []
+    offset = 0
+    for raw_line in visible_structure.splitlines(keepends=True):
+        line = raw_line.rstrip("\r\n")
+        logical, is_code, _ = _parse_fence_container_prefixes(line)
+        if not is_code and logical.strip(" \t") == heading:
+            matches.append((offset, offset + len(raw_line)))
+        offset += len(raw_line)
+    assert len(matches) == 1, (
+        f"expected exactly one rendered heading {heading!r}, found {len(matches)}"
+    )
+    return matches[0]
+
+
 def _rendered_policing_workstream(roadmap: str) -> str:
     structure = _rendered_structure(roadmap)
-    assert WORKSTREAM_HEADING in structure, "rendered policing workstream is missing"
-    start = structure.index(WORKSTREAM_HEADING)
-    end = structure.index(WORKSTREAM_END, start)
+    try:
+        start, _ = _visible_markdown_heading_span(structure, WORKSTREAM_HEADING)
+    except AssertionError as exc:
+        raise AssertionError("rendered policing workstream is missing; missing policing-workstream safeguard") from exc
+    end, _ = _visible_markdown_heading_span(structure, WORKSTREAM_END_HEADING)
+    assert start < end, "rendered policing workstream boundary is invalid"
     visible_structure = _mask_hidden_html_regions(structure)
     return visible_structure[start:end]
 
@@ -817,5 +844,21 @@ def test_policing_source_gate_cannot_be_suffix_negated():
     )
     assert original in roadmap
     mutated = roadmap.replace(original, contradictory, 1)
+    with pytest.raises(AssertionError, match="missing policing-workstream safeguard"):
+        _validate_policing_workstream(mutated)
+
+def test_policing_workstream_start_must_be_a_visible_heading():
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    start = roadmap.index(WORKSTREAM_HEADING)
+    end = roadmap.index(WORKSTREAM_END, start)
+    body = roadmap[start + len(WORKSTREAM_HEADING):end]
+    mutated = (
+        roadmap[:start]
+        + f'[boundary](# "{WORKSTREAM_HEADING}")'
+        + body
+        + "\n"
+        + WORKSTREAM_HEADING
+        + roadmap[end:]
+    )
     with pytest.raises(AssertionError, match="missing policing-workstream safeguard"):
         _validate_policing_workstream(mutated)

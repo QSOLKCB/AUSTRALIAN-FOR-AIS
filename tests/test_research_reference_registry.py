@@ -558,6 +558,10 @@ HTML_STRONG_METADATA_FIELD_PATTERN = re.compile(
     r"(?P<body>.*?)</(?P=tag)>(?=$|[ \t])",
     flags=re.IGNORECASE,
 )
+HTML_LEADING_ANCHOR_PATTERN = re.compile(
+    r"^<a\b[^>]*>(?P<body>.*?)</a>(?=$|[ \t])",
+    flags=re.IGNORECASE | re.DOTALL,
+)
 HTML_TAG_PATTERN = re.compile(
     r"</?[A-Za-z][^>]*>|<![A-Za-z][^>]*>|<\?[\s\S]*?\?>"
 )
@@ -605,7 +609,13 @@ class _VisibleHTMLTextParser(HTMLParser):
             return True
         if values.get("aria-hidden", "").strip().lower() == "true":
             return True
-        style = re.sub(r"\s+", "", values.get("style", "").lower())
+        style = re.sub(
+            r"/\*.*?\*/",
+            "",
+            values.get("style", "").lower(),
+            flags=re.DOTALL,
+        )
+        style = re.sub(r"\s+", "", style)
         return "display:none" in style or "visibility:hidden" in style
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
@@ -1678,6 +1688,11 @@ def _canonicalise_metadata_marker(line: str) -> str:
     paragraph_wrapper = re.match(r"<p\b[^>]*>[ \t]*", decoded, flags=re.IGNORECASE)
     if paragraph_wrapper:
         decoded = decoded[paragraph_wrapper.end():]
+    html_anchor = HTML_LEADING_ANCHOR_PATTERN.match(decoded)
+    if html_anchor:
+        anchor_body = html_anchor.group("body").strip(" \t")
+        if HTML_STRONG_METADATA_FIELD_PATTERN.match(anchor_body):
+            decoded = anchor_body + decoded[html_anchor.end():]
     inline_links = _markdown_inline_links(decoded)
     if inline_links:
         first_link = inline_links[0]
@@ -3203,4 +3218,29 @@ def test_redistribution_invariant_must_be_visible_in_status_section():
         1,
     )
     with pytest.raises(AssertionError, match="redistribution invariant"):
+        _validate_registry_corpus(mutated)
+
+def test_css_comment_cannot_hide_complete_governed_batch():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    batch = _registered_batch(corpus)
+    mutated = corpus.replace(
+        batch,
+        f'<div style="display:/**/none">\n{batch}\n</div>\n',
+        1,
+    )
+    with pytest.raises(AssertionError, match="contains no entries"):
+        _validate_registry_corpus(mutated)
+
+
+def test_html_anchor_wrapped_metadata_label_is_counted():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    doi = "**DOI:** https://doi.org/10.7592/EJHR2021.9.4.560"
+    mutated = corpus.replace(
+        doi,
+        doi
+        + '\n\n<a href="#field"><strong>DOI:</strong></a> '
+        + "https://doi.org/10.0000/fabricated",
+        1,
+    )
+    with pytest.raises(AssertionError, match="exactly one mandatory field"):
         _validate_registry_corpus(mutated)

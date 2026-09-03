@@ -45,7 +45,13 @@ class _VisibleHTMLTextParser(HTMLParser):
             return True
         if values.get("aria-hidden", "").strip().lower() == "true":
             return True
-        style = re.sub(r"\s+", "", values.get("style", "").lower())
+        style = re.sub(
+            r"/\*.*?\*/",
+            "",
+            values.get("style", "").lower(),
+            flags=re.DOTALL,
+        )
+        style = re.sub(r"\s+", "", style)
         return "display:none" in style or "visibility:hidden" in style
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
@@ -116,10 +122,9 @@ def _inline_link_closing_paren(text: str, start: int) -> int | None:
     cursor = start + 1
     quote: str | None = None
     angle = False
+    top_level_space = False
     while cursor < len(text):
         character = text[cursor]
-        if character in "\r\n":
-            return None
         if character == "\\" and cursor + 1 < len(text):
             cursor += 2
             continue
@@ -129,15 +134,23 @@ def _inline_link_closing_paren(text: str, start: int) -> int | None:
             cursor += 1
             continue
         if angle:
+            if character in "\r\n":
+                return None
             if character == ">":
                 angle = False
             cursor += 1
             continue
-        if character in {"\"", "'"}:
+        if depth == 1 and character in " \t\r\n":
+            top_level_space = True
+            cursor += 1
+            continue
+        if character in "\r\n":
+            return None
+        if depth == 1 and top_level_space and character in {"\"", "'"}:
             quote = character
             cursor += 1
             continue
-        if character == "<":
+        if depth == 1 and not top_level_space and character == "<":
             angle = True
             cursor += 1
             continue
@@ -149,6 +162,56 @@ def _inline_link_closing_paren(text: str, start: int) -> int | None:
                 return cursor
         cursor += 1
     return None
+
+
+def _inline_link_destination(inner: str) -> str | None:
+    """Validate the destination/title split using CommonMark inline-link rules."""
+    value = inner.lstrip(" \t\r\n")
+    if not value:
+        return None
+    if value.startswith("<"):
+        close = value.find(">", 1)
+        if close < 0:
+            return None
+        destination = value[1:close]
+        remainder = value[close + 1:].strip()
+    else:
+        cursor = 0
+        depth = 0
+        while cursor < len(value):
+            character = value[cursor]
+            if character == "\\" and cursor + 1 < len(value):
+                cursor += 2
+                continue
+            if character == "(":
+                depth += 1
+            elif character == ")":
+                if depth == 0:
+                    return None
+                depth -= 1
+            elif character in " \t\r\n" and depth == 0:
+                break
+            cursor += 1
+        if depth != 0:
+            return None
+        destination = value[:cursor]
+        remainder = value[cursor:].strip()
+    if not destination:
+        return None
+    if remainder:
+        quoted = (
+            len(remainder) >= 2
+            and remainder[0] in {"\"", "'"}
+            and remainder[-1] == remainder[0]
+        )
+        parenthesized = (
+            len(remainder) >= 2
+            and remainder[0] == "("
+            and remainder[-1] == ")"
+        )
+        if not (quoted or parenthesized):
+            return None
+    return destination
 
 
 def _replace_inline_markdown_links_for_visibility(text: str) -> str:
@@ -168,8 +231,12 @@ def _replace_inline_markdown_links_for_visibility(text: str) -> str:
             parts.append(text[cursor:bracket + 1])
             cursor = bracket + 1
             continue
-        paren_end = _inline_link_closing_paren(text, label_end + 1)
-        if paren_end is None:
+        paren_start = label_end + 1
+        paren_end = _inline_link_closing_paren(text, paren_start)
+        if (
+            paren_end is None
+            or _inline_link_destination(text[paren_start + 1:paren_end]) is None
+        ):
             parts.append(text[cursor:bracket + 1])
             cursor = bracket + 1
             continue
@@ -250,7 +317,9 @@ def test_workstream_h_and_methodology_safeguards_must_be_browser_visible():
         f"<span hidden>{listener_clause}</span>",
         f"<dialog>{listener_clause}</dialog>",
         f"<dialog />{listener_clause}</dialog>",
+        f'<span style="display:/**/none">{listener_clause}</span>',
         f'[placeholder](# "{listener_clause}")',
+        f'[placeholder](#\n"{listener_clause}")',
     ):
         mutated = roadmap.replace(listener_clause, hidden, 1)
         assert listener_clause not in _workstream_h(mutated)
