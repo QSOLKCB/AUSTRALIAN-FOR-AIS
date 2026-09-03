@@ -22,23 +22,25 @@ EXPECTED_POLICING_INVARIANTS = {
 }
 
 
-def _literal_tuple(name: str) -> tuple[str, ...]:
+def _string_constants_in_tuple(name: str) -> tuple[str, ...]:
     tree = ast.parse(POLICING_TEST.read_text(encoding="utf-8"))
     for node in tree.body:
         if not isinstance(node, ast.Assign):
             continue
         if not any(isinstance(target, ast.Name) and target.id == name for target in node.targets):
             continue
-        value = ast.literal_eval(node.value)
-        assert isinstance(value, tuple)
-        assert all(isinstance(item, str) for item in value)
-        return value
+        assert isinstance(node.value, ast.Tuple)
+        return tuple(
+            item.value
+            for item in node.value.elts
+            if isinstance(item, ast.Constant) and isinstance(item.value, str)
+        )
     raise AssertionError(f"missing policing contract tuple: {name}")
 
 
 def test_all_policing_invariants_are_required_and_affirmative():
-    required = set(_literal_tuple("REQUIRED_CLAUSES"))
-    affirmative = set(_literal_tuple("AFFIRMATIVE_LINE_PREFIX_CLAUSES"))
+    required = set(_string_constants_in_tuple("REQUIRED_CLAUSES"))
+    affirmative = set(_string_constants_in_tuple("AFFIRMATIVE_LINE_PREFIX_CLAUSES"))
 
     assert EXPECTED_POLICING_INVARIANTS <= required
     assert EXPECTED_POLICING_INVARIANTS <= affirmative
