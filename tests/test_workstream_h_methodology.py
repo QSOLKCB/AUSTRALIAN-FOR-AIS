@@ -72,10 +72,112 @@ def _visible_html_text(text: str) -> str:
     return " ".join(parser.parts)
 
 
+def _is_escaped_markdown_character(text: str, index: int) -> bool:
+    backslashes = 0
+    cursor = index - 1
+    while cursor >= 0 and text[cursor] == "\\":
+        backslashes += 1
+        cursor -= 1
+    return backslashes % 2 == 1
+
+
+def _balanced_markdown_label_end(text: str, start: int) -> int | None:
+    depth = 1
+    cursor = start + 1
+    while cursor < len(text):
+        character = text[cursor]
+        if character in "\r\n":
+            return None
+        if character == "\\" and cursor + 1 < len(text):
+            cursor += 2
+            continue
+        if character == "[":
+            depth += 1
+        elif character == "]":
+            depth -= 1
+            if depth == 0:
+                return cursor
+        cursor += 1
+    return None
+
+
+def _inline_link_closing_paren(text: str, start: int) -> int | None:
+    depth = 1
+    cursor = start + 1
+    quote: str | None = None
+    angle = False
+    while cursor < len(text):
+        character = text[cursor]
+        if character in "\r\n":
+            return None
+        if character == "\\" and cursor + 1 < len(text):
+            cursor += 2
+            continue
+        if quote is not None:
+            if character == quote:
+                quote = None
+            cursor += 1
+            continue
+        if angle:
+            if character == ">":
+                angle = False
+            cursor += 1
+            continue
+        if character in {"\"", "'"}:
+            quote = character
+            cursor += 1
+            continue
+        if character == "<":
+            angle = True
+            cursor += 1
+            continue
+        if character == "(":
+            depth += 1
+        elif character == ")":
+            depth -= 1
+            if depth == 0:
+                return cursor
+        cursor += 1
+    return None
+
+
+def _replace_inline_markdown_links_for_visibility(text: str) -> str:
+    parts: list[str] = []
+    cursor = 0
+    while cursor < len(text):
+        bracket = text.find("[", cursor)
+        if bracket < 0:
+            parts.append(text[cursor:])
+            break
+        if _is_escaped_markdown_character(text, bracket):
+            parts.append(text[cursor:bracket + 1])
+            cursor = bracket + 1
+            continue
+        label_end = _balanced_markdown_label_end(text, bracket)
+        if label_end is None or label_end + 1 >= len(text) or text[label_end + 1] != "(":
+            parts.append(text[cursor:bracket + 1])
+            cursor = bracket + 1
+            continue
+        paren_end = _inline_link_closing_paren(text, label_end + 1)
+        if paren_end is None:
+            parts.append(text[cursor:bracket + 1])
+            cursor = bracket + 1
+            continue
+        image = (
+            bracket > 0
+            and text[bracket - 1] == "!"
+            and not _is_escaped_markdown_character(text, bracket - 1)
+        )
+        start = bracket - 1 if image else bracket
+        parts.append(text[cursor:start])
+        parts.append(" " if image else text[bracket + 1:label_end])
+        cursor = paren_end + 1
+    return "".join(parts)
+
+
 def _visible_markdown_text(markdown: str) -> str:
     """Return browser-visible safeguard text, excluding Markdown metadata."""
-    visible = MARKDOWN_IMAGE_PATTERN.sub(" ", markdown)
-    visible = MARKDOWN_LINK_PATTERN.sub(lambda match: match.group("label"), visible)
+    visible = _replace_inline_markdown_links_for_visibility(markdown)
     visible = AUTOLINK_PATTERN.sub(lambda match: match.group("url"), visible)
     visible = _visible_html_text(visible)
     visible = html.unescape(visible)
@@ -148,6 +250,7 @@ def test_workstream_h_and_methodology_safeguards_must_be_browser_visible():
         f"<!-- {stereotype_clause} -->",
         f"<span hidden>{stereotype_clause}</span>",
         f'[placeholder](# "{stereotype_clause}")',
+        f'[placeholder [nested]](# "{stereotype_clause}")',
     ):
         mutated = methodology.replace(stereotype_clause, hidden, 1)
         assert stereotype_clause not in _trans_tasman_methodology(mutated)

@@ -490,6 +490,7 @@ BARE_HTTPS_LINE_PATTERN = re.compile(
 AUTOLINK_PATTERN = re.compile(r"<(?P<url>https://[^>\s]+)>")
 LINK_REFERENCE_DEFINITION_PATTERN = re.compile(
     r"(?m)^ {0,3}\[(?P<label>[^\]\r\n]+)\]:[ \t]*"
+    r"(?:\r?\n {1,3})?"
     r"(?P<destination><[^>\r\n]+>|[^\s\r\n]+)"
     r"(?:[ \t]+(?:\"[^\"\r\n]*\"|'[^'\r\n]*'|\([^)]*\)))?[ \t]*$"
 )
@@ -1500,10 +1501,25 @@ def _registered_sections(corpus: str) -> dict[str, str]:
     rendered, structure = _markdown_views(batch)
     visible_rendered = _mask_hidden_html_regions(rendered)
     visible_structure = _mask_hidden_html_regions(structure)
-    matches: list[tuple[int, int, str]] = [
-        (match.start(), match.end(), match.group("heading"))
-        for match in ENTRY_HEADING_PATTERN.finditer(visible_structure)
-    ]
+    matches: list[tuple[int, int, str]] = []
+    offset = 0
+    for raw_line in visible_structure.splitlines(keepends=True):
+        line = raw_line.rstrip("\r\n")
+        logical, is_code = _strip_composed_container_prefixes(line)
+        if not is_code:
+            heading_match = re.fullmatch(
+                r" {0,3}(?P<heading>### .+?)[ \t]*",
+                logical,
+            )
+            if heading_match:
+                matches.append(
+                    (
+                        offset,
+                        offset + len(line),
+                        heading_match.group("heading"),
+                    )
+                )
+        offset += len(raw_line)
     for match in HTML_ENTRY_HEADING_PATTERN.finditer(visible_structure):
         visible_heading = _visible_inline_text(
             visible_rendered[match.start():match.end()]
@@ -1948,6 +1964,45 @@ def test_registered_source_resolves_document_scoped_reference_definition():
     )
 
     with pytest.raises(AssertionError, match="registered-source destinations changed"):
+        _validate_registry_corpus(mutated)
+
+
+def test_registered_source_resolves_multiline_document_reference_definition():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = EXPECTED_GOVERNED_ENTRIES[0]
+    section = _registered_sections(corpus)[entry]
+    marker = (
+        "**Registered source:**"
+        if "**Registered source:**" in section
+        else "**Registered sources:**"
+    )
+    mutated_section = section.replace(
+        marker,
+        f"{marker} [alternate][multiline-provenance]\n",
+        1,
+    )
+    mutated = (
+        corpus.replace(section, mutated_section, 1)
+        + "\n[multiline-provenance]:\n  https://www.wikipedia.org/\n"
+    )
+
+    with pytest.raises(AssertionError, match="registered-source destinations changed"):
+        _validate_registry_corpus(mutated)
+
+
+@pytest.mark.parametrize("prefix", ("> ", "- "))
+def test_registry_discovers_entry_heading_inside_markdown_container(prefix: str):
+    corpus = CORPUS.read_text(encoding="utf-8")
+    fabricated = (
+        f"{prefix}### Fabricated ungoverned reference\n"
+        f"{prefix}placeholder provenance prose\n\n"
+    )
+    mutated = corpus.replace(BATCH_END, fabricated + BATCH_END, 1)
+    assert "### Fabricated ungoverned reference" in _registered_sections(mutated)
+    with pytest.raises(
+        AssertionError,
+        match="every rendered governed entry must have an explicit pinned source contract",
+    ):
         _validate_registry_corpus(mutated)
 
 

@@ -81,6 +81,8 @@ class _VisibleHTMLTextParser(HTMLParser):
         if tag in {"script", "style", "template"}:
             return True
         values = {key.lower(): (value or "") for key, value in attrs}
+        if tag == "details" and "open" not in values:
+            return True
         if "hidden" in values:
             return True
         if values.get("aria-hidden", "").strip().lower() == "true":
@@ -115,6 +117,96 @@ def _visible_html_text(text: str) -> str:
     except Exception:
         return ""
     return " ".join(parser.parts)
+
+
+HTML_VOID_TAGS = {
+    "area", "base", "br", "col", "embed", "hr", "img", "input",
+    "link", "meta", "param", "source", "track", "wbr",
+}
+
+
+class _HiddenHTMLRegionParser(HTMLParser):
+    """Locate browser-hidden HTML regions while preserving source offsets."""
+
+    def __init__(self, text: str) -> None:
+        super().__init__(convert_charrefs=True)
+        self.text = text
+        self.stack: list[tuple[str, bool, int | None]] = []
+        self.spans: list[tuple[int, int]] = []
+        self.line_offsets = [0]
+        for line in text.splitlines(keepends=True):
+            self.line_offsets.append(self.line_offsets[-1] + len(line))
+
+    def _offset(self) -> int:
+        line, column = self.getpos()
+        line_index = min(max(line - 1, 0), len(self.line_offsets) - 1)
+        return min(self.line_offsets[line_index] + column, len(self.text))
+
+    def _tag_end(self, start: int) -> int:
+        close = self.text.find(">", start)
+        return len(self.text) if close < 0 else close + 1
+
+    def handle_starttag(
+        self, tag: str, attrs: list[tuple[str, str | None]]
+    ) -> None:
+        tag = tag.lower()
+        parent_hidden = self.stack[-1][1] if self.stack else False
+        own_hidden = _VisibleHTMLTextParser._is_hidden(tag, attrs)
+        hidden = parent_hidden or own_hidden
+        start = self._offset()
+
+        if tag in HTML_VOID_TAGS:
+            if own_hidden and not parent_hidden:
+                self.spans.append((start, self._tag_end(start)))
+            return
+
+        root_start = start if hidden and not parent_hidden else None
+        self.stack.append((tag, hidden, root_start))
+
+    def handle_startendtag(
+        self, tag: str, attrs: list[tuple[str, str | None]]
+    ) -> None:
+        parent_hidden = self.stack[-1][1] if self.stack else False
+        if _VisibleHTMLTextParser._is_hidden(tag, attrs) and not parent_hidden:
+            start = self._offset()
+            self.spans.append((start, self._tag_end(start)))
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        for index in range(len(self.stack) - 1, -1, -1):
+            if self.stack[index][0] != tag:
+                continue
+            end = self._tag_end(self._offset())
+            popped = self.stack[index:]
+            del self.stack[index:]
+            for _, _, root_start in popped:
+                if root_start is not None:
+                    self.spans.append((root_start, end))
+            return
+
+    def finish(self) -> None:
+        for _, _, root_start in self.stack:
+            if root_start is not None:
+                self.spans.append((root_start, len(self.text)))
+        self.stack.clear()
+
+
+def _mask_hidden_html_regions(text: str) -> str:
+    """Mask hidden containers globally so visibility state survives slicing."""
+    parser = _HiddenHTMLRegionParser(text)
+    try:
+        parser.feed(text)
+        parser.close()
+        parser.finish()
+    except Exception:
+        return _mask_non_newline(text)
+
+    characters = list(text)
+    for start, end in parser.spans:
+        for index in range(start, end):
+            if characters[index] not in "\r\n":
+                characters[index] = " "
+    return "".join(characters)
 
 
 def _mask_non_newline(text: str) -> str:
@@ -396,10 +488,112 @@ def _rendered_structure(markdown: str) -> str:
 
 
 
+def _is_escaped_markdown_character(text: str, index: int) -> bool:
+    backslashes = 0
+    cursor = index - 1
+    while cursor >= 0 and text[cursor] == "\\":
+        backslashes += 1
+        cursor -= 1
+    return backslashes % 2 == 1
+
+
+def _balanced_markdown_label_end(text: str, start: int) -> int | None:
+    depth = 1
+    cursor = start + 1
+    while cursor < len(text):
+        character = text[cursor]
+        if character in "\r\n":
+            return None
+        if character == "\\" and cursor + 1 < len(text):
+            cursor += 2
+            continue
+        if character == "[":
+            depth += 1
+        elif character == "]":
+            depth -= 1
+            if depth == 0:
+                return cursor
+        cursor += 1
+    return None
+
+
+def _inline_link_closing_paren(text: str, start: int) -> int | None:
+    depth = 1
+    cursor = start + 1
+    quote: str | None = None
+    angle = False
+    while cursor < len(text):
+        character = text[cursor]
+        if character in "\r\n":
+            return None
+        if character == "\\" and cursor + 1 < len(text):
+            cursor += 2
+            continue
+        if quote is not None:
+            if character == quote:
+                quote = None
+            cursor += 1
+            continue
+        if angle:
+            if character == ">":
+                angle = False
+            cursor += 1
+            continue
+        if character in {"\"", "'"}:
+            quote = character
+            cursor += 1
+            continue
+        if character == "<":
+            angle = True
+            cursor += 1
+            continue
+        if character == "(":
+            depth += 1
+        elif character == ")":
+            depth -= 1
+            if depth == 0:
+                return cursor
+        cursor += 1
+    return None
+
+
+def _replace_inline_markdown_links_for_visibility(text: str) -> str:
+    parts: list[str] = []
+    cursor = 0
+    while cursor < len(text):
+        bracket = text.find("[", cursor)
+        if bracket < 0:
+            parts.append(text[cursor:])
+            break
+        if _is_escaped_markdown_character(text, bracket):
+            parts.append(text[cursor:bracket + 1])
+            cursor = bracket + 1
+            continue
+        label_end = _balanced_markdown_label_end(text, bracket)
+        if label_end is None or label_end + 1 >= len(text) or text[label_end + 1] != "(":
+            parts.append(text[cursor:bracket + 1])
+            cursor = bracket + 1
+            continue
+        paren_end = _inline_link_closing_paren(text, label_end + 1)
+        if paren_end is None:
+            parts.append(text[cursor:bracket + 1])
+            cursor = bracket + 1
+            continue
+        image = (
+            bracket > 0
+            and text[bracket - 1] == "!"
+            and not _is_escaped_markdown_character(text, bracket - 1)
+        )
+        start = bracket - 1 if image else bracket
+        parts.append(text[cursor:start])
+        parts.append(" " if image else text[bracket + 1:label_end])
+        cursor = paren_end + 1
+    return "".join(parts)
+
+
 def _visible_text(markdown: str) -> str:
     """Return browser-visible text without hidden HTML or link metadata."""
-    visible = MARKDOWN_IMAGE_PATTERN.sub(" ", markdown)
-    visible = MARKDOWN_LINK_PATTERN.sub(lambda match: match.group("label"), visible)
+    visible = _replace_inline_markdown_links_for_visibility(markdown)
     visible = AUTOLINK_PATTERN.sub(lambda match: match.group("url"), visible)
     visible = _visible_html_text(visible)
     visible = html.unescape(visible)
@@ -412,7 +606,8 @@ def _rendered_policing_workstream(roadmap: str) -> str:
     assert WORKSTREAM_HEADING in structure, "rendered policing workstream is missing"
     start = structure.index(WORKSTREAM_HEADING)
     end = structure.index(WORKSTREAM_END, start)
-    return structure[start:end]
+    visible_structure = _mask_hidden_html_regions(structure)
+    return visible_structure[start:end]
 
 
 
@@ -508,6 +703,17 @@ def test_policing_context_workstream_must_remain_rendered(wrapper: str):
         _validate_policing_workstream(mutated)
 
 
+def test_policing_context_workstream_cannot_hide_in_closed_details():
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    start = roadmap.index(WORKSTREAM_HEADING)
+    end = roadmap.index(WORKSTREAM_END, start)
+    section = roadmap[start:end]
+    hidden = f"<details>\n{section}\n</details>\n"
+    mutated = roadmap[:start] + hidden + roadmap[end:]
+    with pytest.raises(AssertionError, match="missing policing-workstream safeguard"):
+        _validate_policing_workstream(mutated)
+
+
 def test_policing_fence_container_ownership_hides_top_level_code_payload():
     roadmap = ROADMAP.read_text(encoding="utf-8")
     clause = "register official and current sources for each Australian and United States jurisdictional claim"
@@ -525,10 +731,11 @@ def test_policing_fence_container_ownership_hides_top_level_code_payload():
         _validate_policing_workstream(mutated)
 
 
-def test_policing_safeguard_cannot_hide_in_link_title():
+@pytest.mark.parametrize("label", ("sources required", "sources [required]"))
+def test_policing_safeguard_cannot_hide_in_link_title(label: str):
     roadmap = ROADMAP.read_text(encoding="utf-8")
     clause = "register official and current sources for each Australian and United States jurisdictional claim"
-    replacement = f'[sources required](# "{clause}")'
+    replacement = f'[{label}](# "{clause}")'
     mutated = roadmap.replace(clause, replacement, 1)
     with pytest.raises(AssertionError, match="missing policing-workstream safeguard"):
         _validate_policing_workstream(mutated)
