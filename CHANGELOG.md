@@ -25,6 +25,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Strengthened delivery-versus-intent experiments to require the complete deadpan/non-deadpan × literal/nonliteral 2×2 crossing whenever a family claims to estimate delivery effects, and normalized registry validation around rendered Markdown semantics so commented-out entries, one-to-three-space-indented duplicate fields, nested empty block containers, and noncanonical numeric loopback host spellings fail closed
 - Hardened governed-registry discovery and source contracts so fenced-code-wrapped entries or metadata, list-nested empty fences, reserved hostname suffixes, mutable community-governance downgrades, and arbitrary replacement of source-specific rights, epistemic, or safe-abstraction boundaries fail closed
 - Reordered Markdown preprocessing so fenced comment literals cannot hide visible fields, preserved four-space-indented code semantics when identifying fences, and pinned every adopted source destination plus its source-type and pragmatic-relevance clause
+- Hardened rendered-registry validation against comments opened inside indented code, links hidden in inline code, pinned clauses hidden in Markdown titles, empty rendered HTML mappings, hidden registration-contract sections, and nested fences that outlive their quote/list container
+- Added source-gated Workstream I for Australian and United States policing-context transfer, requiring jurisdiction/date/source metadata, independently authored examples, explicit legal-review boundaries, and separation of institutional-script comparison from national moral ranking
 
 ---
 
