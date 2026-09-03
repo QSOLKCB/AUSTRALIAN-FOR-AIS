@@ -959,6 +959,26 @@ def _is_fence_closer(line: str, state: FenceState) -> bool:
     )
 
 
+def _matching_backtick_run_start(
+    text: str,
+    start: int,
+    marker_length: int,
+) -> int | None:
+    """Return the next complete backtick run with exactly marker_length ticks."""
+    cursor = start
+    while cursor < len(text):
+        candidate = text.find("`", cursor)
+        if candidate < 0:
+            return None
+        run_end = candidate
+        while run_end < len(text) and text[run_end] == "`":
+            run_end += 1
+        if run_end - candidate == marker_length:
+            return candidate
+        cursor = run_end
+    return None
+
+
 def _mask_multiline_code_spans(text: str) -> str:
     """Mask closed Markdown code spans, including spans crossing line breaks."""
     characters = list(text)
@@ -971,8 +991,8 @@ def _mask_multiline_code_spans(text: str) -> str:
         while run_end < len(text) and text[run_end] == "`":
             run_end += 1
         marker = text[position:run_end]
-        close = text.find(marker, run_end)
-        if close < 0:
+        close = _matching_backtick_run_start(text, run_end, len(marker))
+        if close is None:
             position = run_end
             continue
         for index in range(position, close + len(marker)):
@@ -994,8 +1014,8 @@ def _mask_inline_code_spans(text: str) -> str:
         while run_end < len(text) and text[run_end] == "`":
             run_end += 1
         marker = text[position:run_end]
-        close = text.find(marker, run_end)
-        if close < 0:
+        close = _matching_backtick_run_start(text, run_end, len(marker))
+        if close is None:
             position = run_end
             continue
         for index in range(position, close + len(marker)):
@@ -1170,8 +1190,8 @@ def _render_inline_code_spans(text: str) -> str:
         while run_end < len(text) and text[run_end] == "`":
             run_end += 1
         marker = text[position:run_end]
-        close = text.find(marker, run_end)
-        if close < 0:
+        close = _matching_backtick_run_start(text, run_end, len(marker))
+        if close is None:
             parts.append(marker)
             position = run_end
             continue
@@ -1292,8 +1312,6 @@ def _inline_link_closing_paren(text: str, start: int) -> int | None:
     top_level_space = False
     while cursor < len(text):
         character = text[cursor]
-        if character in "\r\n":
-            return None
         if character == "\\" and cursor + 1 < len(text):
             cursor += 2
             continue
@@ -1303,14 +1321,18 @@ def _inline_link_closing_paren(text: str, start: int) -> int | None:
             cursor += 1
             continue
         if angle:
+            if character in "\r\n":
+                return None
             if character == ">":
                 angle = False
             cursor += 1
             continue
-        if depth == 1 and character in " \t":
+        if depth == 1 and character in " \t\r\n":
             top_level_space = True
             cursor += 1
             continue
+        if character in "\r\n":
+            return None
         if depth == 1 and top_level_space and character in {"\"", "'"}:
             quote = character
             cursor += 1
@@ -1331,7 +1353,7 @@ def _inline_link_closing_paren(text: str, start: int) -> int | None:
 
 def _inline_link_destination(inner: str) -> str | None:
     """Extract the destination while retaining the existing title contract."""
-    value = inner.lstrip(" \t")
+    value = inner.lstrip(" \t\r\n")
     if not value:
         return None
 
@@ -1355,7 +1377,7 @@ def _inline_link_destination(inner: str) -> str | None:
                 if depth == 0:
                     return None
                 depth -= 1
-            elif character in " \t" and depth == 0:
+            elif character in " \t\r\n" and depth == 0:
                 break
             cursor += 1
         if depth != 0:
@@ -3021,4 +3043,37 @@ def test_complete_per_entry_mappings_are_pinned():
         + section[safe_start:]
     )
     with pytest.raises(AssertionError, match="research mappings changed|project mappings changed"):
+        _validate_registered_entry(entry, mutated)
+
+
+def test_mismatched_backtick_runs_cannot_hide_duplicate_doi():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = next(name for name in ENTRY_CONTRACTS if name.startswith("### Chey"))
+    section = _registered_sections(corpus)[entry]
+    injected = (
+        "`\n"
+        "**DOI:** https://doi.org/10.0000/fabricated\n"
+        "``\n\n"
+        "**Source type:**"
+    )
+    mutated = section.replace("**Source type:**", injected, 1)
+    with pytest.raises(AssertionError, match="exactly one mandatory field"):
+        _validate_registered_entry(entry, mutated)
+
+
+def test_multiline_inline_link_title_destination_is_pinned():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = "### *Black Comedy* (ABC, 2014-2020)"
+    section = _registered_sections(corpus)[entry]
+    source_line = next(
+        line for line in section.splitlines()
+        if line.startswith("**Registered source:**")
+    )
+    mutated = section.replace(
+        source_line,
+        source_line
+        + '\n[alternate](https://www.wikipedia.org/\n "title")',
+        1,
+    )
+    with pytest.raises(AssertionError, match="registered-source destinations changed"):
         _validate_registered_entry(entry, mutated)

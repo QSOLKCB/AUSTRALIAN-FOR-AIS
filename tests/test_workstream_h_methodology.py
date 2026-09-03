@@ -21,6 +21,11 @@ MARKDOWN_LINK_PATTERN = re.compile(
 )
 AUTOLINK_PATTERN = re.compile(r"<(?P<url>https?://[^>\s]+)>")
 
+HTML_VOID_TAGS = {
+    "area", "base", "br", "col", "embed", "hr", "img", "input",
+    "link", "meta", "param", "source", "track", "wbr",
+}
+
 
 class _VisibleHTMLTextParser(HTMLParser):
     def __init__(self) -> None:
@@ -48,7 +53,12 @@ class _VisibleHTMLTextParser(HTMLParser):
         self.stack.append((tag.lower(), inherited or self._is_hidden(tag, attrs)))
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        return
+        tag = tag.lower()
+        if tag in HTML_VOID_TAGS:
+            return
+        # Match browser tree construction: self-closing syntax does not close
+        # non-void HTML elements such as <dialog />.
+        self.handle_starttag(tag, attrs)
 
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
@@ -239,6 +249,7 @@ def test_workstream_h_and_methodology_safeguards_must_be_browser_visible():
         f"<!-- {listener_clause} -->",
         f"<span hidden>{listener_clause}</span>",
         f"<dialog>{listener_clause}</dialog>",
+        f"<dialog />{listener_clause}</dialog>",
         f'[placeholder](# "{listener_clause}")',
     ):
         mutated = roadmap.replace(listener_clause, hidden, 1)

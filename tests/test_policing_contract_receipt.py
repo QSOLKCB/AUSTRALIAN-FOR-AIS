@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+import runpy
 
 import pytest
 
@@ -82,9 +83,12 @@ def _policing_methodology_section(methodology: str) -> str:
 
 def _assert_canonical_policing_metadata(methodology: str) -> None:
     policing_methodology = _policing_methodology_section(methodology)
-    assert POLICING_METADATA_INTRO in policing_methodology
+    policing_namespace = runpy.run_path(str(POLICING_TEST))
+    visible_text = policing_namespace["_visible_text"]
+    rendered = visible_text(policing_methodology)
+    assert POLICING_METADATA_INTRO in rendered
     for field in CANONICAL_METADATA_FIELDS:
-        assert f"**{field}**" in policing_methodology
+        assert field in rendered
 
 
 def test_all_policing_invariants_are_required_and_affirmative():
@@ -141,3 +145,19 @@ def test_high_stakes_family_review_gate_matches_canonical_methodology():
     assert HIGH_STAKES_REVIEW_SENTENCE in affirmative
     assert "Before publication of a family involving coercion, consent, search, detention, questioning, force, emergency powers, or legal rights" in methodology
     assert "obtain appropriate review from relevant Australian and United States legal, policing, civil-liberties, and community expertise" in methodology
+
+
+def test_policing_metadata_fields_must_be_browser_visible():
+    methodology = METHODOLOGY.read_text(encoding="utf-8")
+    section = _policing_methodology_section(methodology)
+    hidden_lines: list[str] = []
+    for line in section.splitlines():
+        if any(f"**{field}**" in line for field in CANONICAL_METADATA_FIELDS):
+            hidden_lines.append(f"<!-- {line} -->")
+        else:
+            hidden_lines.append(line)
+    mutated_section = "\n".join(hidden_lines)
+    mutated = methodology.replace(section, mutated_section, 1)
+
+    with pytest.raises(AssertionError):
+        _assert_canonical_policing_metadata(mutated)
