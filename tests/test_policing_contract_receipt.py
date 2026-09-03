@@ -41,6 +41,13 @@ CANONICAL_METADATA_FIELDS = (
     "claim type",
 )
 
+POLICING_METHODOLOGY_HEADING = (
+    "## Australian and United States Policing-Context Experiment Design"
+)
+POLICING_METADATA_INTRO = (
+    "Every implemented policing-context item must record, at minimum:"
+)
+
 
 def _string_constants_in_tuple(name: str) -> tuple[str, ...]:
     tree = ast.parse(POLICING_TEST.read_text(encoding="utf-8"))
@@ -72,9 +79,15 @@ def test_roadmap_policing_metadata_matches_canonical_minimum():
     required = set(_string_constants_in_tuple("REQUIRED_CLAUSES"))
     affirmative = set(_string_constants_in_tuple("AFFIRMATIVE_LINE_PREFIX_CLAUSES"))
 
+    assert POLICING_METHODOLOGY_HEADING in methodology
+    start = methodology.index(POLICING_METHODOLOGY_HEADING)
+    end = methodology.index("\n---\n", start)
+    policing_methodology = methodology[start:end]
+
     assert "Every implemented item should record" not in roadmap
     assert MANDATORY_ITEM_METADATA_SENTENCE in roadmap
     assert MANDATORY_ITEM_METADATA_SENTENCE in required
     assert MANDATORY_ITEM_METADATA_SENTENCE in affirmative
+    assert POLICING_METADATA_INTRO in policing_methodology
     for field in CANONICAL_METADATA_FIELDS:
-        assert f"**{field}**" in methodology
+        assert f"**{field}**" in policing_methodology

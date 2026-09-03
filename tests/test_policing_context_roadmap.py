@@ -81,7 +81,7 @@ class _VisibleHTMLTextParser(HTMLParser):
         if tag in {"script", "style", "template"}:
             return True
         values = {key.lower(): (value or "") for key, value in attrs}
-        if tag == "details" and "open" not in values:
+        if tag in {"details", "dialog"} and "open" not in values:
             return True
         if "hidden" in values:
             return True
@@ -95,7 +95,11 @@ class _VisibleHTMLTextParser(HTMLParser):
         self.stack.append((tag.lower(), inherited or self._is_hidden(tag, attrs)))
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        return
+        tag = tag.lower()
+        if tag in HTML_VOID_TAGS:
+            return
+        # HTML browsers ignore the self-closing flag on non-void elements.
+        self.handle_starttag(tag, attrs)
 
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
@@ -163,9 +167,13 @@ class _HiddenHTMLRegionParser(HTMLParser):
         root_start = start if hidden and not parent_hidden else None
         self.stack.append((tag, hidden, root_start))
 
-    def handle_startendtag(
-        self, tag: str, attrs: list[tuple[str, str | None]]
-    ) -> None:
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
+        if tag not in HTML_VOID_TAGS:
+            # Match browser tree construction: the slash does not close a
+            # non-void HTML element such as `<dialog />` or `<a />`.
+            self.handle_starttag(tag, attrs)
+            return
         parent_hidden = self.stack[-1][1] if self.stack else False
         if _VisibleHTMLTextParser._is_hidden(tag, attrs) and not parent_hidden:
             start = self._offset()
@@ -703,12 +711,13 @@ def test_policing_context_workstream_must_remain_rendered(wrapper: str):
         _validate_policing_workstream(mutated)
 
 
-def test_policing_context_workstream_cannot_hide_in_closed_details():
+@pytest.mark.parametrize("tag", ("details", "dialog"))
+def test_policing_context_workstream_cannot_hide_in_closed_html_container(tag: str):
     roadmap = ROADMAP.read_text(encoding="utf-8")
     start = roadmap.index(WORKSTREAM_HEADING)
     end = roadmap.index(WORKSTREAM_END, start)
     section = roadmap[start:end]
-    hidden = f"<details>\n{section}\n</details>\n"
+    hidden = f"<{tag}>\n{section}\n</{tag}>\n"
     mutated = roadmap[:start] + hidden + roadmap[end:]
     with pytest.raises(AssertionError, match="missing policing-workstream safeguard"):
         _validate_policing_workstream(mutated)

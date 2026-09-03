@@ -552,7 +552,7 @@ class _VisibleHTMLTextParser(HTMLParser):
         values = {key.lower(): (value or "") for key, value in attrs}
         # A closed HTML disclosure renders its descendants collapsed until the
         # reader explicitly opens it. Governance text must be visible by default.
-        if tag == "details" and "open" not in values:
+        if tag in {"details", "dialog"} and "open" not in values:
             return True
         if "hidden" in values:
             return True
@@ -572,7 +572,12 @@ class _VisibleHTMLTextParser(HTMLParser):
         self.stack.append((tag.lower(), hidden))
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        return
+        tag = tag.lower()
+        if tag in HTML_VOID_TAGS:
+            return
+        # HTML browsers ignore the self-closing flag on non-void elements.
+        # Treat `<a ... />` as an opening anchor so its href remains navigable.
+        self.handle_starttag(tag, attrs)
 
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
@@ -650,6 +655,12 @@ class _HiddenHTMLRegionParser(HTMLParser):
         self.stack.append((tag, hidden, root_start))
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
+        if tag not in HTML_VOID_TAGS:
+            # Match browser tree construction: the slash does not close a
+            # non-void HTML element such as `<dialog />` or `<a />`.
+            self.handle_starttag(tag, attrs)
+            return
         parent_hidden = self.stack[-1][1] if self.stack else False
         if _VisibleHTMLTextParser._is_hidden(tag, attrs) and not parent_hidden:
             start = self._offset()
@@ -1549,20 +1560,24 @@ def _strip_composed_container_prefixes(line: str) -> tuple[str, bool]:
 
 
 def _canonicalise_metadata_marker(line: str) -> str:
-    """Canonicalise equivalent visible strong-emphasis metadata labels."""
-    match = STRONG_METADATA_FIELD_PATTERN.match(line)
+    """Canonicalise equivalent browser-rendered metadata labels."""
+    # CommonMark resolves character references before rendering inline text.
+    # Decode the candidate line before matching so `DOI&#58;` is the same
+    # visible label as `DOI:` for uniqueness and scalar extraction.
+    decoded = html.unescape(line)
+    match = STRONG_METADATA_FIELD_PATTERN.match(decoded)
     if match:
         canonical = f"**{match.group('label')}:**"
-        return canonical + line[match.end():]
+        return canonical + decoded[match.end():]
 
-    html_match = HTML_STRONG_METADATA_FIELD_PATTERN.match(line)
+    html_match = HTML_STRONG_METADATA_FIELD_PATTERN.match(decoded)
     if html_match:
         rendered_label = _visible_html_text(html_match.group(0)).strip()
         if rendered_label.endswith(":"):
             label = rendered_label[:-1].strip()
             if label and ":" not in label:
                 canonical = f"**{label}:**"
-                return canonical + line[html_match.end():]
+                return canonical + decoded[html_match.end():]
     return line
 
 
@@ -2860,3 +2875,47 @@ def test_nested_fence_closer_allows_commonmark_indentation():
     with pytest.raises(AssertionError, match="exactly one mandatory field"):
         _validate_registered_entry(entry, mutated)
 
+
+def test_entity_encoded_metadata_label_is_counted():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = (
+        "### Chey (2021), *Overcoming awkwardness: some interpretations of "
+        "Australian humour*"
+    )
+    section = _registered_sections(corpus)[entry]
+    mutated = section.replace(
+        "**Source type:**",
+        "**DOI&#58;** https://doi.org/10.0000/fabricated\n\n**Source type:**",
+        1,
+    )
+    with pytest.raises(AssertionError, match="exactly one mandatory field"):
+        _validate_registered_entry(entry, mutated)
+
+
+def test_self_closing_anchor_source_destination_is_counted():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = "### *Black Comedy* (ABC, 2014-2020)"
+    section = _registered_sections(corpus)[entry]
+    pinned = "https://iview.abc.net.au/show/black-comedy"
+    mutated = section.replace(
+        pinned,
+        pinned + ' <a href="https://www.wikipedia.org/" />alternate</a>',
+        1,
+    )
+    with pytest.raises(AssertionError, match="registered-source destinations changed"):
+        _validate_registered_entry(entry, mutated)
+
+
+def test_closed_dialog_cannot_hide_complete_governed_batch():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    batch = _registered_batch(corpus)
+    mutated = corpus.replace(batch, f"<dialog>\n{batch}\n</dialog>\n", 1)
+    with pytest.raises(AssertionError, match="contains no entries"):
+        _validate_registry_corpus(mutated)
+
+
+def test_open_dialog_keeps_governed_batch_visible():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    batch = _registered_batch(corpus)
+    mutated = corpus.replace(batch, f"<dialog open>\n{batch}\n</dialog>\n", 1)
+    _validate_registry_corpus(mutated)
