@@ -31,8 +31,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Hardened rendered-Markdown validators for recursively composed quote/list containers, tab-indented code, visible-only policing safeguards, multiline code-span/comment boundaries, non-rendering `script`/`style`/`template` content, and full-field integrity checks for governed rights, epistemic, and safe-use boundaries
 - Extended the exact-head Markdown hardening to tab-expanded comment boundaries, list-aware continuation indentation, browser-hidden HTML (`hidden`, `aria-hidden`, `display:none`, and `visibility:hidden`), quote/list-contained source-field uniqueness, pinned DOI link destinations, registration-contract section scoping, complete governance-rationale and source-type integrity, full paragraph-continuation hashing, recursively composed mapping containers, and affirmative policing safeguards that reject negated source gates
 - Canonicalized equivalent CommonMark strong-emphasis metadata labels before registry field counting so forms such as `__DOI:__` cannot bypass uniqueness checks, and restored the complete Phase 1 changelog history that had been accidentally truncated during review cleanup
-
 - Closed the next review round by making registry fence ownership container-order-aware, canonicalizing visible HTML strong metadata labels, explicitly governing community-attestation sources, and decoupling Australian-English familiarity from nationality and general language background in Workstream H
+- Hardened rendered-governance validation with container-owned policing fences, balanced nested Markdown link labels, nested inline markup inside HTML metadata labels, and browser-visible Workstream H methodology safeguards so hidden or non-rendered text cannot satisfy governance contracts
 
 ---
 
