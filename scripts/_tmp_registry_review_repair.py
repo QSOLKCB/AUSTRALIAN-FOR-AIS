@@ -1,10 +1,32 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
+import runpy
 
 
 PATH = Path("tests/test_research_reference_registry.py")
 text = PATH.read_text(encoding="utf-8")
+
+# Freeze the complete, currently accepted rendered boundary values before
+# changing parser behaviour. These become static literals in the committed test
+# module, not values recomputed from the corpus at test runtime.
+baseline = runpy.run_path(str(PATH))
+baseline_corpus = baseline["CORPUS"].read_text(encoding="utf-8")
+baseline_sections = baseline["_registered_sections"](baseline_corpus)
+boundary_fields = (
+    baseline["RIGHTS_FIELD"],
+    baseline["EPISTEMIC_FIELD"],
+    baseline["SAFE_FIELD"],
+)
+boundary_hashes: dict[str, dict[str, str]] = {}
+for entry, section in baseline_sections.items():
+    boundary_hashes[entry] = {}
+    for field in boundary_fields:
+        value = baseline["_scalar_value"](entry, section, field)
+        boundary_hashes[entry][field] = hashlib.sha256(
+            value.encode("utf-8")
+        ).hexdigest()
 
 
 def replace_once(old: str, new: str, label: str) -> None:
@@ -25,6 +47,39 @@ def replace_block(start_marker: str, end_marker: str, replacement: str, label: s
         raise SystemExit(f"{label}: end marker missing")
     text = text[:start] + replacement + text[end:]
 
+
+if "import hashlib\n" not in text:
+    replace_once(
+        "from dataclasses import dataclass\nimport html\n",
+        "from dataclasses import dataclass\nimport hashlib\nimport html\n",
+        "hashlib import",
+    )
+
+if "BOUNDARY_FIELDS = (" not in text:
+    replace_once(
+        '''SCALAR_FIELDS = (
+    SOURCE_TYPE_FIELD,
+    RIGHTS_FIELD,
+    EPISTEMIC_FIELD,
+    SAFE_FIELD,
+)
+SOURCES_KEY = "sources"
+''',
+        '''SCALAR_FIELDS = (
+    SOURCE_TYPE_FIELD,
+    RIGHTS_FIELD,
+    EPISTEMIC_FIELD,
+    SAFE_FIELD,
+)
+BOUNDARY_FIELDS = (
+    RIGHTS_FIELD,
+    EPISTEMIC_FIELD,
+    SAFE_FIELD,
+)
+SOURCES_KEY = "sources"
+''',
+        "boundary fields",
+    )
 
 if "NON_RENDERING_HTML_PATTERN = re.compile(" not in text:
     replace_once(
@@ -310,6 +365,16 @@ replace_once(
     "non-rendering mapping HTML",
 )
 
+# Commit the full accepted boundary hashes as static fixtures. They are generated
+# only by this repair script and are never recomputed from the corpus by tests.
+if "BOUNDARY_VALUE_HASHES = {" not in text:
+    hash_literal = "BOUNDARY_VALUE_HASHES = " + repr(boundary_hashes) + "\n\n"
+    replace_once(
+        "EXPECTED_GOVERNED_ENTRIES = tuple(ENTRY_CONTRACTS)\n\n",
+        "EXPECTED_GOVERNED_ENTRIES = tuple(ENTRY_CONTRACTS)\n\n" + hash_literal,
+        "boundary hash fixtures",
+    )
+
 replace_once(
     '''    for field in SCALAR_FIELDS:
         expected_clause = str(contract[field])
@@ -320,14 +385,18 @@ replace_once(
     '''    for field in SCALAR_FIELDS:
         expected_clause = _visible_inline_text(str(contract[field]))
         actual_value = scalar_values[field]
-        assert actual_value == expected_clause or actual_value.endswith(
-            " " + expected_clause
-        ), (
-            f"{entry} changed pinned {field}: expected terminal clause "
-            f"{expected_clause!r}, got {actual_value!r}"
+        assert expected_clause in actual_value, (
+            f"{entry} is missing a pinned {field} clause: {expected_clause!r}"
         )
+        if field in BOUNDARY_FIELDS:
+            actual_hash = hashlib.sha256(actual_value.encode("utf-8")).hexdigest()
+            expected_hash = BOUNDARY_VALUE_HASHES[entry][field]
+            assert actual_hash == expected_hash, (
+                f"{entry} changed pinned {field}: expected hash "
+                f"{expected_hash!r}, got {actual_hash!r}"
+            )
 ''',
-    "terminal pinned boundary clauses",
+    "full pinned boundary hashes",
 )
 
 if "test_compound_container_duplicate_doi_is_rejected" not in text:
