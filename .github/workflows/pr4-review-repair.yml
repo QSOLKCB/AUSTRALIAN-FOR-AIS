@@ -23,7 +23,9 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install -e '.[dev]'
       - name: Apply review repairs
-        run: python scripts/_repair_pr4_codex.py
+        run: |
+          python scripts/_repair_pr4_codex.py
+          python scripts/_repair_pr4_followup.py
       - name: Run focused tests
         run: python -m pytest -q tests/test_research_reference_registry.py tests/test_policing_context_roadmap.py
       - name: Commit repaired head
