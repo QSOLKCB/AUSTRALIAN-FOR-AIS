@@ -10,6 +10,7 @@ from australian_for_ais.validation import ValidationError
 
 REPO_ROOT = pathlib.Path(__file__).parent.parent
 ANNOTATION_UI = REPO_ROOT / "annotation" / "index.html"
+CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 
 
 def _pilot_item(item_id: str) -> dict:
@@ -90,3 +91,11 @@ def test_browser_saved_annotations_are_bound_to_item_content():
     assert "const saved = {item_observation_key: itemObservationKey(item), annotation};" in html
     assert "const annotation = unpackStoredAnnotation(item, raw);" in html
     assert "if (annotation) records.push(annotation);" in html
+
+
+def test_phase2_changelog_keeps_free_text_iaa_boundary():
+    changelog = CHANGELOG.read_text(encoding="utf-8")
+    assert (
+        "Free-text pragmatic interpretations remain qualitative evidence and are not "
+        "assigned a misleading exact-string IAA score."
+    ) in changelog
