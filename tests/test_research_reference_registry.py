@@ -168,6 +168,7 @@ ENTRY_CONTRACTS: dict[str, dict[str, object]] = {
         "Australian humour*"
     ): _entry_contract(
         sources=("https://europeanjournalofhumour.org/ejhr/article/view/560",),
+        doi="https://doi.org/10.7592/EJHR2021.9.4.560",
         source_type="Peer-reviewed article in The European Journal of Humour Research.",
         governance="not-required",
         rights=(
@@ -187,6 +188,7 @@ ENTRY_CONTRACTS: dict[str, dict[str, object]] = {
         sources=(
             "https://www.tandfonline.com/doi/full/10.1080/2040610X.2025.2538977",
         ),
+        doi="https://doi.org/10.1080/2040610X.2025.2538977",
         source_type=(
             "Peer-reviewed article in Comedy Studies using a culturally grounded "
             "qualitative methodology centred on Aboriginal and Torres Strait Islander "
@@ -688,6 +690,7 @@ def _markdown_views(text: str) -> tuple[str, str]:
         if fence is not None:
             rendered_parts.append(raw_line)
             structural_parts.append(_mask_non_newline(raw_line))
+            paragraph_open = False
             if _is_fence_closer(line, fence):
                 fence = None
             continue
@@ -699,12 +702,26 @@ def _markdown_views(text: str) -> tuple[str, str]:
             )
             rendered_parts.append(rendered_line)
             structural_parts.append(_mask_inline_code_spans(rendered_line))
+            if not in_comment:
+                paragraph_open = _line_opens_paragraph(
+                    rendered_line.rstrip("\r\n")
+                )
             continue
 
         context = _line_context(line)
-        if context.indented_code:
+        if context.indented_code and not paragraph_open:
             rendered_parts.append(raw_line)
             structural_parts.append(_mask_non_newline(raw_line))
+            continue
+
+        if context.indented_code and paragraph_open:
+            rendered_line, in_comment = _mask_html_comments_on_line(
+                raw_line,
+                in_comment=False,
+            )
+            rendered_parts.append(rendered_line)
+            structural_parts.append(_mask_inline_code_spans(rendered_line))
+            paragraph_open = True
             continue
 
         opener = _fence_opener(line)
@@ -712,6 +729,7 @@ def _markdown_views(text: str) -> tuple[str, str]:
             fence = opener
             rendered_parts.append(raw_line)
             structural_parts.append(_mask_non_newline(raw_line))
+            paragraph_open = False
             continue
 
         rendered_line, in_comment = _mask_html_comments_on_line(
@@ -720,9 +738,11 @@ def _markdown_views(text: str) -> tuple[str, str]:
         )
         rendered_parts.append(rendered_line)
         structural_parts.append(_mask_inline_code_spans(rendered_line))
+        paragraph_open = _line_opens_paragraph(
+            rendered_line.rstrip("\r\n")
+        )
 
     return "".join(rendered_parts), "".join(structural_parts)
-
 
 def _rendered_registry_text(text: str) -> str:
     rendered, _ = _markdown_views(text)
@@ -929,11 +949,12 @@ def _has_non_heading_content(block: str) -> bool:
             continue
         if re.fullmatch(r"\*\*[^*]+:\*\*(?:[ \t].*)?", line):
             continue
+        if LINK_REFERENCE_DEFINITION_PATTERN.fullmatch(line):
+            continue
         if _visible_inline_text(line):
             return True
 
     return False
-
 
 def _require_mapping_block(entry: str, section: str) -> None:
     rendered, structure = _markdown_views(section)
