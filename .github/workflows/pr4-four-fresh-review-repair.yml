@@ -37,11 +37,17 @@ jobs:
 
           path = Path("tests/test_research_reference_registry.py")
           text = path.read_text(encoding="utf-8")
-          old = "        if close < 0:\n"
-          new = "        if close is None:\n"
+          old = (
+              "        close = _matching_backtick_run_start(text, run_end, len(marker))\n"
+              "        if close < 0:\n"
+          )
+          new = (
+              "        close = _matching_backtick_run_start(text, run_end, len(marker))\n"
+              "        if close is None:\n"
+          )
           count = text.count(old)
           if count != 3:
-              raise SystemExit(f"expected 3 exact-run sentinel checks, found {count}")
+              raise SystemExit(f"expected 3 exact-run helper sentinel checks, found {count}")
           path.write_text(text.replace(old, new), encoding="utf-8")
           PY
       - name: Run focused regressions
