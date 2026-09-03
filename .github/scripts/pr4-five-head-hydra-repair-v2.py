@@ -21,5 +21,18 @@ if new not in text:
         raise SystemExit(f"fence-loop anchor correction expected one source anchor, found {count}")
     text = text.replace(old, new, 1)
 
+old = (
+    '    rendered = _rendered_registry_text(section)\\n'
+    '    rendered = _mask_hidden_html_regions(rendered)\\n'
+    '    rendered = _mask_link_reference_definitions_for_visibility(rendered)\\n'
+    '    return " ".join(rendered.split())\\n'
+)
+new = '    return _visible_inline_text(section)\\n'
+if new not in text:
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"entry-integrity normalization correction expected one source anchor, found {count}")
+    text = text.replace(old, new, 1)
+
 SCRIPT.write_text(text, encoding="utf-8")
-print("Applied five-head repair anchor corrections.")
+print("Applied five-head repair anchor and visible-integrity corrections.")
