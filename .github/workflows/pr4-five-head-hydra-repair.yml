@@ -56,8 +56,8 @@ jobs:
           git add tests/test_research_reference_registry.py \
                   tests/test_workstream_h_methodology.py \
                   tests/test_policing_context_roadmap.py
-          git rm .github/scripts/pr4-five-head-hydra-repair.py \
-                 .github/scripts/pr4-five-head-hydra-repair-v2.py \
-                 .github/workflows/pr4-five-head-hydra-repair.yml
+          git rm -f .github/scripts/pr4-five-head-hydra-repair.py \
+                  .github/scripts/pr4-five-head-hydra-repair-v2.py \
+                  .github/workflows/pr4-five-head-hydra-repair.yml
           git commit -m "Slay five fresh PR4 review gaps"
           git push origin HEAD:research-corpus-governed-expansion
