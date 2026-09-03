@@ -1,5 +1,6 @@
 """Regression checks for the proposed policing-context research workstream."""
 
+from dataclasses import dataclass
 from pathlib import Path
 import html
 from html.parser import HTMLParser
@@ -162,9 +163,100 @@ def _strip_container_prefixes(line: str) -> tuple[str, int]:
     return value[probe:], columns
 
 
-def _fence_marker(line: str) -> tuple[str, int] | None:
-    logical, indentation = _strip_container_prefixes(line)
-    if indentation >= 4:
+def _display_columns(value: str) -> int:
+    columns = 0
+    for character in value:
+        if character == "\t":
+            columns += 4 - (columns % 4)
+        else:
+            columns += 1
+    return columns
+
+
+@dataclass(frozen=True)
+class FenceState:
+    character: str
+    minimum_length: int
+    containers: tuple[tuple[str, int], ...]
+
+
+def _parse_fence_container_prefixes(
+    line: str,
+) -> tuple[str, bool, tuple[tuple[str, int], ...]]:
+    """Return logical text, code status, and ordered list/quote containers."""
+    value = line.rstrip("\r\n")
+    position = 0
+    containers: list[tuple[str, int]] = []
+
+    for _ in range(32):
+        probe, columns = _indent_columns(value, position)
+        if columns >= 4:
+            return value[position:], True, tuple(containers)
+
+        if probe < len(value) and value[probe] == ">":
+            containers.append(("quote", 0))
+            position = probe + 1
+            if position < len(value) and value[position] in " \t":
+                position += 1
+            continue
+
+        marker = LIST_MARKER_PATTERN.match(value, probe)
+        if marker:
+            content_indent = columns + _display_columns(marker.group(0))
+            containers.append(("list", content_indent))
+            position = marker.end()
+            continue
+
+        position = probe
+        break
+
+    return value[position:], False, tuple(containers)
+
+
+def _consume_required_indent(
+    value: str,
+    start: int,
+    required_columns: int,
+) -> tuple[int, bool]:
+    position = start
+    columns = 0
+    while position < len(value) and value[position] in " \t" and columns < required_columns:
+        if value[position] == " ":
+            columns += 1
+        else:
+            columns += 4 - (columns % 4)
+        position += 1
+    return position, columns >= required_columns
+
+
+def _strip_expected_fence_containers(
+    line: str,
+    containers: tuple[tuple[str, int], ...],
+) -> tuple[str, bool]:
+    """Strip the continuation form of the containers that own an active fence."""
+    value = line.rstrip("\r\n")
+    position = 0
+
+    for kind, amount in containers:
+        if kind == "list":
+            position, ok = _consume_required_indent(value, position, amount)
+            if not ok:
+                return value, False
+            continue
+
+        probe, columns = _indent_columns(value, position)
+        if columns > 3 or probe >= len(value) or value[probe] != ">":
+            return value, False
+        position = probe + 1
+        if position < len(value) and value[position] in " \t":
+            position += 1
+
+    return value[position:], True
+
+
+def _fence_opener(line: str) -> FenceState | None:
+    logical, indented_code, containers = _parse_fence_container_prefixes(line)
+    if indented_code:
         return None
     match = FENCE_PATTERN.fullmatch(logical.rstrip(" \t"))
     if not match:
@@ -173,15 +265,39 @@ def _fence_marker(line: str) -> tuple[str, int] | None:
     info = match.group("info")
     if marker[0] == "`" and "`" in info:
         return None
-    return marker[0], len(marker)
+    return FenceState(
+        character=marker[0],
+        minimum_length=len(marker),
+        containers=containers,
+    )
 
 
-def _is_fence_closer(line: str, character: str, minimum_length: int) -> bool:
-    logical, _ = _strip_container_prefixes(line)
+def _fence_container_continues(line: str, state: FenceState) -> bool:
+    if not line.strip():
+        return True
+    if not state.containers:
+        return True
+    _, ok = _strip_expected_fence_containers(line, state.containers)
+    return ok
+
+
+def _fence_logical_line(line: str, state: FenceState) -> str:
+    if not state.containers:
+        return line.rstrip("\r\n")
+    logical, ok = _strip_expected_fence_containers(line, state.containers)
+    return logical if ok else line.rstrip("\r\n")
+
+
+def _is_fence_closer(line: str, state: FenceState) -> bool:
+    logical = _fence_logical_line(line, state)
+    marker_index, indent_columns = _indent_columns(logical)
+    if indent_columns > 3:
+        return False
+    candidate = logical[marker_index:].rstrip(" \t")
     return bool(
         re.fullmatch(
-            rf"{re.escape(character)}{{{minimum_length},}}[ \t]*",
-            logical.rstrip(" \t"),
+            rf"{re.escape(state.character)}{{{state.minimum_length},}}[ \t]*",
+            candidate,
         )
     )
 
@@ -235,8 +351,7 @@ def _rendered_structure(markdown: str) -> str:
     """Mask code and comments while preserving rendered prose for inspection."""
     parts: list[str] = []
     in_comment = False
-    fence_character: str | None = None
-    fence_length = 0
+    fence: FenceState | None = None
     paragraph_open = False
 
     for raw_line in markdown.splitlines(keepends=True):
@@ -244,11 +359,13 @@ def _rendered_structure(markdown: str) -> str:
         if not line.strip():
             paragraph_open = False
 
-        if fence_character is not None:
+        while fence is not None and not _fence_container_continues(line, fence):
+            fence = None
+
+        if fence is not None:
             parts.append(_mask_non_newline(raw_line))
-            if _is_fence_closer(line, fence_character, fence_length):
-                fence_character = None
-                fence_length = 0
+            if _is_fence_closer(line, fence):
+                fence = None
             paragraph_open = False
             continue
 
@@ -264,9 +381,9 @@ def _rendered_structure(markdown: str) -> str:
             parts.append(_mask_non_newline(raw_line))
             continue
 
-        opener = _fence_marker(line)
+        opener = _fence_opener(line)
         if opener is not None:
-            fence_character, fence_length = opener
+            fence = opener
             parts.append(_mask_non_newline(raw_line))
             paragraph_open = False
             continue
@@ -388,6 +505,23 @@ def test_policing_context_workstream_must_remain_rendered(wrapper: str):
 
     mutated = roadmap[:start] + hidden + roadmap[end:]
     with pytest.raises(AssertionError, match="rendered policing workstream"):
+        _validate_policing_workstream(mutated)
+
+
+def test_policing_fence_container_ownership_hides_top_level_code_payload():
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    clause = "register official and current sources for each Australian and United States jurisdictional claim"
+    original = f"- {clause} before adopting it as benchmark context;"
+    replacement = (
+        "- > ```\n"
+        "```\n"
+        f"{clause};\n"
+        "```\n"
+        "> ```"
+    )
+    assert original in roadmap
+    mutated = roadmap.replace(original, replacement, 1)
+    with pytest.raises(AssertionError, match="missing policing-workstream safeguard"):
         _validate_policing_workstream(mutated)
 
 

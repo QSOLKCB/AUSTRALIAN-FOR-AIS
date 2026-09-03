@@ -522,7 +522,7 @@ STRONG_METADATA_FIELD_PATTERN = re.compile(
 )
 HTML_STRONG_METADATA_FIELD_PATTERN = re.compile(
     r"^<(?P<tag>strong|b)\b(?P<attrs>[^>]*)>"
-    r"(?P<label>[^<:\r\n]+):</(?P=tag)>(?=$|[ \t])",
+    r"(?P<body>.*?)</(?P=tag)>(?=$|[ \t])",
     flags=re.IGNORECASE,
 )
 HTML_TAG_PATTERN = re.compile(
@@ -1145,7 +1145,7 @@ def _visible_inline_text(text: str) -> str:
     """Reduce Markdown/HTML metadata to browser-visible text only."""
     rendered = _rendered_registry_text(text)
     visible = _render_inline_code_spans(rendered)
-    visible = MARKDOWN_LINK_PATTERN.sub(lambda match: match.group("label"), visible)
+    visible = _replace_inline_markdown_links_with_labels(visible)
     visible = AUTOLINK_PATTERN.sub(lambda match: match.group("url"), visible)
     visible = _visible_html_text(visible)
     visible = html.unescape(visible)
@@ -1204,6 +1204,215 @@ def _normalise_reference_label(value: str) -> str:
     return " ".join(html.unescape(value).split()).casefold()
 
 
+@dataclass(frozen=True)
+class MarkdownInlineLink:
+    start: int
+    end: int
+    label: str
+    destination: str
+    image: bool
+
+
+def _is_escaped_markdown_character(text: str, index: int) -> bool:
+    backslashes = 0
+    cursor = index - 1
+    while cursor >= 0 and text[cursor] == "\\":
+        backslashes += 1
+        cursor -= 1
+    return backslashes % 2 == 1
+
+
+def _balanced_markdown_label_end(text: str, start: int) -> int | None:
+    """Return the closing bracket for a balanced inline-link label."""
+    depth = 1
+    cursor = start + 1
+    while cursor < len(text):
+        character = text[cursor]
+        if character in "\r\n":
+            return None
+        if character == "\\" and cursor + 1 < len(text):
+            cursor += 2
+            continue
+        if character == "[":
+            depth += 1
+        elif character == "]":
+            depth -= 1
+            if depth == 0:
+                return cursor
+        cursor += 1
+    return None
+
+
+def _inline_link_closing_paren(text: str, start: int) -> int | None:
+    """Return the closing parenthesis for an inline link destination/title."""
+    depth = 1
+    cursor = start + 1
+    quote: str | None = None
+    angle = False
+    top_level_space = False
+    while cursor < len(text):
+        character = text[cursor]
+        if character in "\r\n":
+            return None
+        if character == "\\" and cursor + 1 < len(text):
+            cursor += 2
+            continue
+        if quote is not None:
+            if character == quote:
+                quote = None
+            cursor += 1
+            continue
+        if angle:
+            if character == ">":
+                angle = False
+            cursor += 1
+            continue
+        if depth == 1 and character in " \t":
+            top_level_space = True
+            cursor += 1
+            continue
+        if depth == 1 and top_level_space and character in {"\"", "'"}:
+            quote = character
+            cursor += 1
+            continue
+        if depth == 1 and not top_level_space and character == "<":
+            angle = True
+            cursor += 1
+            continue
+        if character == "(":
+            depth += 1
+        elif character == ")":
+            depth -= 1
+            if depth == 0:
+                return cursor
+        cursor += 1
+    return None
+
+
+def _inline_link_destination(inner: str) -> str | None:
+    """Extract the destination while retaining the existing title contract."""
+    value = inner.lstrip(" \t")
+    if not value:
+        return None
+
+    if value.startswith("<"):
+        close = value.find(">", 1)
+        if close < 0:
+            return None
+        destination = value[1:close]
+        remainder = value[close + 1:].strip()
+    else:
+        cursor = 0
+        depth = 0
+        while cursor < len(value):
+            character = value[cursor]
+            if character == "\\" and cursor + 1 < len(value):
+                cursor += 2
+                continue
+            if character == "(":
+                depth += 1
+            elif character == ")":
+                if depth == 0:
+                    return None
+                depth -= 1
+            elif character in " \t" and depth == 0:
+                break
+            cursor += 1
+        if depth != 0:
+            return None
+        destination = value[:cursor]
+        remainder = value[cursor:].strip()
+
+    if not destination:
+        return None
+    if remainder:
+        quoted = (
+            len(remainder) >= 2
+            and remainder[0] in {"\"", "'"}
+            and remainder[-1] == remainder[0]
+        )
+        parenthesized = (
+            len(remainder) >= 2
+            and remainder[0] == "("
+            and remainder[-1] == ")"
+        )
+        if not (quoted or parenthesized):
+            return None
+    return destination
+
+
+def _markdown_inline_links(text: str) -> tuple[MarkdownInlineLink, ...]:
+    """Parse inline links with balanced nested square-bracket labels."""
+    links: list[MarkdownInlineLink] = []
+    cursor = 0
+    while cursor < len(text):
+        bracket = text.find("[", cursor)
+        if bracket < 0:
+            break
+        if _is_escaped_markdown_character(text, bracket):
+            cursor = bracket + 1
+            continue
+
+        label_end = _balanced_markdown_label_end(text, bracket)
+        if label_end is None:
+            cursor = bracket + 1
+            continue
+        paren_start = label_end + 1
+        if paren_start >= len(text) or text[paren_start] != "(":
+            cursor = label_end + 1
+            continue
+        paren_end = _inline_link_closing_paren(text, paren_start)
+        if paren_end is None:
+            cursor = label_end + 1
+            continue
+        destination = _inline_link_destination(text[paren_start + 1:paren_end])
+        if destination is None:
+            cursor = paren_end + 1
+            continue
+
+        image = (
+            bracket > 0
+            and text[bracket - 1] == "!"
+            and not _is_escaped_markdown_character(text, bracket - 1)
+        )
+        start = bracket - 1 if image else bracket
+        links.append(
+            MarkdownInlineLink(
+                start=start,
+                end=paren_end + 1,
+                label=text[bracket + 1:label_end],
+                destination=destination,
+                image=image,
+            )
+        )
+        cursor = paren_end + 1
+    return tuple(links)
+
+
+def _replace_inline_markdown_links_with_labels(text: str) -> str:
+    links = _markdown_inline_links(text)
+    if not links:
+        return text
+    parts: list[str] = []
+    cursor = 0
+    for link in links:
+        parts.append(text[cursor:link.start])
+        parts.append(link.label)
+        cursor = link.end
+    parts.append(text[cursor:])
+    return "".join(parts)
+
+
+def _mask_inline_markdown_links(
+    text: str,
+    links: tuple[MarkdownInlineLink, ...],
+) -> str:
+    characters = list(text)
+    for link in links:
+        _mask_segment(characters, link.start, link.end)
+    return "".join(characters)
+
+
 def _usable_https_destinations(
     text: str,
     *,
@@ -1222,14 +1431,17 @@ def _usable_https_destinations(
         if destination is not None:
             destinations.append(destination)
 
-    for match in MARKDOWN_LINK_PATTERN.finditer(structure):
-        if match.group("image"):
+    inline_links = _markdown_inline_links(structure)
+    for link in inline_links:
+        if link.image:
             continue
-        destination = _normalise_https_destination(
-            match.group("destination").strip("<>")
-        )
+        destination = _normalise_https_destination(link.destination.strip("<>"))
         if destination is not None:
             destinations.append(destination)
+    structure_without_inline_links = _mask_inline_markdown_links(
+        structure,
+        inline_links,
+    )
 
     definitions: dict[str, str] = {}
     for match in LINK_REFERENCE_DEFINITION_PATTERN.finditer(reference_structure):
@@ -1243,7 +1455,7 @@ def _usable_https_destinations(
             destination,
         )
 
-    for match in REFERENCE_LINK_PATTERN.finditer(structure):
+    for match in REFERENCE_LINK_PATTERN.finditer(structure_without_inline_links):
         if match.group("image"):
             continue
         reference = match.group("reference") or match.group("label")
@@ -1251,7 +1463,7 @@ def _usable_https_destinations(
         if destination is not None:
             destinations.append(destination)
 
-    without_reference_links = REFERENCE_LINK_PATTERN.sub("", structure)
+    without_reference_links = REFERENCE_LINK_PATTERN.sub("", structure_without_inline_links)
     for match in SHORTCUT_REFERENCE_LINK_PATTERN.finditer(without_reference_links):
         if match.group("image"):
             continue
@@ -1261,7 +1473,7 @@ def _usable_https_destinations(
         if destination is not None:
             destinations.append(destination)
 
-    without_links = MARKDOWN_LINK_PATTERN.sub("", without_reference_links)
+    without_links = without_reference_links
     for match in AUTOLINK_PATTERN.finditer(without_links):
         destination = _normalise_https_destination(match.group("url"))
         if destination is not None:
@@ -1329,11 +1541,12 @@ def _canonicalise_metadata_marker(line: str) -> str:
 
     html_match = HTML_STRONG_METADATA_FIELD_PATTERN.match(line)
     if html_match:
-        label = html_match.group("label")
         rendered_label = _visible_html_text(html_match.group(0)).strip()
-        if rendered_label == f"{label}:":
-            canonical = f"**{label}:**"
-            return canonical + line[html_match.end():]
+        if rendered_label.endswith(":"):
+            label = rendered_label[:-1].strip()
+            if label and ":" not in label:
+                canonical = f"**{label}:**"
+                return canonical + line[html_match.end():]
     return line
 
 
@@ -2420,6 +2633,27 @@ def test_html_strong_doi_field_is_counted(tag: str):
         _validate_registered_entry(entry, mutated)
 
 
+@pytest.mark.parametrize(
+    "markup",
+    (
+        "<strong><em>DOI:</em></strong>",
+        "<b><i>DOI:</i></b>",
+    ),
+)
+def test_nested_html_strong_doi_field_is_counted(markup: str):
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = "### Chey (2021), *Overcoming awkwardness: some interpretations of Australian humour*"
+    section = _registered_sections(corpus)[entry]
+    expected = "**DOI:** https://doi.org/10.7592/EJHR2021.9.4.560"
+    mutated = section.replace(
+        expected,
+        expected + f"\n\n{markup} https://doi.org/10.0000/fabricated",
+        1,
+    )
+    with pytest.raises(AssertionError, match="exactly one mandatory field"):
+        _validate_registered_entry(entry, mutated, reference_scope=corpus)
+
+
 def test_registration_contract_explicitly_bounds_community_attestation():
     corpus = CORPUS.read_text(encoding="utf-8")
     structure = _structural_registry_text(corpus)
@@ -2456,6 +2690,19 @@ def test_complete_registration_contract_is_pinned():
     mutated = corpus[:start] + weakened + corpus[end:]
     with pytest.raises(AssertionError, match="registration contract changed or was weakened"):
         _validate_registry_corpus(mutated)
+
+
+def test_balanced_nested_markdown_link_destination_is_included_in_pinned_set():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = EXPECTED_GOVERNED_ENTRIES[0]
+    section = _registered_sections(corpus)[entry]
+    mutated = section.replace(
+        SOURCE_TYPE_FIELD,
+        "[alternate [source]](https://www.wikipedia.org/)\n\n" + SOURCE_TYPE_FIELD,
+        1,
+    )
+    with pytest.raises(AssertionError, match="registered-source destinations changed"):
+        _validate_registered_entry(entry, mutated, reference_scope=corpus)
 
 
 def test_html_anchor_source_destination_is_included_in_pinned_set():
