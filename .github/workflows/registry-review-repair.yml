@@ -1,4 +1,5 @@
 name: Focused registry review repair
+# Triggered after the workflow exists in the branch history.
 
 on:
   push:
