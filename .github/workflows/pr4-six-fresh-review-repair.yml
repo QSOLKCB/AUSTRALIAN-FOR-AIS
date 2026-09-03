@@ -33,6 +33,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
+      - name: Refine exact repair anchor
+        run: |
+          set -euo pipefail
+          python .github/scripts/pr4-six-fresh-review-repair-v2.py
+
       - name: Apply exact guarded repair
         run: |
           set -euo pipefail
@@ -60,6 +65,7 @@ jobs:
           git config user.email "chatgpt-codex-connector@users.noreply.github.com"
           git rm -f \
             .github/scripts/pr4-six-fresh-review-repair.py \
+            .github/scripts/pr4-six-fresh-review-repair-v2.py \
             .github/workflows/pr4-six-fresh-review-repair.yml
           git add tests/test_research_reference_registry.py tests/test_policing_context_roadmap.py
           git diff --cached --check
