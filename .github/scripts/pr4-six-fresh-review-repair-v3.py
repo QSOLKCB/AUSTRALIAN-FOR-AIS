@@ -56,8 +56,9 @@ REGISTRY.write_text(registry, encoding="utf-8")
 
 policing = POLICING.read_text(encoding="utf-8")
 helper_name = "def _normalised_visible_workstream_lines(rendered: str) -> list[str]:"
+validate_boundary = "def _validate_policing_workstream(roadmap: str) -> None:\n"
+test_boundary = "\ndef test_policing_context_workstream_remains_source_gated_and_noncomparative():\n"
 if helper_name not in policing:
-    validate_boundary = "def _validate_policing_workstream(roadmap: str) -> None:\n"
     index = policing.find(validate_boundary)
     if index < 0:
         raise SystemExit("v3: policing validator boundary not found")
@@ -75,6 +76,11 @@ if helper_name not in policing:
 '''
     policing = policing[:index] + helper + policing[index:]
 
+validate_start = policing.find(validate_boundary)
+validate_end = policing.find(test_boundary, validate_start)
+if validate_start < 0 or validate_end < 0:
+    raise SystemExit("v3: policing validator structural slice not found")
+validator = policing[validate_start:validate_end]
 old_loop = '''    visible_lines: list[str] = []
     for raw_line in rendered.splitlines():
         line = _visible_text(raw_line).strip()
@@ -83,12 +89,13 @@ old_loop = '''    visible_lines: list[str] = []
             visible_lines.append(line)
 '''
 new_loop = "    visible_lines = _normalised_visible_workstream_lines(rendered)\n"
-if old_loop in policing:
-    if policing.count(old_loop) != 1:
-        raise SystemExit("v3: policing visible-line loop is ambiguous")
-    policing = policing.replace(old_loop, new_loop, 1)
-elif new_loop not in policing:
-    raise SystemExit("v3: policing visible-line loop not found")
+if old_loop in validator:
+    if validator.count(old_loop) != 1:
+        raise SystemExit("v3: policing validator visible-line loop is ambiguous")
+    validator = validator.replace(old_loop, new_loop, 1)
+    policing = policing[:validate_start] + validator + policing[validate_end:]
+elif new_loop not in validator:
+    raise SystemExit("v3: policing validator visible-line loop not found")
 
 POLICING.write_text(policing, encoding="utf-8")
 
