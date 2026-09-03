@@ -89,15 +89,16 @@ jobs:
           '''
           text = text[:scalar_start] + scalar_replacement + text[scalar_end + 1:]
 
-          old_inline_expectation = '''    with pytest.raises(AssertionError, match="empty registered-source field"):
-              _require_registered_source_link("### Example", inline)
-          '''
-          new_inline_expectation = '''    with pytest.raises(AssertionError, match="no usable HTTPS destination"):
-              _require_registered_source_link("### Example", inline)
-          '''
-          if old_inline_expectation not in text:
-              raise SystemExit("expected inline-source assertion not found")
-          text = text.replace(old_inline_expectation, new_inline_expectation, 1)
+          inline_index = text.index('    inline = (')
+          expectation_index = text.index(
+              'match="empty registered-source field"',
+              inline_index,
+          )
+          text = (
+              text[:expectation_index]
+              + 'match="no usable HTTPS destination"'
+              + text[expectation_index + len('match="empty registered-source field"'):]
+          )
 
           old_scalar_value = '"**Rights and provenance boundary:** `hidden value`\\n",'
           new_scalar_value = '"**Rights and provenance boundary:** <!-- hidden value -->\\n",'
