@@ -418,7 +418,7 @@ GOVERNANCE_FIELD_PATTERN = re.compile(
 )
 GOVERNANCE_PATTERN = re.compile(
     r"(?m)^ {0,3}\*\*Community-specific governance:\*\*[ \t]*"
-    r"(required|not-required):[ \t]*([^\r\n]*\S[^\r\n]*)[ \t]*$"
+    r"(required|not-required):(?P<rationale>[^\r\n]*)$"
 )
 REGISTERED_SOURCE_FIELD_PATTERN = re.compile(
     r"(?m)^ {0,3}\*\*Registered sources?:\*\*"
@@ -849,11 +849,11 @@ def _scalar_value(entry: str, section: str, field: str) -> str:
         f"{entry} must contain exactly one mandatory field {field}"
     )
     match = re.search(
-        rf"{prefix}[ \t]*([^\r\n]*\S[^\r\n]*)[ \t]*$",
+        rf"{prefix}(?P<value>[^\r\n]*)$",
         structure,
     )
     assert match, f"{entry} has an empty mandatory field {field}"
-    raw_value = rendered[match.start(1):match.end(1)]
+    raw_value = rendered[match.start("value"):match.end("value")]
     value = _visible_inline_text(raw_value)
     assert value, f"{entry} has an empty mandatory field {field}"
     return value
@@ -945,7 +945,7 @@ def _require_registered_source_link(entry: str, section: str) -> tuple[str, ...]
         f"{entry} must contain exactly one registered-source field"
     )
     source_block = re.search(
-        r"(?ms)^ {0,3}\*\*Registered sources?:\*\*[ \t]*(.*?)"
+        r"(?ms)^ {0,3}\*\*Registered sources?:\*\*(.*?)"
         r"(?=^ {0,3}\*\*[^*\n]+:\*\*|\Z)",
         structure,
     )
@@ -973,7 +973,9 @@ def _require_community_governance(entry: str, section: str) -> str:
     assert classification, (
         f"{entry} has an invalid community-specific governance classification or rationale"
     )
-    raw_rationale = rendered[classification.start(2):classification.end(2)]
+    raw_rationale = rendered[
+        classification.start("rationale"):classification.end("rationale")
+    ]
     rationale = _visible_inline_text(raw_rationale)
     assert rationale, (
         f"{entry} has an invalid community-specific governance classification or rationale"
