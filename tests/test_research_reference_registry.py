@@ -939,7 +939,7 @@ def _require_mapping_block(entry: str, section: str) -> None:
 
 
 def _require_registered_source_link(entry: str, section: str) -> tuple[str, ...]:
-    structure = _structural_registry_text(section)
+    rendered, structure = _markdown_views(section)
     source_fields = list(REGISTERED_SOURCE_FIELD_PATTERN.finditer(structure))
     assert len(source_fields) == 1, (
         f"{entry} must contain exactly one registered-source field"
@@ -950,7 +950,7 @@ def _require_registered_source_link(entry: str, section: str) -> tuple[str, ...]
         structure,
     )
     assert source_block, f"{entry} has an empty registered-source field"
-    source_value = source_block.group(1)
+    source_value = rendered[source_block.start(1):source_block.end(1)]
     assert _visible_inline_text(source_value), (
         f"{entry} has an empty registered-source field"
     )
@@ -963,10 +963,8 @@ def _require_registered_source_link(entry: str, section: str) -> tuple[str, ...]
         f"{entry} contains duplicate registered-source destinations"
     )
     return destinations
-
-
 def _require_community_governance(entry: str, section: str) -> str:
-    structure = _structural_registry_text(section)
+    rendered, structure = _markdown_views(section)
     fields = list(GOVERNANCE_FIELD_PATTERN.finditer(structure))
     assert len(fields) == 1, (
         f"{entry} must contain exactly one community-specific governance field"
@@ -975,7 +973,8 @@ def _require_community_governance(entry: str, section: str) -> str:
     assert classification, (
         f"{entry} has an invalid community-specific governance classification or rationale"
     )
-    rationale = _visible_inline_text(classification.group(2))
+    raw_rationale = rendered[classification.start(2):classification.end(2)]
+    rationale = _visible_inline_text(raw_rationale)
     assert rationale, (
         f"{entry} has an invalid community-specific governance classification or rationale"
     )
@@ -987,8 +986,6 @@ def _require_community_governance(entry: str, section: str) -> str:
             "from the safe benchmark abstraction field"
         )
     return value
-
-
 def _require_pinned_entry_contract(
     entry: str,
     *,
@@ -1372,3 +1369,25 @@ def test_community_governance_requires_visible_same_line_rationale():
     )
     with pytest.raises(AssertionError, match="invalid community-specific governance"):
         _require_community_governance("### Example", hidden)
+
+def test_inline_code_remains_visible_field_text_but_not_a_link():
+    scalar = (
+        "### Example\n\n"
+        "**Rights and provenance boundary:** `visible value`\n"
+    )
+    assert _scalar_value("### Example", scalar, RIGHTS_FIELD) == "visible value"
+
+    governance = (
+        "### Example\n\n"
+        "**Community-specific governance:** not-required: `visible rationale`\n"
+    )
+    assert _require_community_governance("### Example", governance) == "not-required"
+
+    source = (
+        "### Example\n\n"
+        "**Registered source:** `[source](https://example.com/source)`\n\n"
+        "**Source type:** example\n"
+    )
+    with pytest.raises(AssertionError, match="no usable HTTPS destination"):
+        _require_registered_source_link("### Example", source)
+
