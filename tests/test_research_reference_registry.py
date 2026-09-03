@@ -707,19 +707,40 @@ def _structural_registry_text(text: str) -> str:
     return structural
 
 
+def _render_inline_code_spans(text: str) -> str:
+    """Replace same-line code spans with the text they visibly render."""
+    parts: list[str] = []
+    position = 0
+    while position < len(text):
+        if text[position] != "`":
+            parts.append(text[position])
+            position += 1
+            continue
+        run_end = position
+        while run_end < len(text) and text[run_end] == "`":
+            run_end += 1
+        marker = text[position:run_end]
+        close = text.find(marker, run_end)
+        if close < 0:
+            parts.append(marker)
+            position = run_end
+            continue
+        parts.append(text[run_end:close].strip(" "))
+        position = close + len(marker)
+    return "".join(parts)
+
+
 def _visible_inline_text(text: str) -> str:
     """Reduce Markdown/HTML metadata to its rendered visible text."""
-    structural = _structural_registry_text(text)
-    visible = MARKDOWN_LINK_PATTERN.sub(lambda match: match.group("label"), structural)
+    rendered = _rendered_registry_text(text)
+    visible = _render_inline_code_spans(rendered)
+    visible = MARKDOWN_LINK_PATTERN.sub(lambda match: match.group("label"), visible)
     visible = AUTOLINK_PATTERN.sub(lambda match: match.group("url"), visible)
     visible = HTML_TAG_PATTERN.sub(" ", visible)
     visible = html.unescape(visible)
-    visible = visible.replace("`", "")
     visible = visible.replace("**", "").replace("__", "")
     visible = visible.replace("*", "").replace("_", "")
     return " ".join(visible.split())
-
-
 def _normalise_https_destination(candidate: str) -> str | None:
     value = candidate.strip().strip("<>").rstrip(".,;:!?")
     try:
@@ -821,7 +842,7 @@ def _registered_sections(corpus: str) -> dict[str, str]:
 
 
 def _scalar_value(entry: str, section: str, field: str) -> str:
-    structure = _structural_registry_text(section)
+    rendered, structure = _markdown_views(section)
     prefix = rf"(?m)^ {{0,3}}{re.escape(field)}"
     occurrences = list(re.finditer(prefix, structure))
     assert len(occurrences) == 1, (
@@ -832,11 +853,10 @@ def _scalar_value(entry: str, section: str, field: str) -> str:
         structure,
     )
     assert match, f"{entry} has an empty mandatory field {field}"
-    value = _visible_inline_text(match.group(1))
+    raw_value = rendered[match.start(1):match.end(1)]
+    value = _visible_inline_text(raw_value)
     assert value, f"{entry} has an empty mandatory field {field}"
     return value
-
-
 def _require_scalar_value(entry: str, section: str, field: str) -> None:
     _scalar_value(entry, section, field)
 
@@ -1075,7 +1095,7 @@ def test_registry_fields_ignore_fenced_and_inline_code_metadata():
         "**Registered source:** `[source](https://example.com/source)`\n\n"
         "**Source type:** example\n"
     )
-    with pytest.raises(AssertionError, match="empty registered-source field"):
+    with pytest.raises(AssertionError, match="no usable HTTPS destination"):
         _require_registered_source_link("### Example", inline)
 
 
@@ -1146,7 +1166,7 @@ def test_nested_fence_ends_when_its_container_ends(opener: str, closer: str):
         ),
         (
             "### Example\n\n"
-            "**Rights and provenance boundary:** `hidden value`\n",
+            "**Rights and provenance boundary:** <!-- hidden value -->\n",
             RIGHTS_FIELD,
             "empty mandatory field",
         ),
@@ -1348,7 +1368,7 @@ def test_community_governance_requires_visible_same_line_rationale():
 
     hidden = (
         "### Example\n\n"
-        "**Community-specific governance:** not-required: `hidden`\n"
+        "**Community-specific governance:** not-required: <!-- hidden -->\n"
     )
     with pytest.raises(AssertionError, match="invalid community-specific governance"):
         _require_community_governance("### Example", hidden)
