@@ -19,13 +19,17 @@ jobs:
           ref: research-corpus-governed-expansion
           fetch-depth: 0
 
+      - name: Install repair dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
       - name: Apply direct Python repair
         run: python scripts/_tmp_registry_review_repair.py
 
       - name: Validate focused registry suite
         run: |
           python -m py_compile tests/test_research_reference_registry.py
-          python -m pip install -e ".[dev]"
           pytest -q tests/test_research_reference_registry.py --disable-warnings --maxfail=1
 
       - name: Commit green repair and remove temporary machinery
