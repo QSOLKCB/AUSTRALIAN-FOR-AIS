@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+import hashlib
 import html
 import ipaddress
 from pathlib import Path
@@ -22,6 +23,11 @@ SAFE_FIELD = "**Safe benchmark abstraction:**"
 DOI_FIELD = "**DOI:**"
 SCALAR_FIELDS = (
     SOURCE_TYPE_FIELD,
+    RIGHTS_FIELD,
+    EPISTEMIC_FIELD,
+    SAFE_FIELD,
+)
+BOUNDARY_FIELDS = (
     RIGHTS_FIELD,
     EPISTEMIC_FIELD,
     SAFE_FIELD,
@@ -409,6 +415,8 @@ ENTRY_CONTRACTS: dict[str, dict[str, object]] = {
 }
 EXPECTED_GOVERNED_ENTRIES = tuple(ENTRY_CONTRACTS)
 
+BOUNDARY_VALUE_HASHES = {'### *Black Comedy* (ABC, 2014-2020)': {'**Rights and provenance boundary:**': 'cae812038f7b4f0537bfe57f23795034eb4f37b1d9782ed392b3ebbeb8d86b03', '**Epistemic status:**': '48f19bace9450140e92d8675c5ac5172a8f1dbe11c2dafe152d553a150b4f6fa', '**Safe benchmark abstraction:**': '07c74efc929c4cb35e18926d72400a1a92362916d22d67d62f9ccac353d06ca7'}, '### *Kath & Kim*': {'**Rights and provenance boundary:**': 'c8e27a4fbfaf31fbbed5da7e397c16471a29025ad8eb2d3077d7375b6d6ceb31', '**Epistemic status:**': '51beb5076e007042b599da0328f428a4a99a5d8210a122a09d0d9fc01a09b556', '**Safe benchmark abstraction:**': '20b61a34b8c8de629ee47a7cb5dce1eb091f11397be74ace51199a8b236294a9'}, '### *The Castle* (1997)': {'**Rights and provenance boundary:**': '4aa5a0c3088117db674e03cf30c99584cf0c51a878412914624f5cc47d31af39', '**Epistemic status:**': 'ff5507a687f30834d310b3a5165ef98dd0e3ad9a21daa727c3bb40a8f2d17219', '**Safe benchmark abstraction:**': '51d8b85a50e05c6d280d16fe3faff3821ab67ee5ffdb4b6cf00e9964a433ac8f'}, "### *Shaun Micallef's MAD AS HELL*": {'**Rights and provenance boundary:**': '0ec09ac259c8f7a8e8ff287ace5ea1c9ad5324e67b88ec6617e8fe4c54cd2dd1', '**Epistemic status:**': '7fad0f6acb3abb59aaa5b233d7c464e1ab98b90ee6ad57d73a8933c2adbc92a0', '**Safe benchmark abstraction:**': '5fba923f66548ccb15ee60980f8e6a89930ddac715fb0a1ca396700013ae4c38'}, '### *Acropolis Now*': {'**Rights and provenance boundary:**': '107cf642f59261eb86c658c004bf043ea59fd26b6581f9f55262242fc8fdf6fd', '**Epistemic status:**': '90020a10667cc7135d9a885b087afa64da8085130fc455400dec67f87bb6c016', '**Safe benchmark abstraction:**': '2a2d654c2081079c1cd243a486816a442de0a57af09c3c2652c88827ad447de4'}, '### Chey (2021), *Overcoming awkwardness: some interpretations of Australian humour*': {'**Rights and provenance boundary:**': '5f54028a15a648d3bae4476cd564dcb9e27145abbcf1a8e47ba2939763b4522b', '**Epistemic status:**': '82c6427f74df92609b6ea164beb549ac4201a1ecedcf07dbe1ea60ba5a572378', '**Safe benchmark abstraction:**': '6db0d1e84d1109f8d758f50046da1a20fdc567ddfd7cd23a17dd92ce8995e3a3'}, '### Hurley (2025), *Laughter with purpose: how First Nations Australian comedians use humour to engage, educate, and empower audiences*': {'**Rights and provenance boundary:**': '985fca98f9133d8396e2a5401ff7e6145cd0ea307daecedc9519679e15a04caa', '**Epistemic status:**': 'db57b3ea91c986e4ee3af928c963d3d77fd82b53a142f65a69286d7a1258254b', '**Safe benchmark abstraction:**': '917cfefad7ce793e50d670086bfff2c2c92dc45a7d4ff3514cddc5650de768cb'}, '### Slade, *Australian Sketch Comedy Field Theory* (ASCFT)': {'**Rights and provenance boundary:**': 'e087f4c10be9d21e4e3da819c72cbf1e21e29ca68f9943c036f3d7e98650639e', '**Epistemic status:**': '311b1185d79c54070556e1b09539ea9550fdd944e222d4098a11d32c8131b9c5', '**Safe benchmark abstraction:**': 'ef1386fb555baa20ec8ca365e41ee9560acf7648063128dedc6e217e8b1358cd'}, '### Trans-Tasman constitutional and federation context': {'**Rights and provenance boundary:**': '60583e2cef8c2f217fa3c4a4356dcc34df2552d32385eb60e69a2bcd14b89ab2', '**Epistemic status:**': '70c79aa45e75b53c16a0da6fc1466d6bbfc4df9af2a23df81bb43bf73c798571', '**Safe benchmark abstraction:**': '29382d7b25c2622f9441b64e33c5bdf7f65f6faa78473977ae907025695ec494'}, '### ABC Language, *From rooting to bonking: a history of Australian sex terms*': {'**Rights and provenance boundary:**': '7a66a4a08e09fb0818175f004f18b92be6e4fd71b64de69df6fdf8d100445200', '**Epistemic status:**': '1fd8c8521f13449262852fb6d3c8bd4dd4a2ea15f7b3195f7833e95f558ad8d1', '**Safe benchmark abstraction:**': '3845d5eb52196b674fa8f65178702ca0e5c563b6d20859f0b0dae7e02d9c86dc'}, '### Victoria University, *Australian slang dictionary*': {'**Rights and provenance boundary:**': '15aab72e357737551735419e0819c6785eba25f66e1c591ae45a508b1b16cb57', '**Epistemic status:**': 'd40108d2a8454dda753e5aecbf3d31fdca13a877927d7f27e5c8282cb4e3df43', '**Safe benchmark abstraction:**': 'abed3969653a372ce326c5a4de53b6528e56e5309657767e4ae04bda6f2ad413'}, '### r/australia, *Best Aussie slang* community thread': {'**Rights and provenance boundary:**': '43863b2aba252719bcf561f0425c7936dfbfc15bc3f1cc281884449a530f35bf', '**Epistemic status:**': 'f01416f2e8300843fb7487b81255897b73adc76e8422adcd73884aeabfa6076a', '**Safe benchmark abstraction:**': '35e3e647f8cdfc53cbdf3f0c1b9fd1ee713ba71a96657a93eed3e92765d21d24'}, '### Australian Defence multinational communication reports (2022 and 2026)': {'**Rights and provenance boundary:**': 'bb6985de4a9593ce589e19302cc0fa955e2c74663e7aa94bc5992fe278811909', '**Epistemic status:**': 'b54a4b0ada2b4870928b8aca1bcc0b78679d127ed0b0493c2196264b37b6afcf', '**Safe benchmark abstraction:**': '3cf19474e6d059b8303074d75ff086fb3c6655677c4d7bae7b34609ca1c8dcdf'}, '### WWII American-serviceman Australia language guides': {'**Rights and provenance boundary:**': '017ab0b941600f913cbb323b226546e76073e4a68dfb5a4709ee2b2331df1145', '**Epistemic status:**': '6210806120d333ba302d1ffb694b3b92cb3008ce0880142f5c40ab17b8fa89b1', '**Safe benchmark abstraction:**': 'f6b654c8a020fe3fd37c3f8de2f87c99e0b959e4ae6a8e9544cc79d2480404c2'}}
+
 BATCH_HEADING = "## Registered post-Phase-2 expansion batch"
 BATCH_END = "## Priority A: adversarial pragmatics"
 CONTRACT_HEADING = "## Registration contract for new sources"
@@ -468,6 +476,10 @@ FENCE_PATTERN = re.compile(r"(?P<fence>`{3,}|~{3,})(?P<info>.*)")
 LIST_CONTAINER_PREFIX_PATTERN = re.compile(r"(?:[-+*]|\d{1,9}[.)])[ \t]+")
 HTML_TAG_PATTERN = re.compile(
     r"</?[A-Za-z][^>]*>|<![A-Za-z][^>]*>|<\?[\s\S]*?\?>"
+)
+NON_RENDERING_HTML_PATTERN = re.compile(
+    r"<(script|style|template)\b[^>]*>.*?</\1\s*>",
+    flags=re.IGNORECASE | re.DOTALL,
 )
 
 
@@ -607,6 +619,29 @@ def _is_fence_closer(line: str, state: FenceState) -> bool:
     )
 
 
+def _mask_multiline_code_spans(text: str) -> str:
+    """Mask closed Markdown code spans, including spans crossing line breaks."""
+    characters = list(text)
+    position = 0
+    while position < len(text):
+        if text[position] != "`":
+            position += 1
+            continue
+        run_end = position
+        while run_end < len(text) and text[run_end] == "`":
+            run_end += 1
+        marker = text[position:run_end]
+        close = text.find(marker, run_end)
+        if close < 0:
+            position = run_end
+            continue
+        for index in range(position, close + len(marker)):
+            if characters[index] not in "\r\n":
+                characters[index] = " "
+        position = close + len(marker)
+    return "".join(characters)
+
+
 def _mask_inline_code_spans(text: str) -> str:
     """Mask same-line Markdown code spans while preserving offsets."""
     characters = list(text)
@@ -640,9 +675,10 @@ def _mask_html_comments_on_line(
     raw_line: str,
     *,
     in_comment: bool,
+    scan_line: str | None = None,
 ) -> tuple[str, bool]:
-    """Mask HTML comments using an inline-code-masked scan view."""
-    scan = _mask_inline_code_spans(raw_line)
+    """Mask HTML comments using a code-span-masked scan view."""
+    scan = _mask_inline_code_spans(scan_line if scan_line is not None else raw_line)
     characters = list(raw_line)
     position = 0
 
@@ -678,8 +714,11 @@ def _markdown_views(text: str) -> tuple[str, str]:
     in_comment = False
     fence: FenceState | None = None
     paragraph_open = False
+    raw_lines = text.splitlines(keepends=True)
+    scan_lines = _mask_multiline_code_spans(text).splitlines(keepends=True)
+    assert len(raw_lines) == len(scan_lines)
 
-    for raw_line in text.splitlines(keepends=True):
+    for raw_line, scan_line in zip(raw_lines, scan_lines):
         line = raw_line.rstrip("\r\n")
         if not line.strip():
             paragraph_open = False
@@ -699,6 +738,7 @@ def _markdown_views(text: str) -> tuple[str, str]:
             rendered_line, in_comment = _mask_html_comments_on_line(
                 raw_line,
                 in_comment=True,
+                scan_line=scan_line,
             )
             rendered_parts.append(rendered_line)
             structural_parts.append(_mask_inline_code_spans(rendered_line))
@@ -718,6 +758,7 @@ def _markdown_views(text: str) -> tuple[str, str]:
             rendered_line, in_comment = _mask_html_comments_on_line(
                 raw_line,
                 in_comment=False,
+                scan_line=scan_line,
             )
             rendered_parts.append(rendered_line)
             structural_parts.append(_mask_inline_code_spans(rendered_line))
@@ -735,6 +776,7 @@ def _markdown_views(text: str) -> tuple[str, str]:
         rendered_line, in_comment = _mask_html_comments_on_line(
             raw_line,
             in_comment=False,
+            scan_line=scan_line,
         )
         rendered_parts.append(rendered_line)
         structural_parts.append(_mask_inline_code_spans(rendered_line))
@@ -783,6 +825,7 @@ def _visible_inline_text(text: str) -> str:
     visible = _render_inline_code_spans(rendered)
     visible = MARKDOWN_LINK_PATTERN.sub(lambda match: match.group("label"), visible)
     visible = AUTOLINK_PATTERN.sub(lambda match: match.group("url"), visible)
+    visible = NON_RENDERING_HTML_PATTERN.sub(" ", visible)
     visible = HTML_TAG_PATTERN.sub(" ", visible)
     visible = html.unescape(visible)
     visible = visible.replace("**", "").replace("__", "")
@@ -890,31 +933,84 @@ def _registered_sections(corpus: str) -> dict[str, str]:
     return sections
 
 
+def _strip_composed_container_prefixes(line: str) -> tuple[str, bool]:
+    """Strip recursively composed quote/list prefixes and detect code indentation."""
+    value = line.rstrip("\r\n")
+    position = 0
+
+    for _ in range(32):
+        probe = position
+        columns = 0
+        while probe < len(value) and value[probe] in " \t":
+            if value[probe] == " ":
+                columns += 1
+            else:
+                columns += 4 - (columns % 4)
+            probe += 1
+        if columns >= 4:
+            return value[position:], True
+
+        if probe < len(value) and value[probe] == ">":
+            position = probe + 1
+            if position < len(value) and value[position] in " \t":
+                position += 1
+            continue
+
+        marker = LIST_CONTAINER_PREFIX_PATTERN.match(value, probe)
+        if marker:
+            position = marker.end()
+            continue
+
+        position = probe
+        break
+
+    return value[position:], False
+
+
 def _visible_scalar_values(section: str, field: str) -> list[str]:
-    """Return visible scalar values after normalising Markdown containers."""
+    """Return visible scalar values after normalising composed Markdown containers."""
     rendered, structure = _markdown_views(section)
     rendered_lines = rendered.splitlines()
     structure_lines = structure.splitlines()
     assert len(rendered_lines) == len(structure_lines)
 
     values: list[str] = []
+    paragraph_open = False
     for rendered_line, structure_line in zip(rendered_lines, structure_lines):
-        structure_context = _line_context(structure_line)
-        logical = structure_context.logical.lstrip(" \t")
-        if not logical.startswith(field):
-            continue
-        suffix = logical[len(field):]
-        if suffix and suffix[0] not in " \t":
+        if not structure_line.strip():
+            paragraph_open = False
             continue
 
-        rendered_context = _line_context(rendered_line)
-        rendered_logical = rendered_context.logical.lstrip(" \t")
-        if not rendered_logical.startswith(field):
+        logical, is_code = _strip_composed_container_prefixes(structure_line)
+        continuation = is_code and paragraph_open
+        if is_code and not continuation:
+            paragraph_open = False
             continue
-        raw_value = rendered_logical[len(field):]
-        values.append(_visible_inline_text(raw_value))
+
+        if continuation:
+            logical = structure_line.lstrip(" \t")
+            rendered_logical = rendered_line.lstrip(" \t")
+            next_paragraph_open = True
+        else:
+            logical = logical.lstrip(" \t")
+            rendered_logical, rendered_is_code = _strip_composed_container_prefixes(
+                rendered_line
+            )
+            if rendered_is_code:
+                paragraph_open = False
+                continue
+            rendered_logical = rendered_logical.lstrip(" \t")
+            next_paragraph_open = _line_opens_paragraph(structure_line)
+
+        if logical.startswith(field):
+            suffix = logical[len(field):]
+            if not suffix or suffix[0] in " \t":
+                if rendered_logical.startswith(field):
+                    raw_value = rendered_logical[len(field):]
+                    values.append(_visible_inline_text(raw_value))
+
+        paragraph_open = next_paragraph_open
     return values
-
 
 def _scalar_value(entry: str, section: str, field: str) -> str:
     values = _visible_scalar_values(section, field)
@@ -931,6 +1027,7 @@ def _require_scalar_value(entry: str, section: str, field: str) -> None:
 
 def _has_non_heading_content(block: str) -> bool:
     rendered = _rendered_registry_text(block)
+    rendered = NON_RENDERING_HTML_PATTERN.sub(" ", rendered)
     fence: FenceState | None = None
 
     for raw_line in rendered.splitlines():
@@ -1079,10 +1176,18 @@ def _require_pinned_entry_contract(
     )
 
     for field in SCALAR_FIELDS:
-        expected_clause = str(contract[field])
-        assert expected_clause in scalar_values[field], (
+        expected_clause = _visible_inline_text(str(contract[field]))
+        actual_value = scalar_values[field]
+        assert expected_clause in actual_value, (
             f"{entry} is missing a pinned {field} clause: {expected_clause!r}"
         )
+        if field in BOUNDARY_FIELDS:
+            actual_hash = hashlib.sha256(actual_value.encode("utf-8")).hexdigest()
+            expected_hash = BOUNDARY_VALUE_HASHES[entry][field]
+            assert actual_hash == expected_hash, (
+                f"{entry} changed pinned {field}: expected hash "
+                f"{expected_hash!r}, got {actual_hash!r}"
+            )
 
 
 def _validate_registered_entry(entry: str, section: str) -> None:
@@ -1539,4 +1644,75 @@ def test_published_doi_rejects_rendered_container_duplicates(duplicate: str):
         1,
     )
     with pytest.raises(AssertionError, match="exactly one mandatory field"):
+        _validate_registered_entry(entry, mutated)
+
+
+
+def test_compound_container_duplicate_doi_is_rejected():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = (
+        "### Chey (2021), *Overcoming awkwardness: some interpretations of "
+        "Australian humour*"
+    )
+    section = _registered_sections(corpus)[entry]
+    mutated = section.replace(
+        "**Source type:**",
+        "- > **DOI:** https://doi.org/10.0000/conflict\n\n**Source type:**",
+        1,
+    )
+    with pytest.raises(AssertionError, match="exactly one mandatory field"):
+        _validate_registered_entry(entry, mutated)
+
+
+def test_multiline_code_span_comment_literal_cannot_hide_visible_doi():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = (
+        "### Chey (2021), *Overcoming awkwardness: some interpretations of "
+        "Australian humour*"
+    )
+    section = _registered_sections(corpus)[entry]
+    injected = (
+        "prefix `\n"
+        "<!--\n"
+        "code`\n"
+        "**DOI:** https://doi.org/10.0000/conflict\n"
+        "-->\n\n"
+        "**Source type:**"
+    )
+    mutated = section.replace("**Source type:**", injected, 1)
+    with pytest.raises(AssertionError, match="exactly one mandatory field"):
+        _validate_registered_entry(entry, mutated)
+
+
+@pytest.mark.parametrize(
+    "container",
+    (
+        "<script>placeholder</script>",
+        "<style>.placeholder { display: none; }</style>",
+        "<template>placeholder</template>",
+    ),
+)
+def test_mapping_blocks_reject_nonrendering_html_contents(container: str):
+    section = (
+        "### Example\n\n"
+        f"Research mappings:\n{container}\n\n"
+        f"Relevant project mappings:\n{container}\n\n"
+        "**Safe benchmark abstraction:** example\n"
+    )
+    with pytest.raises(AssertionError, match="empty research mappings"):
+        _require_mapping_block("### Example", section)
+
+
+def test_pinned_boundary_rejects_contradictory_addition():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = "### *Shaun Micallef's MAD AS HELL*"
+    section = _registered_sections(corpus)[entry]
+    mutated = re.sub(
+        rf"(?m)^ {{0,3}}{re.escape(RIGHTS_FIELD)}(?P<value>[^\r\n]*)$",
+        lambda match: match.group(0)
+        + " Contradictory override: programme dialogue may be copied into benchmark data.",
+        section,
+        count=1,
+    )
+    with pytest.raises(AssertionError, match="changed pinned"):
         _validate_registered_entry(entry, mutated)
