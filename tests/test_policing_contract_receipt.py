@@ -47,6 +47,7 @@ CANONICAL_METADATA_FIELDS = (
 POLICING_METHODOLOGY_HEADING = (
     "## Australian and United States Policing-Context Experiment Design"
 )
+POLICING_METHODOLOGY_END_HEADING = "## Scoring Philosophy"
 POLICING_METADATA_INTRO = (
     "Every implemented policing-context item must record, at minimum:"
 )
@@ -81,9 +82,12 @@ def _string_constants_in_tuple(name: str) -> tuple[str, ...]:
 
 
 def _policing_methodology_section(methodology: str) -> str:
-    assert POLICING_METHODOLOGY_HEADING in methodology
-    start = methodology.index(POLICING_METHODOLOGY_HEADING)
-    end = methodology.index("\n---\n", start)
+    policing_namespace = runpy.run_path(str(POLICING_TEST))
+    structure = policing_namespace["_rendered_structure"](methodology)
+    heading_span = policing_namespace["_visible_markdown_heading_span"]
+    start, _ = heading_span(structure, POLICING_METHODOLOGY_HEADING)
+    end, _ = heading_span(structure, POLICING_METHODOLOGY_END_HEADING)
+    assert start < end, "rendered policing methodology boundary is invalid"
     return methodology[start:end]
 
 
@@ -186,5 +190,26 @@ def test_high_stakes_methodology_gate_must_be_browser_visible():
         f"<!-- {CANONICAL_HIGH_STAKES_REVIEW_SENTENCE} -->",
         1,
     )
+    with pytest.raises(AssertionError):
+        _assert_canonical_high_stakes_gate(mutated)
+
+
+def test_policing_methodology_start_must_be_a_visible_heading():
+    methodology = METHODOLOGY.read_text(encoding="utf-8")
+    start = methodology.index(POLICING_METHODOLOGY_HEADING)
+    end = methodology.index(POLICING_METHODOLOGY_END_HEADING, start)
+    body = methodology[start + len(POLICING_METHODOLOGY_HEADING):end]
+    mutated = (
+        methodology[:start]
+        + f'[boundary](# "{POLICING_METHODOLOGY_HEADING}")'
+        + body
+        + "\n\n"
+        + POLICING_METHODOLOGY_HEADING
+        + "\n\n"
+        + methodology[end:]
+    )
+
+    with pytest.raises(AssertionError):
+        _assert_canonical_policing_metadata(mutated)
     with pytest.raises(AssertionError):
         _assert_canonical_high_stakes_gate(mutated)

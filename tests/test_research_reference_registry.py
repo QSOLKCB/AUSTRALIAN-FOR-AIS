@@ -517,9 +517,9 @@ MARKDOWN_LINK_PATTERN = re.compile(
 )
 BARE_HTTPS_LINE_PATTERN = re.compile(
     r"(?m)^[ \t]*(?:(?:[-+*]|\d{1,9}[.)])[ \t]+)?"
-    r"(?P<url>https://\S+)[ \t]*$"
+    r"(?P<url>https?://\S+)[ \t]*$"
 )
-AUTOLINK_PATTERN = re.compile(r"<(?P<url>https://[^>\s]+)>")
+AUTOLINK_PATTERN = re.compile(r"<(?P<url>https?://[^>\s]+)>")
 LINK_REFERENCE_DEFINITION_PATTERN = re.compile(
     r"(?m)^ {0,3}\[(?P<label>[^\]\r\n]+)\]:[ \t]*"
     r"(?:\r?\n {1,3})?"
@@ -577,6 +577,8 @@ HTML_P_IMPLIED_END_START_TAGS = frozenset({
     "section", "table", "ul",
 })
 
+SVG_NON_RENDERING_METADATA_TAGS = frozenset({"title", "desc"})
+
 
 class _VisibleHTMLTextParser(HTMLParser):
     """Collect browser-visible HTML text while respecting hidden containers."""
@@ -622,7 +624,11 @@ class _VisibleHTMLTextParser(HTMLParser):
         tag = tag.lower()
         self._apply_implied_paragraph_end(tag)
         inherited = self.stack[-1][1] if self.stack else False
-        hidden = inherited or self._is_hidden(tag, attrs)
+        svg_metadata_hidden = (
+            tag in SVG_NON_RENDERING_METADATA_TAGS
+            and any(parent_tag == "svg" for parent_tag, _ in self.stack)
+        )
+        hidden = inherited or svg_metadata_hidden or self._is_hidden(tag, attrs)
         if tag == "a" and not hidden:
             for key, value in attrs:
                 if key.lower() == "href" and value:
@@ -716,7 +722,11 @@ class _HiddenHTMLRegionParser(HTMLParser):
         start = self._offset()
         self._apply_implied_paragraph_end(tag, start)
         parent_hidden = self.stack[-1][1] if self.stack else False
-        own_hidden = _VisibleHTMLTextParser._is_hidden(tag, attrs)
+        svg_metadata_hidden = (
+            tag in SVG_NON_RENDERING_METADATA_TAGS
+            and any(parent_tag == "svg" for parent_tag, _, _ in self.stack)
+        )
+        own_hidden = svg_metadata_hidden or _VisibleHTMLTextParser._is_hidden(tag, attrs)
         hidden = parent_hidden or own_hidden
 
         if tag in HTML_VOID_TAGS:
@@ -1527,6 +1537,14 @@ def _mask_inline_markdown_links(
     return "".join(characters)
 
 
+def _require_rendered_https_destination(candidate: str) -> str:
+    destination = _normalise_https_destination(candidate)
+    assert destination is not None, (
+        f"registered-source rendered link has no usable HTTPS destination: {candidate!r}"
+    )
+    return destination
+
+
 def _usable_https_destinations(
     text: str,
     *,
@@ -1541,17 +1559,15 @@ def _usable_https_destinations(
     destinations: list[str] = []
 
     for candidate in _visible_html_links(structure):
-        destination = _normalise_https_destination(candidate)
-        if destination is not None:
-            destinations.append(destination)
+        destinations.append(_require_rendered_https_destination(candidate))
 
     inline_links = _markdown_inline_links(structure)
     for link in inline_links:
         if link.image:
             continue
-        destination = _normalise_https_destination(link.destination.strip("<>"))
-        if destination is not None:
-            destinations.append(destination)
+        destinations.append(
+            _require_rendered_https_destination(link.destination.strip("<>"))
+        )
     structure_without_inline_links = _mask_inline_markdown_links(
         structure,
         inline_links,
@@ -1559,45 +1575,40 @@ def _usable_https_destinations(
 
     definitions: dict[str, str] = {}
     for match in LINK_REFERENCE_DEFINITION_PATTERN.finditer(reference_structure):
-        destination = _normalise_https_destination(
-            match.group("destination").strip("<>")
-        )
-        if destination is None:
-            continue
         definitions.setdefault(
             _normalise_reference_label(match.group("label")),
-            destination,
+            match.group("destination").strip("<>"),
         )
 
     for match in REFERENCE_LINK_PATTERN.finditer(structure_without_inline_links):
         if match.group("image"):
             continue
         reference = match.group("reference") or match.group("label")
-        destination = definitions.get(_normalise_reference_label(reference))
-        if destination is not None:
-            destinations.append(destination)
+        candidate = definitions.get(_normalise_reference_label(reference))
+        if candidate is not None:
+            destinations.append(_require_rendered_https_destination(candidate))
 
     without_reference_links = REFERENCE_LINK_PATTERN.sub("", structure_without_inline_links)
     for match in SHORTCUT_REFERENCE_LINK_PATTERN.finditer(without_reference_links):
         if match.group("image"):
             continue
-        destination = definitions.get(
+        candidate = definitions.get(
             _normalise_reference_label(match.group("label"))
         )
-        if destination is not None:
-            destinations.append(destination)
+        if candidate is not None:
+            destinations.append(_require_rendered_https_destination(candidate))
 
     without_links = without_reference_links
     for match in AUTOLINK_PATTERN.finditer(without_links):
-        destination = _normalise_https_destination(match.group("url"))
-        if destination is not None:
-            destinations.append(destination)
+        destinations.append(
+            _require_rendered_https_destination(match.group("url"))
+        )
 
     without_links = AUTOLINK_PATTERN.sub("", without_links)
     for match in BARE_HTTPS_LINE_PATTERN.finditer(without_links):
-        destination = _normalise_https_destination(match.group("url"))
-        if destination is not None:
-            destinations.append(destination)
+        destinations.append(
+            _require_rendered_https_destination(match.group("url"))
+        )
 
     return tuple(destinations)
 
@@ -3304,4 +3315,38 @@ def test_arbitrary_html_wrapper_metadata_label_is_counted():
         1,
     )
     with pytest.raises(AssertionError, match="exactly one mandatory field"):
+        _validate_registry_corpus(mutated)
+
+
+def test_svg_title_cannot_hide_pinned_rights_boundary():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    heading = "### *Black Comedy* (ABC, 2014-2020)"
+    section = _registered_sections(corpus)[heading]
+    rights_value = _scalar_value(heading, section, RIGHTS_FIELD)
+    assert rights_value in section
+    mutated_section = section.replace(
+        rights_value,
+        f"<svg><title>{rights_value}</title></svg>",
+        1,
+    )
+    mutated = corpus.replace(section, mutated_section, 1)
+    with pytest.raises(AssertionError):
+        _validate_registry_corpus(mutated)
+
+
+@pytest.mark.parametrize(
+    "alternate",
+    (
+        "[alternate](http://www.wikipedia.org/)",
+        "<http://www.wikipedia.org/>",
+        '<a href="http://www.wikipedia.org/">alternate</a>',
+        "http://www.wikipedia.org/",
+    ),
+)
+def test_registered_source_rejects_rendered_non_https_links(alternate: str):
+    corpus = CORPUS.read_text(encoding="utf-8")
+    source = "**Registered source:** https://iview.abc.net.au/show/black-comedy"
+    assert source in corpus
+    mutated = corpus.replace(source, source + "\n\n" + alternate, 1)
+    with pytest.raises(AssertionError, match="usable HTTPS"):
         _validate_registry_corpus(mutated)

@@ -85,6 +85,7 @@ NON_RENDERING_HTML_PATTERN = re.compile(
     r"<(script|style|template)\b[^>]*>.*?</\1\s*>",
     flags=re.IGNORECASE | re.DOTALL,
 )
+SVG_NON_RENDERING_METADATA_TAGS = frozenset({"title", "desc"})
 
 
 class _VisibleHTMLTextParser(HTMLParser):
@@ -115,8 +116,15 @@ class _VisibleHTMLTextParser(HTMLParser):
         return "display:none" in style or "visibility:hidden" in style
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
         inherited = self.stack[-1][1] if self.stack else False
-        self.stack.append((tag.lower(), inherited or self._is_hidden(tag, attrs)))
+        svg_metadata_hidden = (
+            tag in SVG_NON_RENDERING_METADATA_TAGS
+            and any(parent_tag == "svg" for parent_tag, _ in self.stack)
+        )
+        self.stack.append(
+            (tag, inherited or svg_metadata_hidden or self._is_hidden(tag, attrs))
+        )
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
@@ -179,7 +187,11 @@ class _HiddenHTMLRegionParser(HTMLParser):
     ) -> None:
         tag = tag.lower()
         parent_hidden = self.stack[-1][1] if self.stack else False
-        own_hidden = _VisibleHTMLTextParser._is_hidden(tag, attrs)
+        svg_metadata_hidden = (
+            tag in SVG_NON_RENDERING_METADATA_TAGS
+            and any(parent_tag == "svg" for parent_tag, _, _ in self.stack)
+        )
+        own_hidden = svg_metadata_hidden or _VisibleHTMLTextParser._is_hidden(tag, attrs)
         hidden = parent_hidden or own_hidden
         start = self._offset()
 
@@ -931,6 +943,18 @@ def test_policing_source_gate_cannot_hide_in_multiline_link_title():
     mutated = roadmap.replace(
         clause,
         f'[placeholder](#\n "{clause}")',
+        1,
+    )
+    with pytest.raises(AssertionError, match="missing policing-workstream safeguard"):
+        _validate_policing_workstream(mutated)
+
+
+def test_policing_svg_title_does_not_supply_visible_source_gate():
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    clause = "source-gated research proposal"
+    mutated = roadmap.replace(
+        clause,
+        f"<svg><title>{clause}</title></svg>",
         1,
     )
     with pytest.raises(AssertionError, match="missing policing-workstream safeguard"):

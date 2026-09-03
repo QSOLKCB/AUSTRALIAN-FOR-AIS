@@ -13,6 +13,8 @@ METHODOLOGY = ROOT / "docs" / "METHODOLOGY.md"
 POLICING_TEST = Path(__file__).parent / "test_policing_context_roadmap.py"
 WORKSTREAM_H_HEADING = "### H. Slang density, register compression, and operational intelligibility"
 WORKSTREAM_I_HEADING = "### I. Australian and United States policing-context transfer"
+TRANS_TASMAN_METHODOLOGY_HEADING = "## Trans-Tasman and Slang/Operational Experiment Design"
+POLICING_METHODOLOGY_HEADING = "## Australian and United States Policing-Context Experiment Design"
 
 MARKDOWN_IMAGE_PATTERN = re.compile(
     r"!\[[^\]\r\n]*\]\([^\r\n)]*(?:\)[^\r\n)]*)?\)"
@@ -29,6 +31,7 @@ HTML_VOID_TAGS = {
     "area", "base", "br", "col", "embed", "hr", "img", "input",
     "link", "meta", "param", "source", "track", "wbr",
 }
+SVG_NON_RENDERING_METADATA_TAGS = frozenset({"title", "desc"})
 
 
 class _VisibleHTMLTextParser(HTMLParser):
@@ -59,8 +62,15 @@ class _VisibleHTMLTextParser(HTMLParser):
         return "display:none" in style or "visibility:hidden" in style
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
         inherited = self.stack[-1][1] if self.stack else False
-        self.stack.append((tag.lower(), inherited or self._is_hidden(tag, attrs)))
+        svg_metadata_hidden = (
+            tag in SVG_NON_RENDERING_METADATA_TAGS
+            and any(parent_tag == "svg" for parent_tag, _ in self.stack)
+        )
+        self.stack.append(
+            (tag, inherited or svg_metadata_hidden or self._is_hidden(tag, attrs))
+        )
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
@@ -282,8 +292,9 @@ def _workstream_h(text: str) -> str:
 
 
 def _trans_tasman_methodology(text: str) -> str:
-    start = text.index("## Trans-Tasman and Slang/Operational Experiment Design")
-    end = text.index("## Australian and United States Policing-Context Experiment Design", start)
+    start, _ = _rendered_heading_span(text, TRANS_TASMAN_METHODOLOGY_HEADING)
+    end, _ = _rendered_heading_span(text, POLICING_METHODOLOGY_HEADING)
+    assert start < end, "rendered Trans-Tasman methodology boundary is invalid"
     return _visible_markdown_text(text[start:end])
 
 
@@ -366,3 +377,42 @@ def test_workstream_h_start_must_be_a_visible_heading():
     section = _workstream_h(mutated)
     assert "nationality and first-language identity must not define the comparison cohorts" not in section
     assert "orientation/community-attestation sources with explicit non-representative status" not in section
+
+
+def test_trans_tasman_methodology_start_must_be_a_visible_heading():
+    methodology = METHODOLOGY.read_text(encoding="utf-8")
+    start = methodology.index(TRANS_TASMAN_METHODOLOGY_HEADING)
+    end = methodology.index(POLICING_METHODOLOGY_HEADING, start)
+    body = methodology[start + len(TRANS_TASMAN_METHODOLOGY_HEADING):end]
+    mutated = (
+        methodology[:start]
+        + f'[boundary](# "{TRANS_TASMAN_METHODOLOGY_HEADING}")'
+        + body
+        + "\n\n"
+        + TRANS_TASMAN_METHODOLOGY_HEADING
+        + "\n\n"
+        + methodology[end:]
+    )
+    section = _trans_tasman_methodology(mutated)
+    assert "neither nationality nor first-language category acts as a proxy for comprehension" not in section
+    assert "exact group-stereotyping wording must not be reproduced" not in section
+
+
+def test_workstream_h_svg_title_does_not_supply_visible_safeguards():
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    listener_clause = "nationality and first-language identity must not define the comparison cohorts"
+    mutated_roadmap = roadmap.replace(
+        listener_clause,
+        f"<svg><title>{listener_clause}</title></svg>",
+        1,
+    )
+    assert listener_clause not in _workstream_h(mutated_roadmap)
+
+    methodology = METHODOLOGY.read_text(encoding="utf-8")
+    stereotype_clause = "exact group-stereotyping wording must not be reproduced"
+    mutated_methodology = methodology.replace(
+        stereotype_clause,
+        f"<svg><title>{stereotype_clause}</title></svg>",
+        1,
+    )
+    assert stereotype_clause not in _trans_tasman_methodology(mutated_methodology)
