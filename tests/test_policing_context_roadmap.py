@@ -80,6 +80,17 @@ MARKDOWN_LINK_PATTERN = re.compile(
     r"[ \t]*\)"
 )
 AUTOLINK_PATTERN = re.compile(r"<(?P<url>https?://[^>\s]+)>")
+LINK_REFERENCE_DEFINITION_PATTERN = re.compile(
+    r"(?m)^ {0,3}\[(?P<label>[^\]\r\n]+)\]:[ \t]*"
+    r"(?:\r?\n {1,3})?"
+    r"(?P<destination><[^>\r\n]+>|[^\s\r\n]+)"
+    r"(?:[ \t]+(?:\"[^\"\r\n]*\"|'[^'\r\n]*'|\([^)]*\)))?[ \t]*$"
+)
+LINK_REFERENCE_DEFINITION_SINGLE_LINE_PATTERN = re.compile(
+    r"\[(?P<label>[^\]\r\n]+)\]:[ \t]*"
+    r"(?P<destination><[^>\r\n]+>|[^\s\r\n]+)"
+    r"(?:[ \t]+(?:\"[^\"\r\n]*\"|'[^'\r\n]*'|\([^)]*\)))?[ \t]*$"
+)
 HTML_TAG_PATTERN = re.compile(r"</?[A-Za-z][^>]*>|<![A-Za-z][^>]*>|<\?[\s\S]*?\?>")
 NON_RENDERING_HTML_PATTERN = re.compile(
     r"<(script|style|template)\b[^>]*>.*?</\1\s*>",
@@ -299,6 +310,31 @@ def _strip_container_prefixes(line: str) -> tuple[str, int]:
     return value[probe:], columns
 
 
+def _mask_link_reference_definitions_for_visibility(markdown: str) -> str:
+    """Mask CommonMark reference definitions, including container-scoped forms."""
+    characters = list(markdown)
+    for match in LINK_REFERENCE_DEFINITION_PATTERN.finditer(markdown):
+        for index in range(match.start(), match.end()):
+            if characters[index] not in "\r\n":
+                characters[index] = " "
+
+    partially_masked = "".join(characters)
+    offset = 0
+    for raw_line in partially_masked.splitlines(keepends=True):
+        logical, indentation = _strip_container_prefixes(raw_line)
+        if (
+            indentation < 4
+            and LINK_REFERENCE_DEFINITION_SINGLE_LINE_PATTERN.fullmatch(
+                logical.rstrip("\r\n \t")
+            )
+        ):
+            for index in range(offset, offset + len(raw_line)):
+                if characters[index] not in "\r\n":
+                    characters[index] = " "
+        offset += len(raw_line)
+    return "".join(characters)
+
+
 def _display_columns(value: str) -> int:
     columns = 0
     for character in value:
@@ -446,6 +482,8 @@ def _line_opens_paragraph(line: str) -> bool:
     if re.fullmatch(r"#{1,6}(?:[ \t]+.*)?", stripped):
         return False
     if THEMATIC_BREAK_PATTERN.fullmatch(stripped):
+        return False
+    if LINK_REFERENCE_DEFINITION_SINGLE_LINE_PATTERN.fullmatch(stripped):
         return False
     return True
 
@@ -698,7 +736,8 @@ def _replace_inline_markdown_links_for_visibility(text: str) -> str:
 
 def _visible_text(markdown: str) -> str:
     """Return browser-visible text without hidden HTML or link metadata."""
-    visible = _replace_inline_markdown_links_for_visibility(markdown)
+    visible = _mask_link_reference_definitions_for_visibility(markdown)
+    visible = _replace_inline_markdown_links_for_visibility(visible)
     visible = AUTOLINK_PATTERN.sub(lambda match: match.group("url"), visible)
     visible = _visible_html_text(visible)
     visible = html.unescape(visible)
@@ -959,3 +998,13 @@ def test_policing_svg_title_does_not_supply_visible_source_gate():
     )
     with pytest.raises(AssertionError, match="missing policing-workstream safeguard"):
         _validate_policing_workstream(mutated)
+
+
+def test_policing_visibility_ignores_reference_definition_titles():
+    clause = REQUIRED_CLAUSES[-1]
+    for hidden in (
+        f'[hidden]: # "{clause}"',
+        f'> [hidden]: # "{clause}"',
+        f'- > [hidden]: # "{clause}"',
+    ):
+        assert clause not in _visible_text(hidden)

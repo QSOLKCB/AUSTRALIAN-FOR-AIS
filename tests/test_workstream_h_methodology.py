@@ -267,14 +267,9 @@ def _replace_inline_markdown_links_for_visibility(text: str) -> str:
 
 
 def _visible_markdown_text(markdown: str) -> str:
-    """Return browser-visible safeguard text, excluding Markdown metadata."""
-    visible = _replace_inline_markdown_links_for_visibility(markdown)
-    visible = AUTOLINK_PATTERN.sub(lambda match: match.group("url"), visible)
-    visible = _visible_html_text(visible)
-    visible = html.unescape(visible)
-    visible = visible.replace("**", "").replace("__", "")
-    visible = visible.replace("*", "").replace("_", "")
-    return " ".join(visible.split())
+    """Return browser-visible safeguard text using the canonical policing reducer."""
+    namespace = runpy.run_path(str(POLICING_TEST))
+    return namespace["_visible_text"](markdown)
 
 
 def _rendered_heading_span(text: str, heading: str) -> tuple[int, int]:
@@ -416,3 +411,13 @@ def test_workstream_h_svg_title_does_not_supply_visible_safeguards():
         1,
     )
     assert stereotype_clause not in _trans_tasman_methodology(mutated_methodology)
+
+
+def test_workstream_h_visibility_ignores_reference_definition_titles():
+    clause = "nationality and first-language identity must not define the comparison cohorts"
+    for hidden in (
+        f'[hidden]: # "{clause}"',
+        f'> [hidden]: # "{clause}"',
+        f'- > [hidden]: # "{clause}"',
+    ):
+        assert clause not in _visible_markdown_text(hidden)

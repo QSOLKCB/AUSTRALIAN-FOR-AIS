@@ -477,6 +477,21 @@ GOVERNANCE_RATIONALE_HASHES = {'### *Acropolis Now*': '00d3590178d2cc6d9a4e4285d
  '### WWII American-serviceman Australia language guides': 'bacdff9bf663ddc2346b92570015b4d4e5aef4edc6024e6e60139cb4a902bec7',
  '### r/australia, *Best Aussie slang* community thread': 'c66e326bbe7271137fd04b1142fb324e24ce20da4bfc7d9add801e0dae5d5151'}
 
+ENTRY_RENDERED_VALUE_HASHES: dict[str, str] = {'### *Acropolis Now*': '15e573a6713440ff8baa46713969fc9a01bb5acd6cb8b6dd4edcabe7b092a810',
+ '### *Black Comedy* (ABC, 2014-2020)': '0dac709f6d95dc21dbeff1755b26a67615edcf3d39bfd42b4535a95015d9347c',
+ '### *Kath & Kim*': 'cfe92c95e7baf326c8dded4afec4dfb166ba2ce4cde4bd7ead0be283928a581e',
+ "### *Shaun Micallef's MAD AS HELL*": '2f3f0e7f6672efebd72051c4ce9efba93b269f3dc24e44e0a07aa696664abe77',
+ '### *The Castle* (1997)': 'ddc6d44c8869b0b7ea67f0c54c080fb3607361375a4dcde96d967e644fe39520',
+ '### ABC Language, *From rooting to bonking: a history of Australian sex terms*': 'f2cc04fd71cbed417964df8cea1e381726faa093f06ae1fbf1e8c88dca815ed8',
+ '### Australian Defence multinational communication reports (2022 and 2026)': 'a80717006098087ad1034e7e0b3d32ee61db188d869a48569c8de53b4c332477',
+ '### Chey (2021), *Overcoming awkwardness: some interpretations of Australian humour*': 'a036351dedea6da13911d5290afde4868a1be4045fe5c9e434dd44e9eb00410b',
+ '### Hurley (2025), *Laughter with purpose: how First Nations Australian comedians use humour to engage, educate, and empower audiences*': 'ea79189c756a06dfac40c64638da834bfa366c7e4779a4de17c46d9dbf3b3c4b',
+ '### Slade, *Australian Sketch Comedy Field Theory* (ASCFT)': 'd42810077e51cfaa5a9ac6949d2dacc99a440fb59ab712606a23bf936ebc524f',
+ '### Trans-Tasman constitutional and federation context': '37411b2bcf88be37cb86851a609203825a32bf3b98cbaaeb61d7e204f119ae7e',
+ '### Victoria University, *Australian slang dictionary*': '1a96e46e9d7e3ef4e89c33471fbd2a29a43d270d5fd085fe4e523ca14f5b968c',
+ '### WWII American-serviceman Australia language guides': 'c66fad136a00e29f20e8c292be17dce027054682c2372bad3e73da9aa97da94c',
+ '### r/australia, *Best Aussie slang* community thread': '042e0f1c2f3829320af417966684ea731050a1afac2cc1b24bcd61b4c83583bd'}
+
 STATUS_HEADING = "## Status"
 SOURCE_USE_HEADING = "## Source-use rules"
 REDISTRIBUTION_INVARIANT = "RESEARCH REFERENCE != REDISTRIBUTABLE DATA"
@@ -526,6 +541,12 @@ LINK_REFERENCE_DEFINITION_PATTERN = re.compile(
     r"(?P<destination><[^>\r\n]+>|[^\s\r\n]+)"
     r"(?:[ \t]+(?:\"[^\"\r\n]*\"|'[^'\r\n]*'|\([^)]*\)))?[ \t]*$"
 )
+LINK_REFERENCE_DEFINITION_SINGLE_LINE_PATTERN = re.compile(
+    r"\[(?P<label>[^\]\r\n]+)\]:[ \t]*"
+    r"(?P<destination><[^>\r\n]+>|[^\s\r\n]+)"
+    r"(?:[ \t]+(?:\"[^\"\r\n]*\"|'[^'\r\n]*'|\([^)]*\)))?[ \t]*$"
+)
+
 REFERENCE_LINK_PATTERN = re.compile(
     r"(?P<image>!?)\[(?P<label>[^\]\r\n]+)\]"
     r"\[(?P<reference>[^\]\r\n]*)\]"
@@ -578,6 +599,7 @@ HTML_P_IMPLIED_END_START_TAGS = frozenset({
 })
 
 SVG_NON_RENDERING_METADATA_TAGS = frozenset({"title", "desc"})
+RAW_HTML_BLOCK_TAGS = frozenset({"pre", "script", "style", "textarea"})
 
 
 class _VisibleHTMLTextParser(HTMLParser):
@@ -815,6 +837,12 @@ class FenceState:
     containers: tuple[tuple[str, int], ...]
 
 
+@dataclass(frozen=True)
+class RawHTMLBlockState:
+    tag: str
+    containers: tuple[tuple[str, int], ...]
+
+
 def _mask_non_newline(text: str) -> str:
     """Replace visible characters with spaces while preserving line endings."""
     return "".join(character if character in "\r\n" else " " for character in text)
@@ -1014,6 +1042,53 @@ def _is_fence_closer(line: str, state: FenceState) -> bool:
     )
 
 
+def _raw_html_block_opener(line: str) -> RawHTMLBlockState | None:
+    """Return a CommonMark type-1 raw HTML block opener."""
+    logical, indented_code, containers = _parse_composed_container_prefixes(line)
+    if indented_code:
+        return None
+    candidate = logical.lstrip(" \t")
+    match = re.match(
+        r"<(?P<tag>pre|script|style|textarea)(?:[ \t]|>|$)",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    if match is None:
+        return None
+    return RawHTMLBlockState(
+        tag=match.group("tag").lower(),
+        containers=containers,
+    )
+
+
+def _raw_html_block_container_continues(
+    line: str,
+    state: RawHTMLBlockState,
+) -> bool:
+    if not line.strip() or not state.containers:
+        return True
+    _, ok = _strip_expected_fence_containers(line, state.containers)
+    return ok
+
+
+def _raw_html_block_logical_line(line: str, state: RawHTMLBlockState) -> str:
+    if not state.containers:
+        return line.rstrip("\r\n")
+    logical, ok = _strip_expected_fence_containers(line, state.containers)
+    return logical if ok else line.rstrip("\r\n")
+
+
+def _raw_html_block_closes(line: str, state: RawHTMLBlockState) -> bool:
+    logical = _raw_html_block_logical_line(line, state)
+    return bool(
+        re.search(
+            rf"</{re.escape(state.tag)}[ \t]*>",
+            logical,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
 def _matching_backtick_run_start(
     text: str,
     start: int,
@@ -1129,6 +1204,7 @@ def _markdown_views(text: str) -> tuple[str, str]:
     structural_parts: list[str] = []
     in_comment = False
     fence: FenceState | None = None
+    raw_html_block: RawHTMLBlockState | None = None
     paragraph_open = False
     active_list_indent: int | None = None
     raw_lines = text.splitlines(keepends=True)
@@ -1156,6 +1232,11 @@ def _markdown_views(text: str) -> tuple[str, str]:
 
         while fence is not None and not _fence_container_continues(line, fence):
             fence = None
+        while (
+            raw_html_block is not None
+            and not _raw_html_block_container_continues(line, raw_html_block)
+        ):
+            raw_html_block = None
 
         if fence is not None:
             rendered_parts.append(raw_line)
@@ -1163,6 +1244,14 @@ def _markdown_views(text: str) -> tuple[str, str]:
             paragraph_open = False
             if _is_fence_closer(line, fence):
                 fence = None
+            continue
+
+        if raw_html_block is not None:
+            rendered_parts.append(raw_line)
+            structural_parts.append(_mask_non_newline(raw_line))
+            paragraph_open = False
+            if _raw_html_block_closes(line, raw_html_block):
+                raw_html_block = None
             continue
 
         if in_comment:
@@ -1199,6 +1288,16 @@ def _markdown_views(text: str) -> tuple[str, str]:
             rendered_parts.append(rendered_line)
             structural_parts.append(_mask_inline_code_spans(rendered_line))
             paragraph_open = True
+            continue
+
+        raw_html_opener = _raw_html_block_opener(line)
+        if raw_html_opener is not None:
+            raw_html_block = raw_html_opener
+            rendered_parts.append(raw_line)
+            structural_parts.append(_mask_non_newline(raw_line))
+            paragraph_open = False
+            if _raw_html_block_closes(line, raw_html_block):
+                raw_html_block = None
             continue
 
         opener = _fence_opener(line)
@@ -1259,7 +1358,8 @@ def _render_inline_code_spans(text: str) -> str:
 def _visible_inline_text(text: str) -> str:
     """Reduce Markdown/HTML metadata to browser-visible text only."""
     rendered = _rendered_registry_text(text)
-    visible = _render_inline_code_spans(rendered)
+    visible = _mask_link_reference_definitions_for_visibility(rendered)
+    visible = _render_inline_code_spans(visible)
     visible = _replace_inline_markdown_links_with_labels(visible)
     visible = AUTOLINK_PATTERN.sub(lambda match: match.group("url"), visible)
     visible = _visible_html_text(visible)
@@ -1573,12 +1673,7 @@ def _usable_https_destinations(
         inline_links,
     )
 
-    definitions: dict[str, str] = {}
-    for match in LINK_REFERENCE_DEFINITION_PATTERN.finditer(reference_structure):
-        definitions.setdefault(
-            _normalise_reference_label(match.group("label")),
-            match.group("destination").strip("<>"),
-        )
+    definitions = _reference_definitions(reference_structure)
 
     for match in REFERENCE_LINK_PATTERN.finditer(structure_without_inline_links):
         if match.group("image"):
@@ -1688,6 +1783,63 @@ def _strip_composed_container_prefixes(line: str) -> tuple[str, bool]:
     """Strip recursively composed quote/list prefixes and detect code indentation."""
     logical, is_code, _ = _parse_composed_container_prefixes(line)
     return logical, is_code
+
+
+def _reference_definitions(reference_structure: str) -> dict[str, str]:
+    """Collect document-wide reference definitions, including Markdown containers."""
+    candidates: list[tuple[int, str, str]] = []
+    for match in LINK_REFERENCE_DEFINITION_PATTERN.finditer(reference_structure):
+        candidates.append(
+            (
+                match.start(),
+                match.group("label"),
+                match.group("destination").strip("<>"),
+            )
+        )
+
+    offset = 0
+    for raw_line in reference_structure.splitlines(keepends=True):
+        line = raw_line.rstrip("\r\n")
+        logical, is_code, containers = _parse_composed_container_prefixes(line)
+        if containers and not is_code:
+            match = LINK_REFERENCE_DEFINITION_SINGLE_LINE_PATTERN.fullmatch(
+                logical.rstrip(" \t")
+            )
+            if match is not None:
+                candidates.append(
+                    (
+                        offset,
+                        match.group("label"),
+                        match.group("destination").strip("<>"),
+                    )
+                )
+        offset += len(raw_line)
+
+    definitions: dict[str, str] = {}
+    for _, label, destination in sorted(candidates, key=lambda item: item[0]):
+        definitions.setdefault(_normalise_reference_label(label), destination)
+    return definitions
+
+
+def _mask_link_reference_definitions_for_visibility(text: str) -> str:
+    """Mask non-rendering reference-definition blocks while preserving offsets."""
+    characters = list(text)
+    for match in LINK_REFERENCE_DEFINITION_PATTERN.finditer(text):
+        _mask_segment(characters, match.start(), match.end())
+
+    partially_masked = "".join(characters)
+    offset = 0
+    for raw_line in partially_masked.splitlines(keepends=True):
+        line = raw_line.rstrip("\r\n")
+        logical, is_code, containers = _parse_composed_container_prefixes(line)
+        if containers and not is_code:
+            match = LINK_REFERENCE_DEFINITION_SINGLE_LINE_PATTERN.fullmatch(
+                logical.rstrip(" \t")
+            )
+            if match is not None:
+                _mask_segment(characters, offset, offset + len(raw_line))
+        offset += len(raw_line)
+    return "".join(characters)
 
 
 def _leading_wrapped_html_metadata_marker(text: str) -> tuple[str, int] | None:
@@ -2106,6 +2258,22 @@ def _require_pinned_entry_contract(
     )
 
 
+def _normalise_complete_entry_integrity(section: str) -> str:
+    """Return the complete render-aware governed-entry body for integrity pinning."""
+    return _visible_inline_text(section)
+
+
+def _require_complete_entry_integrity(entry: str, section: str) -> None:
+    expected_hash = ENTRY_RENDERED_VALUE_HASHES.get(entry)
+    assert expected_hash is not None, f"{entry} has no complete rendered-entry integrity fixture"
+    value = _normalise_complete_entry_integrity(section)
+    actual_hash = hashlib.sha256(value.encode("utf-8")).hexdigest()
+    assert actual_hash == expected_hash, (
+        f"{entry} complete rendered governed entry changed: expected hash "
+        f"{expected_hash!r}, got {actual_hash!r}"
+    )
+
+
 def _validate_registered_entry(
     entry: str,
     section: str,
@@ -2144,6 +2312,7 @@ def _validate_registered_entry(
         research_mapping=research_mapping,
         project_mapping=project_mapping,
     )
+    _require_complete_entry_integrity(entry, section)
 
 
 def _validate_registry_corpus(corpus: str) -> None:
@@ -3349,4 +3518,49 @@ def test_registered_source_rejects_rendered_non_https_links(alternate: str):
     assert source in corpus
     mutated = corpus.replace(source, source + "\n\n" + alternate, 1)
     with pytest.raises(AssertionError, match="usable HTTPS"):
+        _validate_registry_corpus(mutated)
+
+
+def test_registered_source_resolves_reference_definition_inside_container():
+    source_value = "[alternate][container-provenance]"
+    for definition in (
+        "> [container-provenance]: https://www.wikipedia.org/",
+        "- > [container-provenance]: https://www.wikipedia.org/",
+    ):
+        scope = f"{source_value}\n{definition}\n"
+        assert _usable_https_destinations(
+            source_value,
+            reference_scope=scope,
+        ) == ("https://www.wikipedia.org/",)
+
+
+def test_complete_rendered_governed_entry_is_pinned():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = EXPECTED_GOVERNED_ENTRIES[0]
+    section = _registered_sections(corpus)[entry]
+    mutated = (
+        section.rstrip()
+        + "\n\nThis work proves universal facts about all Aboriginal speakers.\n"
+        + "[unregistered source](https://www.wikipedia.org/)\n"
+    )
+    with pytest.raises(AssertionError, match="complete rendered governed entry changed"):
+        _validate_registered_entry(
+            entry,
+            mutated,
+            reference_scope=corpus,
+        )
+
+
+def test_raw_html_block_cannot_supply_governed_batch_structure():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    start = corpus.index(BATCH_HEADING)
+    end = corpus.index(BATCH_END, start)
+    mutated = (
+        corpus[:start]
+        + "<textarea>\n"
+        + corpus[start:end]
+        + "</textarea>\n"
+        + corpus[end:]
+    )
+    with pytest.raises(AssertionError):
         _validate_registry_corpus(mutated)
