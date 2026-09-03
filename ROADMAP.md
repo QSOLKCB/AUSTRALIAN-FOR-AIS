@@ -306,7 +306,7 @@ These are candidate research invariants, not legal conclusions or evaluations of
 
 A focused follow-up PR should:
 - register official and current sources for each Australian and United States jurisdictional claim before adopting it as benchmark context;
-- add a canonical methodology section defining jurisdiction/date metadata, encounter categories, matched controls, source hierarchy, and legal-review requirements;
+- maintain and extend the canonical policing-context methodology section in `docs/METHODOLOGY.md` as jurisdictional sources and experiment families are adopted;
 - construct independently authored context swaps rather than copying body-camera audio, police interviews, television dialogue, viral clips, or identifiable real-person encounters;
 - separate linguistic-pragmatic evaluation from legal correctness, policy evaluation, use-of-force analysis, and moral comparison, reporting each only when the dataset and sources genuinely support it;
 - include unresolved cases where the context does not establish whether a statement is a request, direction, warning, caution, consent inquiry, or compulsory instruction;

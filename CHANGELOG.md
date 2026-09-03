@@ -27,6 +27,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Reordered Markdown preprocessing so fenced comment literals cannot hide visible fields, preserved four-space-indented code semantics when identifying fences, and pinned every adopted source destination plus its source-type and pragmatic-relevance clause
 - Hardened rendered-registry validation against comments opened inside indented code, links hidden in inline code, pinned clauses hidden in Markdown titles, empty rendered HTML mappings, hidden registration-contract sections, and nested fences that outlive their quote/list container
 - Added source-gated Workstream I for Australian and United States policing-context transfer, requiring jurisdiction/date/source metadata, independently authored examples, explicit legal-review boundaries, and separation of institutional-script comparison from national moral ranking
+- Centralized Workstream I policing-context methodology with jurisdiction/date metadata, source hierarchy, matched construction controls, observable-variable treatment of the proposed Australian `lighter touch` hypothesis, and legal-review gates; hardened rendered roadmap and registry validation for paragraph continuations, link-reference-only mappings, pinned DOI metadata, and image-only source links
 
 ---
 
