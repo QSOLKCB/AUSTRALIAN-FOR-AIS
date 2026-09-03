@@ -7,9 +7,77 @@ on:
     branches: ["**"]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
+  synchronize-review-documentation:
+    name: Synchronize review documentation
+    if: github.event_name == 'push' && github.ref == 'refs/heads/research-corpus-governed-expansion'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research-corpus-governed-expansion
+          fetch-depth: 0
+
+      - name: Synchronize roadmap and changelog
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          roadmap_path = Path("ROADMAP.md")
+          roadmap = roadmap_path.read_text(encoding="utf-8")
+          old = (
+              "- add a canonical methodology section defining jurisdiction/date metadata, "
+              "encounter categories, matched controls, source hierarchy, and legal-review "
+              "requirements;"
+          )
+          new = (
+              "- maintain and extend the canonical policing-context methodology section in "
+              "`docs/METHODOLOGY.md` as jurisdictional sources and experiment families are "
+              "adopted;"
+          )
+          if old not in roadmap:
+              raise SystemExit("stale Workstream I methodology follow-up not found")
+          roadmap = roadmap.replace(old, new, 1)
+          roadmap_path.write_text(roadmap, encoding="utf-8")
+
+          changelog_path = Path("CHANGELOG.md")
+          changelog = changelog_path.read_text(encoding="utf-8")
+          anchor = (
+              "- Added source-gated Workstream I for Australian and United States policing-context "
+              "transfer, requiring jurisdiction/date/source metadata, independently authored "
+              "examples, explicit legal-review boundaries, and separation of institutional-script "
+              "comparison from national moral ranking\n"
+          )
+          addition = (
+              "- Centralized Workstream I policing-context methodology with jurisdiction/date "
+              "metadata, source hierarchy, matched construction controls, observable-variable "
+              "treatment of the proposed Australian `lighter touch` hypothesis, and legal-review "
+              "gates; hardened rendered roadmap and registry validation for paragraph "
+              "continuations, link-reference-only mappings, pinned DOI metadata, and image-only "
+              "source links\n"
+          )
+          if addition not in changelog:
+              if anchor not in changelog:
+                  raise SystemExit("Workstream I changelog anchor not found")
+              changelog = changelog.replace(anchor, anchor + addition, 1)
+          changelog_path.write_text(changelog, encoding="utf-8")
+          PY
+
+      - name: Commit documentation synchronization
+        run: |
+          if git diff --quiet -- ROADMAP.md CHANGELOG.md; then
+            echo "Documentation already synchronized."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ROADMAP.md CHANGELOG.md
+          git commit -m "Synchronize policing methodology roadmap state"
+          git push origin HEAD:research-corpus-governed-expansion
+
   test:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
