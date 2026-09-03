@@ -75,6 +75,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Notes
 
 - The Phase 2 pilot is an unannotated research fixture. No human annotation results, ethical approvals, or empirical agreement statistics are claimed until real pilot collection occurs.
+- Free-text pragmatic interpretations remain qualitative evidence and are not assigned a misleading exact-string IAA score.
 
 ---
 
