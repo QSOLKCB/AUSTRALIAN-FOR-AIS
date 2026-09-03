@@ -890,22 +890,41 @@ def _registered_sections(corpus: str) -> dict[str, str]:
     return sections
 
 
-def _scalar_value(entry: str, section: str, field: str) -> str:
+def _visible_scalar_values(section: str, field: str) -> list[str]:
+    """Return visible scalar values after normalising Markdown containers."""
     rendered, structure = _markdown_views(section)
-    prefix = rf"(?m)^[ \t]*{re.escape(field)}"
-    occurrences = list(re.finditer(prefix, structure))
-    assert len(occurrences) == 1, (
+    rendered_lines = rendered.splitlines()
+    structure_lines = structure.splitlines()
+    assert len(rendered_lines) == len(structure_lines)
+
+    values: list[str] = []
+    for rendered_line, structure_line in zip(rendered_lines, structure_lines):
+        structure_context = _line_context(structure_line)
+        logical = structure_context.logical.lstrip(" \t")
+        if not logical.startswith(field):
+            continue
+        suffix = logical[len(field):]
+        if suffix and suffix[0] not in " \t":
+            continue
+
+        rendered_context = _line_context(rendered_line)
+        rendered_logical = rendered_context.logical.lstrip(" \t")
+        if not rendered_logical.startswith(field):
+            continue
+        raw_value = rendered_logical[len(field):]
+        values.append(_visible_inline_text(raw_value))
+    return values
+
+
+def _scalar_value(entry: str, section: str, field: str) -> str:
+    values = _visible_scalar_values(section, field)
+    assert len(values) == 1, (
         f"{entry} must contain exactly one mandatory field {field}"
     )
-    match = re.search(
-        rf"{prefix}(?P<value>[^\r\n]*)$",
-        structure,
-    )
-    assert match, f"{entry} has an empty mandatory field {field}"
-    raw_value = rendered[match.start("value"):match.end("value")]
-    value = _visible_inline_text(raw_value)
+    value = values[0]
     assert value, f"{entry} has an empty mandatory field {field}"
     return value
+
 def _require_scalar_value(entry: str, section: str, field: str) -> None:
     _scalar_value(entry, section, field)
 
@@ -1081,11 +1100,9 @@ def _validate_registered_entry(entry: str, section: str) -> None:
             f"got {doi_value!r}"
         )
     else:
-        structure = _structural_registry_text(section)
-        assert not re.search(
-            rf"(?m)^[ \t]*{re.escape(DOI_FIELD)}",
-            structure,
-        ), f"{entry} has unpinned DOI metadata"
+        assert not _visible_scalar_values(section, DOI_FIELD), (
+            f"{entry} has unpinned DOI metadata"
+        )
     classification = _require_community_governance(entry, section)
     _require_pinned_entry_contract(
         entry,
@@ -1501,3 +1518,25 @@ def test_published_doi_metadata_is_pinned_and_unique():
     with pytest.raises(AssertionError, match="exactly one mandatory field"):
         _validate_registered_entry(entry, duplicate)
 
+
+@pytest.mark.parametrize(
+    "duplicate",
+    (
+        "> **DOI:** https://doi.org/10.0000/conflict",
+        "- **DOI:** https://doi.org/10.0000/conflict",
+    ),
+)
+def test_published_doi_rejects_rendered_container_duplicates(duplicate: str):
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = (
+        "### Chey (2021), *Overcoming awkwardness: some interpretations of "
+        "Australian humour*"
+    )
+    section = _registered_sections(corpus)[entry]
+    mutated = section.replace(
+        "**Source type:**",
+        f"{duplicate}\n\n**Source type:**",
+        1,
+    )
+    with pytest.raises(AssertionError, match="exactly one mandatory field"):
+        _validate_registered_entry(entry, mutated)
