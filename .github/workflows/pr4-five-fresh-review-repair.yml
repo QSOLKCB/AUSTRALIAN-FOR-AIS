@@ -41,6 +41,22 @@ jobs:
           set -euo pipefail
           python .github/scripts/pr4-five-fresh-review-repair.py
 
+      - name: Normalize generated file endings
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          for filename in (
+              "tests/test_research_reference_registry.py",
+              "tests/test_policing_context_roadmap.py",
+              "tests/test_workstream_h_methodology.py",
+              "tests/test_policing_contract_receipt.py",
+          ):
+              path = Path(filename)
+              path.write_text(path.read_text(encoding="utf-8").rstrip() + "\n", encoding="utf-8")
+          PY
+
       - name: Run focused governance suite
         run: |
           set -euo pipefail
