@@ -152,6 +152,108 @@ Later phases will formalise variants that differ in one controlled factor such a
 
 ---
 
+## ASCFT-Derived Experiment Design
+
+Workstream F uses the registered Australian Sketch Comedy Field Theory (ASCFT) source as a formal analytic framework and hypothesis generator. ASCFT terminology is source-specific analytic machinery, not an addition to the active humour taxonomy and not evidence that Australian humour is literally governed by physical field dynamics.
+
+The preferred design is to hold topic, lexical content, or overt register as constant as practical while manipulating one observable dimension at a time. Core controlled variables include:
+
+- **authority register**, separating confident formal delivery from whether the surrounding evidence supports the speaker's claims;
+- **epistemic coherence**, varying factual, inferential, or categorical consistency while keeping surface fluency and formatting stable;
+- **demonstrated competence**, separating asserted expertise from successful reasoning, prediction, or action;
+- **frame stability**, holding an institutional, documentary, or expert frame constant while pragmatic or semantic content destabilises;
+- **semantic drift and contradiction accumulation**, using ordered multi-turn sequences so degradation can be measured across turns rather than inferred from one isolated sentence;
+- **delivery versus intent**, manipulating explicit delivery cues such as deadpan versus overtly expressive delivery independently from whether the utterance is sincerely literal, ironic, sarcastic, absurd, or otherwise nonliteral; and
+- **mode transition**, using ASCFT's source-specific `|0>`, `|1>`, and `|2>` coordinates only to label controlled transitions among informal compression, bureaucratic recursion, and hyper-formal surreal narration during experiment construction.
+
+Experiment families should include matched controls where polished formal language remains factually coherent, informal language remains semantically precise, or confident speakers demonstrate genuine competence. Whenever a family is used to evaluate **delivery versus intent**, it must implement a crossed 2×2 design containing all four cells: deadpan delivery with sincere literal intent, deadpan delivery with a justified nonliteral intent, non-deadpan delivery with sincere literal intent, and non-deadpan delivery with a justified nonliteral intent. The lexical proposition, relationship, discourse frame, and other relevant variables should be held constant as far as the research question permits. If all four cells cannot be constructed without introducing an uncontrolled confound, the family is not eligible to estimate a delivery effect or delivery-by-intent interaction and must instead be reported as a narrower intent or delivery comparison. Delivery style is evidence available to interpretation, not a deterministic label, so deadpan delivery alone must never establish literal or nonliteral intent.
+
+Source-specific motifs such as the proposed goat attractor may be studied only as motifs of the registered theory or its documented source material. They are not benchmark labels, universal properties of Australian comedy, or acceptable shortcuts for assigning a collapse outcome. Any source-inspired item must be independently authored or appropriately licensed and must not reproduce dialogue, transcript wording, distinctive jokes, or other copyrighted expression.
+
+The epistemic boundary is mandatory:
+
+- **FORMAL ANALOGY != PHYSICAL ONTOLOGY**
+- **MATHEMATICAL MODEL != EMPIRICALLY VALIDATED MECHANISM**
+
+Qutrit states, fields, collapse operators, attractors, Lagrangians, cultural-stress observables, and similar constructs may organize hypotheses and controlled manipulations. Their mathematical definition does not establish that they are empirically validated physical mechanisms, population-level cultural laws, or objective ground truth.
+
+---
+
+## Trans-Tasman and Slang/Operational Experiment Design
+
+Workstreams G and H extend the general context-swap and minimal-pair methodology. They do not create fixed phrase rules or community ground truth.
+
+For **trans-Tasman relational-pragmatics** experiments, the preferred design is to hold lexical or structural content as constant as practical while manipulating one or more of the following variables explicitly:
+
+- speaker relationship and established relational licence;
+- reciprocity versus one-sided targeting;
+- private, public, workplace, classroom, broadcast, or platform setting;
+- target reaction where that reaction is part of the supplied evidence;
+- direct use versus abstract mention, quotation placeholder, moderation analysis, or historical discussion; and
+- benign-teasing, genuine-hostility, and unresolved controls.
+
+The repository must not introduce group-stereotyping wording merely to instantiate these contrasts. Where a research question depends on historical stereotype structure, use an abstract placeholder or non-identity-targeted synthetic analogue. An attributable source may document that a stereotype existed, but exact group-stereotyping wording must not be reproduced in repository content or redistributable benchmark items. Claims about New Zealand lexical or pragmatic norms require attributable New Zealand evidence and, where the claim is community-specific, appropriate New Zealand cultural or linguistic consultation.
+
+For **slang-density and operational-intelligibility** experiments, lexical recognition, compositional interpretation, pragmatic interpretation, and task-critical communication clarity are separate evaluation targets. A useful ladder holds the underlying proposition stable while progressively varying slang density, abbreviation, discourse markers, local idioms, or register compression. Australian-English familiarity or exposure, general English-language background or proficiency, and task criticality should be explicit independent variables rather than inferred from nationality or identity. Where listener effects are evaluated, Australian-English familiarity should be self-reported or experimentally established, and comparisons should cross or match dialect exposure against broader English-language background so neither nationality nor first-language category acts as a proxy for comprehension.
+
+Relevant controlled comparisons include:
+
+- glossary-known versus context-correct interpretation;
+- low-density versus high-density colloquial phrasing;
+- higher versus lower Australian-English familiarity crossed or matched across general English-language backgrounds;
+- informal social or barracks-style exchange versus safety-critical or operational instruction; and
+- ordinary misunderstanding versus successful repair through clarification, shared terminology, translation, or visual grounding.
+
+Official or archival military sources may motivate **communication-friction** hypotheses, but they do not establish that Australian slang is a secret code, that ordinary conversation defeated codebreakers, or that operational failure followed from slang unless an attributable source establishes that stronger claim. Community discussions and slang glossaries can nominate candidate forms, but neither is treated as representative population evidence or sufficient pragmatic ground truth.
+
+These families remain subject to the same ambiguity, context-swap, provenance, annotation, and scoring rules defined elsewhere in this document. A model succeeds only when it uses the supplied context correctly, not merely when it recognises a slang token or nationality reference.
+
+---
+
+## Australian and United States Policing-Context Experiment Design
+
+Workstream I studies **institutional-script transfer** between Australian and United States policing contexts. It is a linguistic-pragmatic research design, not legal advice, a use-of-force benchmark, or a ranking of which country polices “better”. No policing behaviour, legal right, coercive condition, or procedural difference may be inferred from nationality alone.
+
+Every implemented policing-context item must record, at minimum:
+
+- **country**;
+- **jurisdiction**, including the relevant Australian state/territory or United States federal/state/local level where applicable;
+- **agency or institutional role** when it affects interpretation;
+- **encounter type**, such as ordinary service, traffic, welfare, public-order, emergency, questioning, interview, detention, or another explicitly defined category;
+- **source date or version**;
+- **registered source identifiers or links** supporting any legal or procedural condition supplied to the model; and
+- **claim type**, separating linguistic-pragmatic interpretation from legal/procedural correctness, policy description, empirical system comparison, or unresolved context.
+
+The source hierarchy is explicit. Current official legislation, court material, police-service policy/guidance, and other authoritative jurisdiction-specific sources are preferred for legal or procedural propositions. Official institutional reports may support operational terminology or documented practice within their stated scope. Peer-reviewed legal, criminological, sociolinguistic, or related scholarship may motivate bounded descriptive hypotheses. News, television, film, viral clips, body-camera compilations, anecdotes, and community discussion may generate research questions but cannot substitute for a current official source when an item asserts legal authority, rights, compulsion, search power, detention status, caution requirements, or another jurisdiction-specific rule.
+
+Controlled construction should hold the utterance and encounter purpose as constant as practical while varying only the jurisdictional or institutional variable under study. A jurisdiction swap is valid only when the underlying conditions are actually comparable. If the Australian and United States conditions differ in law, role, procedure, or factual setting, the item must expose that difference explicitly rather than pretending it is a clean lexical minimal pair. Appropriate controls include:
+
+- same wording with different supplied jurisdictions when the legal/pragmatic comparison is genuinely matched;
+- same jurisdiction with different officer roles, encounter categories, or explicit authority conditions;
+- polite wording versus explicit compulsion while holding the legal condition fixed;
+- casual address, first-name use, humour, understatement, or `mate` versus a more formal register while holding authority constant;
+- fictional or media-script wording versus the current official rule supplied in context; and
+- unresolved cases where the evidence does not establish whether an utterance is a request, direction, warning, caution, consent inquiry, or compulsory instruction.
+
+A proposed Australian “lighter touch” hypothesis must therefore be decomposed into observable, source-supported variables such as conversational register, casual address, explicitness, repair, de-escalatory language, or stated compulsion. `Australian` and `American` are never labels for benevolence, danger, coercion, restraint, lawfulness, legitimacy, or conversational style. If the evidence supports only a language/register difference, the benchmark must make only that linguistic claim.
+
+Legal and procedural review is mandatory for high-stakes use. Before publication of a family involving coercion, consent, search, detention, questioning, force, emergency powers, or legal rights, the project must verify the governing sources are current for the recorded jurisdiction and date and obtain appropriate review from relevant Australian and United States legal, policing, civil-liberties, and community expertise. When sources conflict, are stale, or do not establish the requested condition, the item must remain unresolved or be excluded rather than forcing a gold label.
+
+The following boundaries are mandatory:
+
+- **US POLICE SCRIPT != AUSTRALIAN LEGAL PROCEDURE**
+- **POLICE TERMINOLOGY != CROSS-JURISDICTION EQUIVALENCE**
+- **CASUAL ADDRESS != FRIENDSHIP OR CONSENT**
+- **CALM TONE != ABSENCE OF COERCIVE AUTHORITY**
+- **POLITE WORDING != VOLUNTARY CHOICE**
+- **FICTIONAL POLICE TROPE != OPERATIONAL POLICY**
+- **ONE AGENCY != A NATIONAL POLICING SYSTEM**
+- **ONE ENCOUNTER != SYSTEM-WIDE GROUND TRUTH**
+- **JURISDICTIONAL DIFFERENCE != NATIONAL MORAL CHARACTER**
+- **LEGAL INFORMATION != LEGAL ADVICE**
+
+---
+
 ## Scoring Philosophy
 
 The following distinctions are mandatory:
