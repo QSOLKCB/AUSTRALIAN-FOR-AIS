@@ -10,6 +10,7 @@ from html.parser import HTMLParser
 import ipaddress
 from pathlib import Path
 import re
+import string
 from urllib.parse import urlparse
 
 import pytest
@@ -476,6 +477,9 @@ GOVERNANCE_RATIONALE_HASHES = {'### *Acropolis Now*': '00d3590178d2cc6d9a4e4285d
  '### WWII American-serviceman Australia language guides': 'bacdff9bf663ddc2346b92570015b4d4e5aef4edc6024e6e60139cb4a902bec7',
  '### r/australia, *Best Aussie slang* community thread': 'c66e326bbe7271137fd04b1142fb324e24ce20da4bfc7d9add801e0dae5d5151'}
 
+STATUS_HEADING = "## Status"
+SOURCE_USE_HEADING = "## Source-use rules"
+REDISTRIBUTION_INVARIANT = "RESEARCH REFERENCE != REDISTRIBUTABLE DATA"
 BATCH_HEADING = "## Registered post-Phase-2 expansion batch"
 BATCH_END = "## Priority A: adversarial pragmatics"
 CONTRACT_HEADING = "## Registration contract for new sources"
@@ -562,6 +566,13 @@ NON_RENDERING_HTML_PATTERN = re.compile(
     flags=re.IGNORECASE | re.DOTALL,
 )
 
+HTML_P_IMPLIED_END_START_TAGS = frozenset({
+    "address", "article", "aside", "blockquote", "div", "dl", "fieldset",
+    "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6", "header",
+    "hgroup", "hr", "main", "menu", "nav", "ol", "p", "pre", "search",
+    "section", "table", "ul",
+})
+
 
 class _VisibleHTMLTextParser(HTMLParser):
     """Collect browser-visible HTML text while respecting hidden containers."""
@@ -571,6 +582,14 @@ class _VisibleHTMLTextParser(HTMLParser):
         self.parts: list[str] = []
         self.hrefs: list[str] = []
         self.stack: list[tuple[str, bool]] = []
+
+    def _apply_implied_paragraph_end(self, tag: str) -> None:
+        if tag not in HTML_P_IMPLIED_END_START_TAGS:
+            return
+        for index in range(len(self.stack) - 1, -1, -1):
+            if self.stack[index][0] == "p":
+                del self.stack[index:]
+                return
 
     @staticmethod
     def _is_hidden(tag: str, attrs: list[tuple[str, str | None]]) -> bool:
@@ -590,14 +609,16 @@ class _VisibleHTMLTextParser(HTMLParser):
         return "display:none" in style or "visibility:hidden" in style
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
+        self._apply_implied_paragraph_end(tag)
         inherited = self.stack[-1][1] if self.stack else False
         hidden = inherited or self._is_hidden(tag, attrs)
-        if tag.lower() == "a" and not hidden:
+        if tag == "a" and not hidden:
             for key, value in attrs:
                 if key.lower() == "href" and value:
                     self.hrefs.append(value)
                     break
-        self.stack.append((tag.lower(), hidden))
+        self.stack.append((tag, hidden))
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
@@ -667,12 +688,26 @@ class _HiddenHTMLRegionParser(HTMLParser):
         close = self.text.find(">", start)
         return len(self.text) if close < 0 else close + 1
 
+    def _apply_implied_paragraph_end(self, tag: str, start: int) -> None:
+        if tag not in HTML_P_IMPLIED_END_START_TAGS:
+            return
+        for index in range(len(self.stack) - 1, -1, -1):
+            if self.stack[index][0] != "p":
+                continue
+            popped = self.stack[index:]
+            del self.stack[index:]
+            for _, _, root_start in popped:
+                if root_start is not None:
+                    self.spans.append((root_start, start))
+            return
+
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
+        start = self._offset()
+        self._apply_implied_paragraph_end(tag, start)
         parent_hidden = self.stack[-1][1] if self.stack else False
         own_hidden = _VisibleHTMLTextParser._is_hidden(tag, attrs)
         hidden = parent_hidden or own_hidden
-        start = self._offset()
 
         if tag in HTML_VOID_TAGS:
             if own_hidden and not parent_hidden:
@@ -1213,8 +1248,15 @@ def _visible_inline_text(text: str) -> str:
     visible = visible.replace("*", "").replace("_", "")
     return " ".join(visible.split())
 
+MARKDOWN_BACKSLASH_ESCAPE_PATTERN = re.compile(
+    rf"\\([{re.escape(string.punctuation)}])"
+)
+
+
 def _normalise_https_destination(candidate: str) -> str | None:
-    value = html.unescape(candidate).strip().strip("<>").rstrip(".,;:!?")
+    value = html.unescape(candidate)
+    value = MARKDOWN_BACKSLASH_ESCAPE_PATTERN.sub(r"\1", value)
+    value = value.strip().strip("<>").rstrip(".,;:!?")
     try:
         parsed = urlparse(value)
         port = parsed.port
@@ -1550,10 +1592,28 @@ def _usable_https_destinations(
     return tuple(destinations)
 
 
+def _visible_markdown_heading_span(structure: str, heading: str) -> tuple[int, int]:
+    """Return the unique browser-visible Markdown heading span with preserved offsets."""
+    visible_structure = _mask_hidden_html_regions(structure)
+    matches: list[tuple[int, int]] = []
+    offset = 0
+    for raw_line in visible_structure.splitlines(keepends=True):
+        line = raw_line.rstrip("\r\n")
+        logical, is_code = _strip_composed_container_prefixes(line)
+        if not is_code and logical.strip(" \t") == heading:
+            matches.append((offset, offset + len(raw_line)))
+        offset += len(raw_line)
+    assert len(matches) == 1, (
+        f"expected exactly one rendered heading {heading!r}, found {len(matches)}"
+    )
+    return matches[0]
+
+
 def _registered_batch(corpus: str) -> str:
     rendered, structure = _markdown_views(corpus)
-    start = structure.index(BATCH_HEADING) + len(BATCH_HEADING)
-    end = structure.index(BATCH_END, start)
+    _, start = _visible_markdown_heading_span(structure, BATCH_HEADING)
+    end, _ = _visible_markdown_heading_span(structure, BATCH_END)
+    assert start < end, "rendered governed batch boundaries are out of order"
     return rendered[start:end]
 
 
@@ -1615,6 +1675,9 @@ def _canonicalise_metadata_marker(line: str) -> str:
     # Decode the candidate line before matching so `DOI&#58;` is the same
     # visible label as `DOI:` for uniqueness and scalar extraction.
     decoded = html.unescape(line)
+    paragraph_wrapper = re.match(r"<p\b[^>]*>[ \t]*", decoded, flags=re.IGNORECASE)
+    if paragraph_wrapper:
+        decoded = decoded[paragraph_wrapper.end():]
     inline_links = _markdown_inline_links(decoded)
     if inline_links:
         first_link = inline_links[0]
@@ -1639,6 +1702,8 @@ def _canonicalise_metadata_marker(line: str) -> str:
 def _normalised_rendered_lines(section: str) -> list[tuple[str, str, bool]]:
     """Return structural/rendered logical lines with list continuations preserved."""
     rendered, structure = _markdown_views(section)
+    rendered = _mask_hidden_html_regions(rendered)
+    structure = _mask_hidden_html_regions(structure)
     rendered_lines = rendered.splitlines()
     structure_lines = structure.splitlines()
     assert len(rendered_lines) == len(structure_lines)
@@ -2010,10 +2075,12 @@ def _validate_registered_entry(
 
 def _validate_registry_corpus(corpus: str) -> None:
     rendered, structure = _markdown_views(corpus)
-    assert CONTRACT_HEADING in structure, "rendered registration contract is missing"
-    contract_start = structure.index(CONTRACT_HEADING)
-    assert BATCH_HEADING in structure[contract_start:], "rendered governed batch heading is missing"
-    contract_end = structure.index(BATCH_HEADING, contract_start)
+    try:
+        contract_start, _ = _visible_markdown_heading_span(structure, CONTRACT_HEADING)
+    except AssertionError as exc:
+        raise AssertionError("rendered registration contract is missing") from exc
+    contract_end, _ = _visible_markdown_heading_span(structure, BATCH_HEADING)
+    assert contract_start < contract_end, "rendered registration contract boundaries are out of order"
     contract_section = structure[contract_start:contract_end]
     assert CONTRACT_SENTENCE in contract_section, "rendered registration contract is incomplete"
     visible_contract = _visible_inline_text(rendered[contract_start:contract_end])
@@ -2022,7 +2089,14 @@ def _validate_registry_corpus(corpus: str) -> None:
         "rendered registration contract changed or was weakened: "
         f"expected hash {REGISTRATION_CONTRACT_HASH!r}, got {actual_contract_hash!r}"
     )
-    assert "RESEARCH REFERENCE != REDISTRIBUTABLE DATA" in structure
+
+    status_start, _ = _visible_markdown_heading_span(structure, STATUS_HEADING)
+    status_end, _ = _visible_markdown_heading_span(structure, SOURCE_USE_HEADING)
+    assert status_start < status_end, "rendered Status/source-use boundaries are out of order"
+    visible_status = _visible_inline_text(rendered[status_start:status_end])
+    assert REDISTRIBUTION_INVARIANT in visible_status, (
+        "redistribution invariant must remain browser-visible inside the Status section"
+    )
 
     sections = _registered_sections(corpus)
     assert set(sections) == set(ENTRY_CONTRACTS), (
@@ -3077,3 +3151,56 @@ def test_multiline_inline_link_title_destination_is_pinned():
     )
     with pytest.raises(AssertionError, match="registered-source destinations changed"):
         _validate_registered_entry(entry, mutated)
+
+
+def test_markdown_escaped_source_destination_is_pinned():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    source = "**Registered source:** https://iview.abc.net.au/show/black-comedy"
+    mutated = corpus.replace(
+        source,
+        source + "\n[alternate](https\\://www.wikipedia.org/)",
+        1,
+    )
+    with pytest.raises(AssertionError, match="registered-source destinations changed"):
+        _validate_registry_corpus(mutated)
+
+
+def test_implied_paragraph_end_cannot_hide_duplicate_doi():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    doi = "**DOI:** https://doi.org/10.7592/EJHR2021.9.4.560"
+    mutated = corpus.replace(
+        doi,
+        doi
+        + "\n\n<p hidden>masked<p><strong>DOI:</strong> "
+        + "https://doi.org/10.0000/fabricated</p></p>",
+        1,
+    )
+    with pytest.raises(AssertionError, match="exactly one mandatory field"):
+        _validate_registry_corpus(mutated)
+
+
+def test_registry_batch_end_must_be_a_visible_heading():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    mutated = corpus.replace(
+        BATCH_END,
+        (
+            f'[boundary](# "{BATCH_END}")\n\n'
+            "### Fabricated ungoverned reference\n\n"
+            "placeholder provenance text\n\n"
+            f"{BATCH_END}"
+        ),
+        1,
+    )
+    with pytest.raises(AssertionError, match="explicit pinned source contract"):
+        _validate_registry_corpus(mutated)
+
+
+def test_redistribution_invariant_must_be_visible_in_status_section():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    mutated = corpus.replace(
+        "> RESEARCH REFERENCE != REDISTRIBUTABLE DATA",
+        "> <span hidden>RESEARCH REFERENCE != REDISTRIBUTABLE DATA</span>",
+        1,
+    )
+    with pytest.raises(AssertionError, match="redistribution invariant"):
+        _validate_registry_corpus(mutated)
