@@ -3,6 +3,7 @@
 import json
 import pathlib
 import runpy
+import re
 
 import pytest
 
@@ -114,14 +115,29 @@ def _visible_phase2_notes(changelog: str) -> str:
     assert phase2_start < phase1_start, "Phase 2 changelog boundaries are out of order"
 
     phase2_structure = structure[phase2_start:phase1_start]
-    notes_start, _ = namespace["_visible_markdown_heading_span"](
+    notes_start, notes_heading_end = namespace["_visible_markdown_heading_span"](
         phase2_structure, PHASE2_NOTES_HEADING
     )
-    absolute_notes_start = phase2_start + notes_start
-    return namespace["_visible_text"](
-        changelog[absolute_notes_start:phase1_start]
-    )
+    visible_phase2_structure = namespace["_mask_hidden_html_regions"](phase2_structure)
 
+    notes_end = len(phase2_structure)
+    relative_offset = 0
+    tail = visible_phase2_structure[notes_heading_end:]
+    for raw_line in tail.splitlines(keepends=True):
+        line = raw_line.rstrip("\r\n")
+        logical, is_code, _ = namespace["_parse_fence_container_prefixes"](line)
+        if not is_code:
+            stripped = logical.strip(" \t")
+            if re.match(r"^#{1,3}(?:[ \t]+|$)", stripped):
+                notes_end = notes_heading_end + relative_offset
+                break
+        relative_offset += len(raw_line)
+
+    absolute_notes_start = phase2_start + notes_start
+    absolute_notes_end = phase2_start + notes_end
+    return namespace["_visible_text"](
+        changelog[absolute_notes_start:absolute_notes_end]
+    )
 
 def test_phase2_changelog_keeps_free_text_iaa_boundary():
     changelog = CHANGELOG.read_text(encoding="utf-8")
@@ -143,6 +159,19 @@ def test_phase2_changelog_iaa_boundary_is_visible_and_section_scoped():
     moved = changelog.replace(bullet, "", 1).replace(
         PHASE1_HEADING,
         PHASE1_HEADING + f"\n\n- {FREE_TEXT_IAA_BOUNDARY}",
+        1,
+    )
+    assert FREE_TEXT_IAA_BOUNDARY not in _visible_phase2_notes(moved)
+
+def test_phase2_notes_stop_at_next_visible_peer_heading():
+    changelog = CHANGELOG.read_text(encoding="utf-8")
+    bullet = f"- {FREE_TEXT_IAA_BOUNDARY}\n"
+    assert bullet in changelog
+    moved = changelog.replace(bullet, "", 1).replace(
+        PHASE1_HEADING,
+        "### Additional Phase 2 subsection\n\n"
+        f"- {FREE_TEXT_IAA_BOUNDARY}\n\n"
+        + PHASE1_HEADING,
         1,
     )
     assert FREE_TEXT_IAA_BOUNDARY not in _visible_phase2_notes(moved)

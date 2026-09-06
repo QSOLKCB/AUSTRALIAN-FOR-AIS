@@ -900,8 +900,48 @@ def _replace_inline_markdown_links_for_visibility(text: str) -> str:
     return "".join(parts)
 
 
+
+class _GovernedSurfaceHTMLParser(HTMLParser):
+    """Detect live HTML whose browser semantics are unsafe to approximate."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.violations: set[str] = set()
+
+    def handle_starttag(
+        self, tag: str, attrs: list[tuple[str, str | None]]
+    ) -> None:
+        tag = tag.lower()
+        if tag == "canvas":
+            self.violations.add("canvas")
+        if tag == "details":
+            attribute_names = {key.lower() for key, _ in attrs}
+            if "open" not in attribute_names:
+                self.violations.add("closed-details")
+
+    def handle_startendtag(
+        self, tag: str, attrs: list[tuple[str, str | None]]
+    ) -> None:
+        # Browsers ignore self-closing syntax on non-void canvas/details.
+        self.handle_starttag(tag, attrs)
+
+
+def _governed_surface_html_violations(markdown: str) -> set[str]:
+    """Inspect live rendered structure while leaving comments/code inert."""
+    parser = _GovernedSurfaceHTMLParser()
+    parser.feed(_rendered_structure(markdown))
+    parser.close()
+    return parser.violations
+
 def _visible_text(markdown: str) -> str:
     """Return browser-visible text without hidden HTML or link metadata."""
+    violations = _governed_surface_html_violations(markdown)
+    assert "canvas" not in violations, (
+        "canvas fallback HTML is not allowed on governed methodology surfaces"
+    )
+    assert "closed-details" not in violations, (
+        "default-closed <details> is not allowed on governed methodology surfaces"
+    )
     assert INTERACTIVE_FORM_CONTROL_PATTERN.search(markdown) is None, (
         "interactive form control HTML is not allowed on governed methodology surfaces"
     )
@@ -941,6 +981,9 @@ def _rendered_policing_workstream(roadmap: str) -> str:
         raise AssertionError("rendered policing workstream is missing; missing policing-workstream safeguard") from exc
     end, _ = _visible_markdown_heading_span(structure, WORKSTREAM_END_HEADING)
     assert start < end, "rendered policing workstream boundary is invalid"
+    assert "closed-details" not in _governed_surface_html_violations(roadmap[start:end]), (
+        "default-closed <details> is not allowed in the rendered policing workstream"
+    )
     visible_structure = _mask_hidden_html_regions(structure)
     return visible_structure[start:end]
 
@@ -1064,6 +1107,21 @@ def test_policing_context_workstream_cannot_hide_in_closed_html_container(tag: s
     hidden = f"<{tag}>\n{section}\n</{tag}>\n"
     mutated = roadmap[:start] + hidden + roadmap[end:]
     with pytest.raises(AssertionError, match="missing policing-workstream safeguard"):
+        _validate_policing_workstream(mutated)
+
+
+def test_shared_governance_reducer_rejects_canvas_fallback():
+    with pytest.raises(AssertionError, match="canvas fallback HTML"):
+        _visible_text("<canvas>Current sources may be skipped.</canvas>")
+
+
+def test_closed_details_summary_cannot_escape_policing_integrity():
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    contradiction = (
+        "<details><summary>Current sources may be skipped.</summary></details>\n\n"
+    )
+    mutated = roadmap.replace(WORKSTREAM_END, contradiction + WORKSTREAM_END, 1)
+    with pytest.raises(AssertionError, match="default-closed <details>"):
         _validate_policing_workstream(mutated)
 
 
