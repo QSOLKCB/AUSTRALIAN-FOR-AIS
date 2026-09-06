@@ -630,20 +630,70 @@ GOVERNED_INTERACTIVE_HTML_PATTERN = re.compile(
 )
 
 
+def _decode_css_escapes(value: str) -> str:
+    """Decode CSS escapes without treating escaped punctuation as declaration syntax."""
+    parts: list[str] = []
+    position = 0
+    while position < len(value):
+        if value[position] != "\\":
+            parts.append(value[position])
+            position += 1
+            continue
+
+        if position + 1 >= len(value):
+            parts.append("\\")
+            position += 1
+            continue
+
+        next_character = value[position + 1]
+        if next_character in "\r\n\f":
+            if next_character == "\r" and position + 2 < len(value) and value[position + 2] == "\n":
+                position += 3
+            else:
+                position += 2
+            continue
+
+        cursor = position + 1
+        while (
+            cursor < len(value)
+            and cursor - (position + 1) < 6
+            and value[cursor] in string.hexdigits
+        ):
+            cursor += 1
+        if cursor > position + 1:
+            codepoint = int(value[position + 1:cursor], 16)
+            if codepoint == 0 or codepoint > 0x10FFFF or 0xD800 <= codepoint <= 0xDFFF:
+                parts.append("\uFFFD")
+            else:
+                parts.append(chr(codepoint))
+            if cursor < len(value) and value[cursor] in " \t\r\n\f":
+                if value[cursor] == "\r" and cursor + 1 < len(value) and value[cursor + 1] == "\n":
+                    cursor += 2
+                else:
+                    cursor += 1
+            position = cursor
+            continue
+
+        parts.append(next_character)
+        position += 2
+
+    return "".join(parts)
+
+
 def _css_hides_element(style: str) -> bool:
-    """Apply inline CSS declaration order and !important precedence."""
-    cleaned = CSS_COMMENT_PATTERN.sub("", style.lower())
+    """Apply inline CSS declaration order, escapes, and !important precedence."""
+    cleaned = CSS_COMMENT_PATTERN.sub("", style)
     winners: dict[str, tuple[bool, str]] = {}
     for declaration in cleaned.split(";"):
         if ":" not in declaration:
             continue
-        name, raw_value = declaration.split(":", 1)
-        name = name.strip()
+        raw_name, raw_value = declaration.split(":", 1)
+        name = _decode_css_escapes(raw_name.strip()).casefold()
         if name not in {"display", "visibility"}:
             continue
-        raw_value = raw_value.strip()
-        important = re.search(r"\s*!important\s*$", raw_value) is not None
-        value = re.sub(r"\s*!important\s*$", "", raw_value).strip()
+        decoded_value = _decode_css_escapes(raw_value.strip()).casefold()
+        important = re.search(r"\s*!important\s*$", decoded_value) is not None
+        value = re.sub(r"\s*!important\s*$", "", decoded_value).strip()
         previous = winners.get(name)
         if previous is None or (important and not previous[0]) or important == previous[0]:
             winners[name] = (important, value)
@@ -660,7 +710,7 @@ class _VisibleHTMLTextParser(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.parts: list[str] = []
         self.hrefs: list[str] = []
-        self.stack: list[tuple[str, bool]] = []
+        self.stack: list[tuple[str, bool, bool]] = []
 
     def _apply_implied_paragraph_end(self, tag: str) -> None:
         if tag in HTML_P_IMPLIED_END_START_TAGS:
@@ -680,7 +730,7 @@ class _VisibleHTMLTextParser(HTMLParser):
     @staticmethod
     def _is_hidden(tag: str, attrs: list[tuple[str, str | None]]) -> bool:
         tag = tag.lower()
-        if tag in {"script", "style", "template"}:
+        if tag in {"script", "style", "template", "title"}:
             return True
         values = {key.lower(): (value or "") for key, value in attrs}
         # A closed HTML disclosure renders its descendants collapsed until the
@@ -694,18 +744,21 @@ class _VisibleHTMLTextParser(HTMLParser):
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
         self._apply_implied_paragraph_end(tag)
-        inherited = self.stack[-1][1] if self.stack else False
+        inherited_hidden = self.stack[-1][1] if self.stack else False
+        inherited_inert = self.stack[-1][2] if self.stack else False
+        values = {key.lower(): (value or "") for key, value in attrs}
         svg_metadata_hidden = (
             tag in SVG_NON_RENDERING_METADATA_TAGS
-            and any(parent_tag == "svg" for parent_tag, _ in self.stack)
+            and any(parent_tag == "svg" for parent_tag, _, _ in self.stack)
         )
-        hidden = inherited or svg_metadata_hidden or self._is_hidden(tag, attrs)
-        if tag == "a" and not hidden:
+        hidden = inherited_hidden or svg_metadata_hidden or self._is_hidden(tag, attrs)
+        inert = inherited_inert or "inert" in values
+        if tag == "a" and not hidden and not inert:
             for key, value in attrs:
                 if key.lower() == "href" and value:
                     self.hrefs.append(value)
                     break
-        self.stack.append((tag, hidden))
+        self.stack.append((tag, hidden, inert))
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
@@ -1452,6 +1505,30 @@ def _render_inline_code_spans(text: str) -> str:
 
 
 
+OBFUSCATED_INTRAW_WORD_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9])(?:[A-Za-z]_){2,}[A-Za-z]_?(?![A-Za-z0-9])"
+)
+
+
+def _strip_emphasis_preserving_intraword_underscores(text: str) -> str:
+    """Preserve repeated single-letter intraword underscores used as visible obfuscation."""
+    sentinel = "\uE000"
+    assert sentinel not in text
+    characters = list(text)
+    for match in OBFUSCATED_INTRAW_WORD_PATTERN.finditer(text):
+        for index in range(match.start(), match.end()):
+            if characters[index] == "_":
+                characters[index] = sentinel
+
+    visible = "".join(characters)
+    # Preserve the established canonical normalization for ordinary Markdown
+    # emphasis and snake_case-like project identifiers. Only the reported
+    # repeated single-letter obfuscation shape keeps literal underscores.
+    visible = visible.replace("**", "").replace("__", "")
+    visible = visible.replace("*", "").replace("_", "")
+    return visible.replace(sentinel, "_")
+
+
 def _visible_inline_text(text: str) -> str:
     """Reduce Markdown/HTML metadata to browser-visible text only."""
     rendered = _rendered_registry_text(text)
@@ -1459,10 +1536,10 @@ def _visible_inline_text(text: str) -> str:
     visible = _render_inline_code_spans(visible)
     visible = _replace_inline_markdown_links_with_labels(visible)
     visible = AUTOLINK_PATTERN.sub(lambda match: match.group("url"), visible)
+    # HTMLParser(convert_charrefs=True) performs the browser's one character-
+    # reference decoding pass. Do not decode the resulting text a second time.
     visible = _visible_html_text(visible)
-    visible = html.unescape(visible)
-    visible = visible.replace("**", "").replace("__", "")
-    visible = visible.replace("*", "").replace("_", "")
+    visible = _strip_emphasis_preserving_intraword_underscores(visible)
     return " ".join(visible.split())
 
 MARKDOWN_BACKSLASH_ESCAPE_PATTERN = re.compile(
@@ -1740,7 +1817,7 @@ def _replace_inline_markdown_links_with_labels(text: str) -> str:
     cursor = 0
     for link in links:
         parts.append(text[cursor:link.start])
-        parts.append(link.label)
+        parts.append("" if link.image else link.label)
         cursor = link.end
     parts.append(text[cursor:])
     return "".join(parts)
@@ -2279,13 +2356,12 @@ def _require_registered_source_link(
     )
     assert source_block, f"{entry} has an empty registered-source field"
     source_value = rendered[source_block.start(1):source_block.end(1)]
-    assert _visible_inline_text(source_value), f"{entry} has an empty registered-source field"
-
     destinations = _usable_https_destinations(
         source_value,
         reference_scope=reference_scope,
     )
     assert destinations, f"{entry} has no usable HTTPS destination in its registered-source field"
+    assert _visible_inline_text(source_value), f"{entry} has an empty registered-source field"
     assert len(destinations) == len(set(destinations)), f"{entry} contains duplicate registered-source destinations"
     return destinations
 
@@ -3824,4 +3900,70 @@ def test_hidden_table_foster_parenting_is_rejected_fail_closed():
     )
     mutated = corpus.replace(heading, heading + "\n\n" + payload, 1)
     with pytest.raises(AssertionError, match="visually hidden raw HTML table"):
+        _validate_registry_corpus(mutated)
+
+def _chey_section_for_rendering_mutation(corpus: str) -> tuple[str, str]:
+    entry = next(
+        heading for heading in EXPECTED_GOVERNED_ENTRIES if heading.startswith("### Chey (2021)")
+    )
+    return entry, _registered_sections(corpus)[entry]
+
+
+def _mutate_chey_phrase(replacement: str) -> str:
+    corpus = CORPUS.read_text(encoding="utf-8")
+    _, section = _chey_section_for_rendering_mutation(corpus)
+    assert "The article" in section
+    mutated_section = section.replace("The article", replacement, 1)
+    return corpus.replace(section, mutated_section, 1)
+
+
+def test_ordinary_html_title_cannot_supply_pinned_visible_clause():
+    mutated = _mutate_chey_phrase("<title>The article</title>")
+    with pytest.raises(AssertionError):
+        _validate_registry_corpus(mutated)
+
+
+def test_css_escape_cannot_hide_pinned_visible_clause():
+    mutated = _mutate_chey_phrase(
+        '<span style="display:n\\6f ne">The article</span>'
+    )
+    with pytest.raises(AssertionError):
+        _validate_registry_corpus(mutated)
+
+
+def test_inert_registered_anchor_is_not_usable_provenance():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = next(
+        heading for heading in EXPECTED_GOVERNED_ENTRIES if heading.startswith("### Hurley (2025)")
+    )
+    section = _registered_sections(corpus)[entry]
+    source = str(ENTRY_CONTRACTS[entry][SOURCES_KEY][0])
+    original = f"**Registered source:** {source}"
+    replacement = (
+        f'**Registered source:** <span inert><a href="{source}">{source}</a></span>'
+    )
+    assert original in section
+    mutated_section = section.replace(original, replacement, 1)
+    mutated = corpus.replace(section, mutated_section, 1)
+    with pytest.raises(AssertionError, match="no usable HTTPS destination"):
+        _validate_registry_corpus(mutated)
+
+
+def test_markdown_image_alt_text_cannot_supply_pinned_visible_clause():
+    mutated = _mutate_chey_phrase(
+        "![The article](https://example.com/rendered-rights.png)"
+    )
+    with pytest.raises(AssertionError):
+        _validate_registry_corpus(mutated)
+
+
+def test_intraword_underscores_remain_literal_in_integrity_text():
+    mutated = _mutate_chey_phrase("T_h_e_ a_r_t_i_c_l_e_")
+    with pytest.raises(AssertionError):
+        _validate_registry_corpus(mutated)
+
+
+def test_character_references_are_decoded_once_for_integrity():
+    mutated = _mutate_chey_phrase("&amp;#84;he article")
+    with pytest.raises(AssertionError):
         _validate_registry_corpus(mutated)
