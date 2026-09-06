@@ -1,4 +1,4 @@
-name: PR4 latest six review repair
+name: PR4 latest six review repair v2
 
 on:
   push:
@@ -34,6 +34,9 @@ jobs:
       - name: Apply six-review repair
         run: python .github/scripts/pr4-latest-six-repair.py
 
+      - name: Apply correction layer
+        run: python .github/scripts/pr4-latest-six-correction.py
+
       - name: Focused governance tests
         run: |
           pytest -q \
@@ -57,6 +60,7 @@ jobs:
       - name: Self-clean repair machinery
         run: |
           rm .github/scripts/pr4-latest-six-repair.py
+          rm .github/scripts/pr4-latest-six-correction.py
           rm .github/workflows/pr4-latest-six-repair.yml
           git diff --check
 
