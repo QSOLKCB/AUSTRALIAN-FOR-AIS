@@ -78,6 +78,9 @@ def _entry_contract(
     """Build one explicit governed-entry contract."""
     contract: dict[str, object] = {
         SOURCES_KEY: sources,
+        # All adopted source fields currently display their URL as the label.
+        # Keep each association, not just independent label/destination sets.
+        "source_bindings": tuple((source, source) for source in sources),
         SOURCE_TYPE_FIELD: source_type,
         "governance": governance,
         RIGHTS_FIELD: rights,
@@ -749,6 +752,14 @@ class _GovernedHTMLSemanticsDetector(HTMLParser):
     ) -> None:
         tag = tag.lower()
         names = [key.lower() for key, _ in attrs]
+        # Attribute parsing accepts every HTML whitespace form around '=' and
+        # does not mistake strings inside another attribute for real styling.
+        if "style" in names:
+            self.found.add("inline-style")
+        if "class" in names or tag in {"style", "link"}:
+            self.found.add("styling")
+        if tag == "img":
+            self.found.add("replacement")
         if "shadowrootmode" in names or "shadowroot" in names:
             self.found.add("shadow-root")
         table_descendants = {"caption", "colgroup", "thead", "tbody", "tfoot", "tr", "td", "th"}
@@ -871,6 +882,7 @@ class _VisibleHTMLTextParser(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.parts: list[str] = []
         self.hrefs: list[str] = []
+        self.link_bindings: list[tuple[str, str]] = []
         self.stack: list[tuple[str, bool, bool]] = []
         self.open_anchors: list[tuple[int, str, int]] = []
         self.protect_raw_html_literal_asterisks = protect_raw_html_literal_asterisks
@@ -935,9 +947,10 @@ class _VisibleHTMLTextParser(HTMLParser):
             if anchor_depth < depth:
                 remaining.append((anchor_depth, href, parts_start))
                 continue
-            linked_text = " ".join(self.parts[parts_start:]).strip()
+            linked_text = "".join(self.parts[parts_start:]).strip()
             if linked_text:
                 self.hrefs.append(href)
+                self.link_bindings.append((linked_text, href))
         self.open_anchors = remaining
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
@@ -995,6 +1008,14 @@ def _visible_html_links(text: str) -> tuple[str, ...]:
     except Exception:
         return ()
     return tuple(parser.hrefs)
+
+
+def _visible_html_link_bindings(text: str) -> tuple[tuple[str, str], ...]:
+    """Keep linked character data attached to its already-decoded HTML href."""
+    parser = _VisibleHTMLTextParser()
+    parser.feed(text)
+    parser.close()
+    return tuple(parser.link_bindings)
 
 
 class _VisuallyHiddenTableDetector(HTMLParser):
@@ -2228,26 +2249,35 @@ def _require_rendered_https_destination(
     return destination
 
 
-def _usable_https_destinations(
+def _usable_https_source_bindings(
     text: str,
     *,
     reference_scope: str | None = None,
-) -> tuple[str, ...]:
-    """Extract rendered links, resolving reference definitions at document scope."""
+) -> tuple[tuple[str, str], ...]:
+    """Extract visible label/destination pairs through every supported link path."""
     structure = _mask_hidden_html_regions(_structural_registry_text(text))
     definition_source = text if reference_scope is None else reference_scope
     reference_structure = _mask_hidden_html_regions(
         _structural_registry_text(definition_source)
     )
-    destinations: list[str] = []
+    bindings: list[tuple[str, str]] = []
 
-    for candidate in _visible_html_links(structure):
-        destinations.append(
-            _require_rendered_https_destination(
-                candidate,
-                decode_markdown_syntax=False,
-            )
+    def record(label: str, candidate: str, *, html_label: bool = False,
+               strip_prose: bool = False) -> None:
+        destination = _require_rendered_https_destination(
+            candidate,
+            strip_trailing_prose_punctuation=strip_prose,
+            decode_markdown_syntax=not html_label,
         )
+        # HTMLParser already decoded character references in linked text.
+        # Escape that text before the existing canonical normalizer so it
+        # cannot be decoded or interpreted as live HTML a second time.
+        label_source = html.escape(label, quote=False) if html_label else label
+        visible_label = _visible_inline_text(label_source)
+        bindings.append((visible_label, destination))
+
+    for label, candidate in _visible_html_link_bindings(structure):
+        record(label, candidate, html_label=True)
 
     markdown_structure = _mask_raw_html_tags_for_markdown_link_discovery(structure)
     reference_markdown_structure = _mask_raw_html_tags_for_markdown_link_discovery(
@@ -2255,16 +2285,11 @@ def _usable_https_destinations(
     )
     inline_links = _markdown_inline_links(markdown_structure)
     for link in inline_links:
-        if link.image:
-            continue
-        destinations.append(
-            _require_rendered_https_destination(link.destination.strip("<>"))
-        )
+        if not link.image:
+            record(link.label, link.destination.strip("<>"))
     structure_without_inline_links = _mask_inline_markdown_links(
-        markdown_structure,
-        inline_links,
+        markdown_structure, inline_links,
     )
-
     definitions = _reference_definitions(reference_markdown_structure)
 
     for match in REFERENCE_LINK_PATTERN.finditer(structure_without_inline_links):
@@ -2273,34 +2298,34 @@ def _usable_https_destinations(
         reference = match.group("reference") or match.group("label")
         candidate = definitions.get(_normalise_reference_label(reference))
         if candidate is not None:
-            destinations.append(_require_rendered_https_destination(candidate))
+            record(match.group("label"), candidate)
 
     without_reference_links = REFERENCE_LINK_PATTERN.sub("", structure_without_inline_links)
     for match in SHORTCUT_REFERENCE_LINK_PATTERN.finditer(without_reference_links):
         if match.group("image"):
             continue
-        candidate = definitions.get(
-            _normalise_reference_label(match.group("label"))
-        )
+        candidate = definitions.get(_normalise_reference_label(match.group("label")))
         if candidate is not None:
-            destinations.append(_require_rendered_https_destination(candidate))
+            record(match.group("label"), candidate)
 
-    without_links = without_reference_links
-    for match in AUTOLINK_PATTERN.finditer(without_links):
-        destinations.append(
-            _require_rendered_https_destination(match.group("url"))
-        )
-
-    without_links = AUTOLINK_PATTERN.sub("", without_links)
+    for match in AUTOLINK_PATTERN.finditer(without_reference_links):
+        record(match.group("url"), match.group("url"))
+    without_links = AUTOLINK_PATTERN.sub("", without_reference_links)
     for match in BARE_HTTPS_LINE_PATTERN.finditer(without_links):
-        destinations.append(
-            _require_rendered_https_destination(
-                match.group("url"),
-                strip_trailing_prose_punctuation=True,
-            )
-        )
+        candidate = match.group("url")
+        record(candidate, candidate, strip_prose=True)
+    return tuple(bindings)
 
-    return tuple(destinations)
+
+def _usable_https_destinations(
+    text: str,
+    *,
+    reference_scope: str | None = None,
+) -> tuple[str, ...]:
+    """Compatibility view of the same source-binding extraction pipeline."""
+    return tuple(destination for _, destination in _usable_https_source_bindings(
+        text, reference_scope=reference_scope,
+    ))
 
 
 def _visible_markdown_heading_span(structure: str, heading: str) -> tuple[int, int]:
@@ -2740,6 +2765,7 @@ def _require_registered_source_link(
     section: str,
     *,
     reference_scope: str | None = None,
+    source_bindings: list[tuple[str, str]] | None = None,
 ) -> tuple[str, ...]:
     source_count = _metadata_field_count(
         section,
@@ -2755,10 +2781,11 @@ def _require_registered_source_link(
     )
     assert source_block, f"{entry} has an empty registered-source field"
     source_value = rendered[source_block.start(1):source_block.end(1)]
-    destinations = _usable_https_destinations(
+    bindings = _usable_https_source_bindings(
         source_value,
         reference_scope=reference_scope,
     )
+    destinations = tuple(destination for _, destination in bindings)
     assert destinations, f"{entry} has no usable HTTPS destination in its registered-source field"
     assert not _contains_inert_html(_structural_registry_text(source_value)), (
         f"{entry} registered-source field contains inert HTML; provenance links must "
@@ -2766,6 +2793,8 @@ def _require_registered_source_link(
     )
     assert _visible_inline_text(source_value), f"{entry} has an empty registered-source field"
     assert len(destinations) == len(set(destinations)), f"{entry} contains duplicate registered-source destinations"
+    if source_bindings is not None:
+        source_bindings.extend(bindings)
     return destinations
 
 
@@ -2857,49 +2886,48 @@ def _require_pinned_entry_contract(
 
 
 def _forbidden_governed_html_constructs(text: str) -> set[str]:
-    """Detect live styling/replacement HTML while ignoring Markdown code containers."""
+    """Parse live HTML without reclassifying attribute continuations as code."""
     rendered = _rendered_registry_text(text)
     scan = _mask_multiline_code_spans(rendered)
     fence: FenceState | None = None
     found: set[str] = set()
-    live_markup_parts: list[str] = []
-
-    for raw_line in scan.splitlines():
-        while fence is not None and not _fence_container_continues(raw_line, fence):
-            fence = None
-
-        if fence is not None:
-            if _is_fence_closer(raw_line, fence):
-                fence = None
-            continue
-
-        opener = _fence_opener(raw_line)
-        if opener is not None:
-            fence = opener
-            continue
-
-        logical, is_code = _strip_composed_container_prefixes(raw_line)
-        if is_code:
-            continue
-        logical = _mask_inline_code_spans(logical)
-        live_markup_parts.append(logical)
-        if GOVERNED_STYLING_HTML_PATTERN.search(logical):
-            found.add("styling")
-        if GOVERNED_REPLACEMENT_HTML_PATTERN.search(logical):
-            found.add("replacement")
-        if GOVERNED_DELETION_HTML_PATTERN.search(logical):
-            found.add("deletion")
-        if GOVERNED_INLINE_STYLE_HTML_PATTERN.search(logical):
-            found.add("inline-style")
-        if GOVERNED_BIDI_HTML_PATTERN.search(logical):
-            found.add("bidi")
-
     semantics = _GovernedHTMLSemanticsDetector()
+
     try:
-        semantics.feed("\n".join(live_markup_parts))
+        for raw_line in scan.splitlines():
+            # HTMLParser buffers an unfinished start tag in rawdata. Once an
+            # actual live tag is open, all subsequent attribute whitespace
+            # belongs to that tag, including tabs and four-space indentation.
+            # Do not discard those lines as standalone Markdown code.
+            if re.match(r"<[A-Za-z]", semantics.rawdata):
+                semantics.feed(raw_line + "\n")
+                continue
+
+            while fence is not None and not _fence_container_continues(raw_line, fence):
+                fence = None
+            if fence is not None:
+                if _is_fence_closer(raw_line, fence):
+                    fence = None
+                continue
+            opener = _fence_opener(raw_line)
+            if opener is not None:
+                fence = opener
+                continue
+
+            logical, is_code = _strip_composed_container_prefixes(raw_line)
+            if is_code:
+                continue
+            logical = _mask_inline_code_spans(logical)
+            semantics.feed(logical + "\n")
+            if GOVERNED_REPLACEMENT_HTML_PATTERN.search(logical):
+                found.add("replacement")
+            if GOVERNED_DELETION_HTML_PATTERN.search(logical):
+                found.add("deletion")
+            if GOVERNED_BIDI_HTML_PATTERN.search(logical):
+                found.add("bidi")
         semantics.close()
     except Exception:
-        # Malformed live HTML is already unsafe for a render-integrity contract.
+        # Malformed live HTML is unsafe for a render-integrity contract.
         found.add("conditional-raw-text")
     found.update(semantics.found)
     return found
@@ -2926,7 +2954,7 @@ def _require_complete_entry_integrity(entry: str, section: str) -> None:
         "in governed entries because deleted text cannot satisfy visible integrity"
     )
     assert "replacement" not in forbidden_html, (
-        f"{entry} contains replacement-content HTML (object/embed/iframe/canvas), which is "
+        f"{entry} contains replacement-content HTML (object/embed/iframe/canvas/img), which is "
         "not permitted in governed entries because browser replacement semantics can "
         "hide pinned fallback provenance"
     )
@@ -2973,10 +3001,12 @@ def _validate_registered_entry(
     reference_scope: str | None = None,
 ) -> None:
     _reject_non_commonmark_character_references(section)
+    source_bindings: list[tuple[str, str]] = []
     destinations = _require_registered_source_link(
         entry,
         section,
         reference_scope=reference_scope,
+        source_bindings=source_bindings,
     )
     scalar_values = {field: _scalar_value(entry, section, field) for field in SCALAR_FIELDS}
     contract = ENTRY_CONTRACTS.get(entry)
@@ -3004,6 +3034,14 @@ def _validate_registered_entry(
         destinations=destinations,
         research_mapping=research_mapping,
         project_mapping=project_mapping,
+    )
+    expected_bindings = {
+        (_visible_inline_text(label), destination)
+        for label, destination in contract["source_bindings"]
+    }
+    assert set(source_bindings) == expected_bindings, (
+        f"{entry} registered-source label/destination bindings changed: "
+        f"expected {sorted(expected_bindings)!r}, got {sorted(source_bindings)!r}"
     )
     _require_complete_entry_integrity(entry, section)
 
@@ -3037,6 +3075,10 @@ def _validate_registry_corpus(corpus: str) -> None:
         "visibility:visible override; this ambiguous visual nesting is rejected fail closed"
     )
     corpus_forbidden_html = _forbidden_governed_html_constructs(corpus)
+    assert "replacement" not in corpus_forbidden_html, (
+        "registry contains replacement-content HTML, including raw images; "
+        "rendered replacement content cannot be sealed as character data"
+    )
     unsupported = corpus_forbidden_html & {"shadow-root", "hidden-table-descendant", "nested-anchor"}
     assert not unsupported, (
         f"registry contains unsupported governed HTML: {sorted(unsupported)}; "

@@ -923,6 +923,8 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         tag = tag.lower()
         if tag == "canvas":
             self.violations.add("canvas")
+        if tag == "img":
+            self.violations.add("raw-image")
         if tag == "details":
             attribute_names = {key.lower() for key, _ in attrs}
             if "open" not in attribute_names:
@@ -938,13 +940,57 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
 def _governed_surface_html_violations(markdown: str) -> set[str]:
     """Inspect live rendered structure while leaving comments/code inert."""
     parser = _GovernedSurfaceHTMLParser()
-    parser.feed(_rendered_structure(markdown))
+    structure = _rendered_structure(markdown)
+    # Exclude definite same-line literal code examples before parsing HTML.
+    # Delimiter runs inside a raw HTML attribute are not Markdown syntax.
+    # Multiline code ambiguity remains fail-closed at this HTML preflight.
+    raw_tag = re.compile(
+        r"</?[A-Za-z][A-Za-z0-9-]*(?=[ \t\r\n\f/>])"
+        r"(?:[^>\"']|\"[^\"]*\"|'[^']*')*>", re.DOTALL,
+    )
+    characters = list(structure)
+    cursor = 0
+    while cursor < len(structure):
+        tag_match = raw_tag.match(structure, cursor)
+        if tag_match is not None:
+            cursor = tag_match.end()
+            continue
+        if structure[cursor] != "`":
+            cursor += 1
+            continue
+        run_end = cursor + 1
+        while run_end < len(structure) and structure[run_end] == "`":
+            run_end += 1
+        backslashes = 0
+        previous = cursor - 1
+        while previous >= 0 and structure[previous] == "\\":
+            backslashes += 1
+            previous -= 1
+        if backslashes % 2:
+            cursor = run_end
+            continue
+        line_end = re.search(r"[\r\n]", structure[run_end:])
+        limit = run_end + line_end.start() if line_end is not None else len(structure)
+        closer = next((
+            match for match in re.finditer(r"`+", structure[run_end:limit])
+            if len(match.group()) == run_end - cursor
+        ), None)
+        if closer is None:
+            cursor = run_end
+            continue
+        end = run_end + closer.end()
+        characters[cursor:end] = " " * (end - cursor)
+        cursor = end
+    parser.feed("".join(characters))
     parser.close()
     return parser.violations
 
 def _visible_text(markdown: str) -> str:
     """Return browser-visible text without hidden HTML or link metadata."""
     violations = _governed_surface_html_violations(markdown)
+    assert "raw-image" not in violations, (
+        "raw image HTML is not allowed on governed methodology surfaces"
+    )
     assert "canvas" not in violations, (
         "canvas fallback HTML is not allowed on governed methodology surfaces"
     )
