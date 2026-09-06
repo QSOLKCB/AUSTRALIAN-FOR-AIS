@@ -57,6 +57,14 @@ jobs:
                   "rendered-integrity regressions: expected exactly two narrow matchers"
               )
           script = script.replace(old_match, new_match)
+
+          old_raw = '''    mutated_section = section.replace(expected, f"<{tag}>{expected}</{tag}>", 1)\\n    with pytest.raises(AssertionError, match="conditional/legacy raw-text HTML"):\\n        _validate_registry_corpus(corpus.replace(section, mutated_section, 1))\\n'''
+          new_raw = '''    mutated_section = section.replace(expected, f"<{tag}>{expected}</{tag}>", 1)\\n    assert "conditional-raw-text" in _forbidden_governed_html_constructs(mutated_section)\\n    with pytest.raises(\\n        AssertionError,\\n        match="conditional/legacy raw-text HTML|changed pinned",\\n    ):\\n        _validate_registry_corpus(corpus.replace(section, mutated_section, 1))\\n'''
+          if script.count(old_raw) != 1:
+              raise SystemExit(
+                  "raw-text regression: expected exactly one assertion-order-sensitive block"
+              )
+          script = script.replace(old_raw, new_raw, 1)
           script_path.write_text(script, encoding="utf-8")
           PY
           python .github/pr4_latest_review_4fe_repair.py
