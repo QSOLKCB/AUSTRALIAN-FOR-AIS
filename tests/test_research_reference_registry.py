@@ -619,6 +619,16 @@ HTML_IMPLIED_END_TARGETS = {
 
 SVG_NON_RENDERING_METADATA_TAGS = frozenset({"title", "desc", "defs", "symbol", "metadata"})
 RAW_HTML_BLOCK_TAGS = frozenset({"pre", "script", "style", "textarea"})
+RAW_HTML_TYPE6_TAGS = frozenset({
+    "address", "article", "aside", "base", "basefont", "blockquote", "body",
+    "caption", "center", "col", "colgroup", "dd", "details", "dialog", "dir",
+    "div", "dl", "dt", "fieldset", "figcaption", "figure", "footer", "form",
+    "frame", "frameset", "h1", "h2", "h3", "h4", "h5", "h6", "head",
+    "header", "hr", "html", "iframe", "legend", "li", "link", "main", "menu",
+    "menuitem", "nav", "noframes", "ol", "optgroup", "option", "p", "param",
+    "search", "section", "summary", "table", "tbody", "td", "tfoot", "th",
+    "thead", "title", "tr", "track", "ul",
+})
 RAW_HTML_PROCESSING_INSTRUCTION = "__processing_instruction__"
 RAW_HTML_DECLARATION = "__declaration__"
 RAW_HTML_CDATA = "__cdata__"
@@ -636,6 +646,10 @@ GOVERNED_STYLING_HTML_PATTERN = re.compile(
 )
 GOVERNED_REPLACEMENT_HTML_PATTERN = re.compile(
     r"<(?:object|embed|iframe|canvas)\b",
+    flags=re.IGNORECASE,
+)
+GOVERNED_DELETION_HTML_PATTERN = re.compile(
+    r"<(?:del|s|strike)\b",
     flags=re.IGNORECASE,
 )
 
@@ -791,6 +805,8 @@ class _VisibleHTMLTextParser(HTMLParser):
                 if key.lower() == "href" and value:
                     self.open_anchors.append((len(self.stack), value, len(self.parts)))
                     break
+        if tag in HTML_VOID_TAGS:
+            return
         self.stack.append((tag, hidden, inert))
 
     def _close_anchors_from_depth(self, depth: int) -> None:
@@ -892,6 +908,71 @@ class _InertHTMLDetector(HTMLParser):
 
 def _contains_inert_html(text: str) -> bool:
     detector = _InertHTMLDetector()
+    try:
+        detector.feed(text)
+        detector.close()
+    except Exception:
+        return True
+    return detector.found
+
+
+def _winning_inline_visibility(style: str) -> str | None:
+    """Return the winning inline visibility declaration after CSS normalization."""
+    cleaned = CSS_COMMENT_PATTERN.sub("", style)
+    winner: tuple[bool, str] | None = None
+    for declaration in cleaned.split(";"):
+        if ":" not in declaration:
+            continue
+        raw_name, raw_value = declaration.split(":", 1)
+        name = _decode_css_escapes(raw_name.strip()).casefold()
+        if name != "visibility":
+            continue
+        decoded_value = _decode_css_escapes(raw_value.strip()).casefold()
+        important = re.search(r"\s*!important\s*$", decoded_value) is not None
+        value = re.sub(r"\s*!important\s*$", "", decoded_value).strip()
+        if winner is None or (important and not winner[0]) or important == winner[0]:
+            winner = (important, value)
+    return winner[1] if winner is not None else None
+
+
+class _VisibilityOverrideDetector(HTMLParser):
+    """Detect inherited CSS visibility restored by a descendant."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.stack: list[tuple[str, bool]] = []
+        self.found = False
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
+        inherited_hidden = self.stack[-1][1] if self.stack else False
+        values = _first_html_attribute_values(attrs)
+        visibility = _winning_inline_visibility(values.get("style", ""))
+        if inherited_hidden and visibility == "visible":
+            self.found = True
+        if visibility in {"hidden", "collapse"}:
+            current_hidden = True
+        elif visibility == "visible":
+            current_hidden = False
+        else:
+            current_hidden = inherited_hidden
+        if tag not in HTML_VOID_TAGS:
+            self.stack.append((tag, current_hidden))
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() not in HTML_VOID_TAGS:
+            self.handle_starttag(tag, attrs)
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        for index in range(len(self.stack) - 1, -1, -1):
+            if self.stack[index][0] == tag:
+                del self.stack[index:]
+                return
+
+
+def _contains_descendant_visibility_override(text: str) -> bool:
+    detector = _VisibilityOverrideDetector()
     try:
         detector.feed(text)
         detector.close()
@@ -1313,6 +1394,37 @@ def _raw_html_block_closes(line: str, state: RawHTMLBlockState) -> bool:
     )
 
 
+def _contains_markdown_structure_in_type6_raw_html(text: str) -> bool:
+    """Detect Markdown headings made inert by a CommonMark type-6 raw HTML block.
+
+    The registry intentionally supports visible raw HTML headings and containers, so
+    we do not globally mask type-6 HTML. Instead, fail closed when such a block
+    contains Markdown heading syntax before its terminating blank line. This is the
+    ambiguity that can fabricate registry boundaries during heading discovery.
+    """
+    structure = _structural_registry_text(text)
+    in_type6 = False
+    for raw_line in structure.splitlines():
+        logical, is_code = _strip_composed_container_prefixes(raw_line)
+        candidate = logical.lstrip(" \t")
+        if is_code:
+            continue
+        if in_type6:
+            if not candidate.strip():
+                in_type6 = False
+                continue
+            if re.match(r"#{2,3}(?:[ \t]+|$)", candidate):
+                return True
+            continue
+        tag_match = re.match(
+            r"</?(?P<tag>[A-Za-z][A-Za-z0-9-]*)(?=[ \t/>]|$)",
+            candidate,
+        )
+        if tag_match is not None and tag_match.group("tag").lower() in RAW_HTML_TYPE6_TAGS:
+            in_type6 = True
+    return False
+
+
 def _matching_backtick_run_start(
     text: str,
     start: int,
@@ -1573,7 +1685,10 @@ def _render_inline_code_spans(text: str) -> str:
             parts.append(marker)
             position = run_end
             continue
-        parts.append(text[run_end:close].strip(" "))
+        # Code-span contents are literal text. Escape them before the HTML
+        # visibility pass so markup characters render as characters rather than
+        # being reinterpreted as live HTML elements.
+        parts.append(html.escape(text[run_end:close].strip(" "), quote=False))
         position = close + len(marker)
     return "".join(parts)
 
@@ -2576,6 +2691,8 @@ def _forbidden_governed_html_constructs(text: str) -> set[str]:
             found.add("styling")
         if GOVERNED_REPLACEMENT_HTML_PATTERN.search(logical):
             found.add("replacement")
+        if GOVERNED_DELETION_HTML_PATTERN.search(logical):
+            found.add("deletion")
     return found
 
 
@@ -2590,6 +2707,10 @@ def _require_complete_entry_integrity(entry: str, section: str) -> None:
     rendered_section = _rendered_registry_text(section)
     structural_section = _structural_registry_text(section)
     forbidden_html = _forbidden_governed_html_constructs(section)
+    assert "deletion" not in forbidden_html, (
+        f"{entry} contains semantic deletion HTML (del/s/strike), which is not permitted "
+        "in governed entries because deleted text cannot satisfy visible integrity"
+    )
     assert "replacement" not in forbidden_html, (
         f"{entry} contains replacement-content HTML (object/embed/iframe/canvas), which is "
         "not permitted in governed entries because browser replacement semantics can "
@@ -2672,6 +2793,15 @@ def _normalised_source_use_rules_value(corpus: str) -> str:
 
 
 def _validate_registry_corpus(corpus: str) -> None:
+    assert not _contains_markdown_structure_in_type6_raw_html(corpus), (
+        "registry contains Markdown governance structure inside a CommonMark type-6 "
+        "raw HTML block; this ambiguous structure is rejected fail closed"
+    )
+    structural_for_visibility = _structural_registry_text(corpus)
+    assert not _contains_descendant_visibility_override(structural_for_visibility), (
+        "registry contains a visibility:hidden/collapse ancestor with a descendant "
+        "visibility:visible override; this ambiguous visual nesting is rejected fail closed"
+    )
     corpus_forbidden_html = _forbidden_governed_html_constructs(corpus)
     assert "styling" not in corpus_forbidden_html, (
         "registry contains stylesheet/class-driven HTML styling; governed source "
@@ -3619,9 +3749,9 @@ def test_hidden_html_container_cannot_hide_complete_governed_batch():
     end = corpus.index(BATCH_END, start)
     mutated = (
         corpus[:start]
-        + "\n<div hidden>\n"
+        + "\n<div hidden>\n\n"
         + corpus[start:end]
-        + "\n</div>\n"
+        + "\n</div>\n\n"
         + corpus[end:]
     )
     with pytest.raises(AssertionError, match="registered post-Phase-2 batch contains no entries"):
@@ -3634,9 +3764,9 @@ def test_closed_details_cannot_hide_complete_governed_batch():
     end = corpus.index(BATCH_END, start)
     mutated = (
         corpus[:start]
-        + "\n<details>\n<summary>Governed references</summary>\n"
+        + "\n<details>\n<summary>Governed references</summary>\n\n"
         + corpus[start:end]
-        + "\n</details>\n"
+        + "\n</details>\n\n"
         + corpus[end:]
     )
     with pytest.raises(AssertionError, match="registered post-Phase-2 batch contains no entries"):
@@ -3649,9 +3779,9 @@ def test_open_details_keep_governed_batch_visible():
     end = corpus.index(BATCH_END, start)
     mutated = (
         corpus[:start]
-        + "\n<details open>\n<summary>Governed references</summary>\n"
+        + "\n<details open>\n<summary>Governed references</summary>\n\n"
         + corpus[start:end]
-        + "\n</details>\n"
+        + "\n</details>\n\n"
         + corpus[end:]
     )
     _validate_registry_corpus(mutated)
@@ -3734,7 +3864,7 @@ def test_self_closing_anchor_source_destination_is_counted():
 def test_closed_dialog_cannot_hide_complete_governed_batch():
     corpus = CORPUS.read_text(encoding="utf-8")
     batch = _registered_batch(corpus)
-    mutated = corpus.replace(batch, f"<dialog>\n{batch}\n</dialog>\n", 1)
+    mutated = corpus.replace(batch, f"<dialog>\n\n{batch}\n\n</dialog>\n\n", 1)
     with pytest.raises(AssertionError, match="contains no entries"):
         _validate_registry_corpus(mutated)
 
@@ -3742,7 +3872,7 @@ def test_closed_dialog_cannot_hide_complete_governed_batch():
 def test_open_dialog_keeps_governed_batch_visible():
     corpus = CORPUS.read_text(encoding="utf-8")
     batch = _registered_batch(corpus)
-    mutated = corpus.replace(batch, f"<dialog open>\n{batch}\n</dialog>\n", 1)
+    mutated = corpus.replace(batch, f"<dialog open>\n\n{batch}\n\n</dialog>\n\n", 1)
     _validate_registry_corpus(mutated)
 
 
@@ -3881,7 +4011,7 @@ def test_css_comment_cannot_hide_complete_governed_batch():
     batch = _registered_batch(corpus)
     mutated = corpus.replace(
         batch,
-        f'<div style="display:/**/none">\n{batch}\n</div>\n',
+        f'<div style="display:/**/none">\n\n{batch}\n\n</div>\n\n',
         1,
     )
     with pytest.raises(AssertionError, match="contains no entries"):
@@ -4277,3 +4407,61 @@ def test_explicit_link_destinations_preserve_punctuation_but_bare_prose_trims_it
     assert _usable_https_destinations(f"[source]({expected})") == (expected,)
     assert _usable_https_destinations(f"<{expected}>") == (expected,)
     assert _usable_https_destinations(expected) == (expected.rstrip(";"),)
+
+
+
+def test_latest_review_rendering_semantics_regressions():
+    corpus = CORPUS.read_text(encoding="utf-8")
+
+    mutated = corpus.replace(
+        BATCH_HEADING,
+        f"<div>\n{BATCH_HEADING}\n</div>",
+        1,
+    )
+    with pytest.raises(AssertionError, match="type-6 raw HTML block"):
+        _validate_registry_corpus(mutated)
+
+    entry = next(
+        heading for heading in EXPECTED_GOVERNED_ENTRIES if heading.startswith("### Chey")
+    )
+    section = _registered_sections(corpus)[entry]
+    visibility_override = (
+        '<span style="visibility:hidden">masked'
+        '<span style="visibility:visible"><strong>DOI:</strong> '
+        'https://doi.org/10.0000/fabricated</span></span>'
+    )
+    mutated = corpus.replace(section, section + "\n" + visibility_override + "\n", 1)
+    with pytest.raises(AssertionError, match="visibility:hidden/collapse"):
+        _validate_registry_corpus(mutated)
+
+    assert _visible_html_text("<img hidden>visible remainder") == "visible remainder"
+
+
+def test_semantic_deletion_markup_cannot_supply_pinned_governance():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = "### *Black Comedy* (ABC, 2014-2020)"
+    section = _registered_sections(corpus)[entry]
+    rights = str(ENTRY_CONTRACTS[entry][RIGHTS_FIELD])
+    assert rights in section
+    for tag in ("del", "s", "strike"):
+        mutated_section = section.replace(rights, f"<{tag}>{rights}</{tag}>", 1)
+        mutated = corpus.replace(section, mutated_section, 1)
+        with pytest.raises(AssertionError, match="semantic deletion HTML"):
+            _validate_registry_corpus(mutated)
+
+
+def test_html_literals_inside_code_spans_remain_literal_integrity_text():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = (
+        "### Chey (2021), *Overcoming awkwardness: some interpretations of "
+        "Australian humour*"
+    )
+    section = _registered_sections(corpus)[entry]
+    rights = str(ENTRY_CONTRACTS[entry][RIGHTS_FIELD])
+    assert "article" in rights
+    assert rights in section
+    corrupted = rights.replace("article", "`<span>article</span>`", 1)
+    mutated_section = section.replace(rights, corrupted, 1)
+    mutated = corpus.replace(section, mutated_section, 1)
+    with pytest.raises(AssertionError):
+        _validate_registry_corpus(mutated)

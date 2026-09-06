@@ -162,6 +162,8 @@ class _VisibleHTMLTextParser(HTMLParser):
             tag in SVG_NON_RENDERING_METADATA_TAGS
             and any(parent_tag == "svg" for parent_tag, _ in self.stack)
         )
+        if tag in HTML_VOID_TAGS:
+            return
         self.stack.append(
             (tag, inherited or svg_metadata_hidden or self._is_hidden(tag, attrs))
         )
@@ -768,8 +770,10 @@ def _visible_text(markdown: str) -> str:
     visible = _mask_link_reference_definitions_for_visibility(markdown)
     visible = _replace_inline_markdown_links_for_visibility(visible)
     visible = AUTOLINK_PATTERN.sub(lambda match: match.group("url"), visible)
+    # HTMLParser(convert_charrefs=True) already performs the browser's one
+    # character-reference decoding pass. A second html.unescape() would turn
+    # literal entity-looking text into content the browser never displays.
     visible = _visible_html_text(visible)
-    visible = html.unescape(visible)
     visible = visible.replace("**", "").replace("__", "")
     visible = visible.replace("*", "").replace("_", "")
     return " ".join(visible.split())
@@ -1080,3 +1084,23 @@ def test_policing_companion_contradiction_changes_complete_visible_section():
     )
     with pytest.raises(AssertionError, match="browser-visible policing workstream changed"):
         _validate_policing_workstream(mutated)
+
+
+
+def test_policing_visibility_decodes_character_references_once():
+    assert _visible_text("&amp;#69;very implemented item must record") == (
+        "&#69;very implemented item must record"
+    )
+
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    sentence = REQUIRED_CLAUSES[3]
+    assert "Every implemented item must record" in sentence
+    encoded = sentence.replace("Every", "&amp;#69;very", 1)
+    assert sentence in roadmap
+    mutated = roadmap.replace(sentence, encoded, 1)
+    with pytest.raises(AssertionError):
+        _validate_policing_workstream(mutated)
+
+
+def test_policing_visible_html_void_elements_do_not_hide_following_text():
+    assert _visible_html_text("<img hidden>visible safeguard") == "visible safeguard"
