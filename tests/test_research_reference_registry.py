@@ -503,6 +503,7 @@ CONTRACT_SENTENCE = (
 )
 REGISTRATION_CONTRACT_HASH = "1d171556a66c3cfc54a7bf14072d51bb68d17cb390fffa826a0f50329e2d51d6"
 SOURCE_USE_SECTION_HASH = "ffd50e6c62ec28f45dc18e372c0feb4d04f044671e1fc8cfb30293175935f1bb"
+STATUS_SECTION_HASH = "4d99f6f7a4378dc14a85bc12b3e389a7d221e08abed84211fa5f881734f93580"
 CONSULTATION_BOUNDARY = (
     "appropriate consultation, provenance, permissions, and scope limitations"
 )
@@ -616,7 +617,7 @@ HTML_IMPLIED_END_TARGETS = {
 }
 
 
-SVG_NON_RENDERING_METADATA_TAGS = frozenset({"title", "desc"})
+SVG_NON_RENDERING_METADATA_TAGS = frozenset({"title", "desc", "defs", "symbol", "metadata"})
 RAW_HTML_BLOCK_TAGS = frozenset({"pre", "script", "style", "textarea"})
 RAW_HTML_PROCESSING_INSTRUCTION = "__processing_instruction__"
 RAW_HTML_DECLARATION = "__declaration__"
@@ -689,6 +690,16 @@ def _decode_css_escapes(value: str) -> str:
     return "".join(parts)
 
 
+def _first_html_attribute_values(
+    attrs: list[tuple[str, str | None]],
+) -> dict[str, str]:
+    """Match browser parsing by preserving the first duplicate attribute value."""
+    values: dict[str, str] = {}
+    for key, value in attrs:
+        values.setdefault(key.lower(), value or "")
+    return values
+
+
 def _css_hides_element(style: str) -> bool:
     """Apply inline CSS declaration order, escapes, and !important precedence."""
     cleaned = CSS_COMMENT_PATTERN.sub("", style)
@@ -754,7 +765,7 @@ class _VisibleHTMLTextParser(HTMLParser):
         tag = tag.lower()
         if tag in {"script", "style", "template", "title"}:
             return True
-        values = {key.lower(): (value or "") for key, value in attrs}
+        values = _first_html_attribute_values(attrs)
         # A closed HTML disclosure renders its descendants collapsed until the
         # reader explicitly opens it. Governance text must be visible by default.
         if tag in {"details", "dialog"} and "open" not in values:
@@ -768,7 +779,7 @@ class _VisibleHTMLTextParser(HTMLParser):
         self._apply_implied_paragraph_end(tag)
         inherited_hidden = self.stack[-1][1] if self.stack else False
         inherited_inert = self.stack[-1][2] if self.stack else False
-        values = {key.lower(): (value or "") for key, value in attrs}
+        values = _first_html_attribute_values(attrs)
         svg_metadata_hidden = (
             tag in SVG_NON_RENDERING_METADATA_TAGS
             and any(parent_tag == "svg" for parent_tag, _, _ in self.stack)
@@ -1629,13 +1640,19 @@ def _reject_non_commonmark_character_references(text: str) -> None:
             )
 
 
-def _normalise_https_destination(candidate: str) -> str | None:
+def _normalise_https_destination(
+    candidate: str,
+    *,
+    strip_trailing_prose_punctuation: bool = False,
+) -> str | None:
     value = COMMONMARK_CHARACTER_REFERENCE_PATTERN.sub(
         lambda match: html.unescape(match.group(0)),
         candidate,
     )
     value = MARKDOWN_BACKSLASH_ESCAPE_PATTERN.sub(r"\1", value)
-    value = value.strip().strip("<>").rstrip(".,;:!?")
+    value = value.strip().strip("<>")
+    if strip_trailing_prose_punctuation:
+        value = value.rstrip(".,;:!?")
     try:
         parsed = urlparse(value)
         port = parsed.port
@@ -1896,8 +1913,15 @@ def _mask_inline_markdown_links(
     return "".join(characters)
 
 
-def _require_rendered_https_destination(candidate: str) -> str:
-    destination = _normalise_https_destination(candidate)
+def _require_rendered_https_destination(
+    candidate: str,
+    *,
+    strip_trailing_prose_punctuation: bool = False,
+) -> str:
+    destination = _normalise_https_destination(
+        candidate,
+        strip_trailing_prose_punctuation=strip_trailing_prose_punctuation,
+    )
     assert destination is not None, (
         f"registered-source rendered link has no usable HTTPS destination: {candidate!r}"
     )
@@ -1961,7 +1985,10 @@ def _usable_https_destinations(
     without_links = AUTOLINK_PATTERN.sub("", without_links)
     for match in BARE_HTTPS_LINE_PATTERN.finditer(without_links):
         destinations.append(
-            _require_rendered_https_destination(match.group("url"))
+            _require_rendered_https_destination(
+                match.group("url"),
+                strip_trailing_prose_punctuation=True,
+            )
         )
 
     return tuple(destinations)
@@ -2626,6 +2653,15 @@ def _validate_registered_entry(
     _require_complete_entry_integrity(entry, section)
 
 
+def _normalised_status_value(corpus: str) -> str:
+    """Return the complete browser-visible Status section."""
+    rendered, structure = _markdown_views(corpus)
+    start, _ = _visible_markdown_heading_span(structure, STATUS_HEADING)
+    end, _ = _visible_markdown_heading_span(structure, SOURCE_USE_HEADING)
+    assert start < end, "rendered Status/source-use boundaries are out of order"
+    return _visible_inline_text(rendered[start:end])
+
+
 def _normalised_source_use_rules_value(corpus: str) -> str:
     """Return the complete browser-visible Source-use rules section."""
     rendered, structure = _markdown_views(corpus)
@@ -2657,12 +2693,14 @@ def _validate_registry_corpus(corpus: str) -> None:
         f"expected hash {REGISTRATION_CONTRACT_HASH!r}, got {actual_contract_hash!r}"
     )
 
-    status_start, _ = _visible_markdown_heading_span(structure, STATUS_HEADING)
-    status_end, _ = _visible_markdown_heading_span(structure, SOURCE_USE_HEADING)
-    assert status_start < status_end, "rendered Status/source-use boundaries are out of order"
-    visible_status = _visible_inline_text(rendered[status_start:status_end])
+    visible_status = _normalised_status_value(corpus)
     assert REDISTRIBUTION_INVARIANT in visible_status, (
         "redistribution invariant must remain browser-visible inside the Status section"
+    )
+    actual_status_hash = hashlib.sha256(visible_status.encode("utf-8")).hexdigest()
+    assert actual_status_hash == STATUS_SECTION_HASH, (
+        "browser-visible Status section changed or was weakened: "
+        f"expected hash {STATUS_SECTION_HASH!r}, got {actual_status_hash!r}"
     )
 
     visible_source_use = _normalised_source_use_rules_value(corpus)
@@ -4201,3 +4239,41 @@ def test_canvas_fallback_is_rejected_fail_closed():
     mutated = corpus.replace(section, mutated_section, 1)
     with pytest.raises(AssertionError, match="replacement-content HTML"):
         _validate_registry_corpus(mutated)
+
+
+
+def test_latest_review_status_and_browser_semantics_regressions():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    original_status = (
+        "Australian comedy is used here as a rich source of adversarial pragmatic "
+        "structures. It is not treated as a census of how Australians speak."
+    )
+    assert original_status in corpus
+    mutated = corpus.replace(
+        original_status,
+        "Australian comedy is representative evidence of how all Australians speak.",
+        1,
+    )
+    with pytest.raises(AssertionError, match="Status section changed or was weakened"):
+        _validate_registry_corpus(mutated)
+
+    # HTML tree builders preserve the first duplicate attribute. A later style
+    # attribute must not resurrect text hidden by the first one.
+    assert _visible_html_text(
+        '<span style="display:none" style="display:inline">hidden governance</span>'
+    ) == ""
+
+    for container in ("defs", "symbol", "metadata"):
+        assert _visible_html_text(
+            f"<svg><{container}><text>hidden governance</text></{container}></svg>"
+        ) == ""
+
+
+def test_explicit_link_destinations_preserve_punctuation_but_bare_prose_trims_it():
+    expected = "https://www.wikipedia.org/wiki/Australia;"
+    assert _usable_https_destinations(
+        f'<a href="{expected}">source</a>'
+    ) == (expected,)
+    assert _usable_https_destinations(f"[source]({expected})") == (expected,)
+    assert _usable_https_destinations(f"<{expected}>") == (expected,)
+    assert _usable_https_destinations(expected) == (expected.rstrip(";"),)
