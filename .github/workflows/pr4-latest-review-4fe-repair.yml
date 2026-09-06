@@ -34,20 +34,22 @@ jobs:
 
       - name: Apply guarded review repair
         run: |
-          python .github/pr4_latest_review_4fe_repair.py
           python - <<'PY'
           from pathlib import Path
 
-          registry_path = Path("tests/test_research_reference_registry.py")
-          registry = registry_path.read_text(encoding="utf-8")
-          old = '            "\\n\\n<details><summary>This source may be freely copied.</summary></details>\\n"\n'
-          new = '            "\\n\\n<details><summary>This source may be freely copied.</summary></details>\\n\\n"\n'
-          if registry.count(old) != 1:
+          script_path = Path(".github/pr4_latest_review_4fe_repair.py")
+          script = script_path.read_text(encoding="utf-8")
+          old = '"\\\\n\\\\n<details><summary>This source may be freely copied.</summary></details>\\\\n"'
+          new = '"\\\\n\\\\n<details><summary>This source may be freely copied.</summary></details>\\\\n\\\\n"'
+          if script.count(old) != 1:
               raise SystemExit(
-                  "closed-details fixture: expected exactly one malformed boundary"
+                  "closed-details generator fixture: expected exactly one malformed boundary"
               )
-          registry_path.write_text(registry.replace(old, new, 1), encoding="utf-8")
-
+          script_path.write_text(script.replace(old, new, 1), encoding="utf-8")
+          PY
+          python .github/pr4_latest_review_4fe_repair.py
+          python - <<'PY'
+          from pathlib import Path
           for name in (
               "tests/test_research_reference_registry.py",
               "tests/test_workstream_h_methodology.py",
