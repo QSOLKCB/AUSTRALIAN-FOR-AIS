@@ -1,0 +1,1 @@
+Temporary receipt to trigger ordinary CI after the latest guarded Codex repair.
