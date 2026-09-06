@@ -58,10 +58,26 @@ text = replace_once(
 
 text = replace_once(
     text,
-    '''    with pytest.raises(AssertionError, match="contains no entries"):
+    '''def test_css_comment_cannot_hide_complete_governed_batch():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    batch = _registered_batch(corpus)
+    mutated = corpus.replace(
+        batch,
+        f'<div style="display:/**/none">\\n\\n{batch}\\n\\n</div>\\n\\n',
+        1,
+    )
+    with pytest.raises(AssertionError, match="contains no entries"):
         _validate_registry_corpus(mutated)
 ''',
-    '''    with pytest.raises(
+    '''def test_css_comment_cannot_hide_complete_governed_batch():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    batch = _registered_batch(corpus)
+    mutated = corpus.replace(
+        batch,
+        f'<div style="display:/**/none">\\n\\n{batch}\\n\\n</div>\\n\\n',
+        1,
+    )
+    with pytest.raises(
         AssertionError,
         match="inline style HTML|contains no entries",
     ):
