@@ -19,6 +19,13 @@ WORKSTREAM_I_HEADING = "### I. Australian and United States policing-context tra
 TRANS_TASMAN_METHODOLOGY_HEADING = "## Trans-Tasman and Slang/Operational Experiment Design"
 POLICING_METHODOLOGY_HEADING = "## Australian and United States Policing-Context Experiment Design"
 WORKSTREAM_H_VISIBLE_SHA256 = "c38e4bc194d820c30ee714851ec279da7649fffc921da5a331d722d22d7c34b8"
+WORKSTREAM_H_CITATION_DESTINATIONS = frozenset({
+    "https://www.vu.edu.au/about-vu/news-events/vu-blog/australian-slang-dictionary",
+    "https://www.reddit.com/r/australia/comments/1g73mue/best_aussie_slang/",
+    "https://www.defence.gov.au/news-events/news/2022-09-08/communication-key-combined-exercise",
+    "https://www.defence.gov.au/news-events/news/2026-06-11/partner-nations-rehearse-war",
+    "https://www.awm.gov.au/collection/LIB100000077",
+})
 TRANS_TASMAN_VISIBLE_SHA256 = "977cb0423a8e0690383f68ef9915ce049ed6f977feeff4f4ab28d21449db1c9b"
 
 MARKDOWN_IMAGE_PATTERN = re.compile(
@@ -260,6 +267,41 @@ def _inline_link_destination(inner: str) -> str | None:
     return destination
 
 
+def _inline_markdown_link_destinations(text: str) -> tuple[str, ...]:
+    """Return non-image inline-link destinations from a rendered section source."""
+    destinations: list[str] = []
+    cursor = 0
+    while cursor < len(text):
+        bracket = text.find("[", cursor)
+        if bracket < 0:
+            break
+        if _is_escaped_markdown_character(text, bracket):
+            cursor = bracket + 1
+            continue
+        label_end = _balanced_markdown_label_end(text, bracket)
+        if label_end is None or label_end + 1 >= len(text) or text[label_end + 1] != "(":
+            cursor = bracket + 1
+            continue
+        paren_start = label_end + 1
+        paren_end = _inline_link_closing_paren(text, paren_start)
+        if paren_end is None:
+            cursor = label_end + 1
+            continue
+        destination = _inline_link_destination(text[paren_start + 1:paren_end])
+        if destination is None:
+            cursor = paren_end + 1
+            continue
+        image = (
+            bracket > 0
+            and text[bracket - 1] == "!"
+            and not _is_escaped_markdown_character(text, bracket - 1)
+        )
+        if not image:
+            destinations.append(html.unescape(destination.strip("<>")))
+        cursor = paren_end + 1
+    return tuple(destinations)
+
+
 def _replace_inline_markdown_links_for_visibility(text: str) -> str:
     parts: list[str] = []
     cursor = 0
@@ -311,11 +353,15 @@ def _rendered_heading_span(text: str, heading: str) -> tuple[int, int]:
     return namespace["_visible_markdown_heading_span"](structure, heading)
 
 
-def _workstream_h(text: str) -> str:
+def _workstream_h_raw(text: str) -> str:
     start, _ = _rendered_heading_span(text, WORKSTREAM_H_HEADING)
     end, _ = _rendered_heading_span(text, WORKSTREAM_I_HEADING)
     assert start < end, "rendered Workstream H boundary is invalid"
-    return _visible_markdown_text(text[start:end])
+    return text[start:end]
+
+
+def _workstream_h(text: str) -> str:
+    return _visible_markdown_text(_workstream_h_raw(text))
 
 
 def _normalised_workstream_h_visible_value(text: str) -> str:
@@ -323,7 +369,14 @@ def _normalised_workstream_h_visible_value(text: str) -> str:
 
 
 def _assert_workstream_h_integrity(text: str) -> str:
-    section = _workstream_h(text)
+    raw_section = _workstream_h_raw(text)
+    actual_destinations = set(_inline_markdown_link_destinations(raw_section))
+    assert actual_destinations == WORKSTREAM_H_CITATION_DESTINATIONS, (
+        "Workstream H citation destinations changed: expected "
+        f"{sorted(WORKSTREAM_H_CITATION_DESTINATIONS)!r}, got "
+        f"{sorted(actual_destinations)!r}"
+    )
+    section = _visible_markdown_text(raw_section)
     value = " ".join(section.split())
     actual_hash = hashlib.sha256(value.encode("utf-8")).hexdigest()
     assert actual_hash == WORKSTREAM_H_VISIBLE_SHA256, (
@@ -514,3 +567,12 @@ def test_aria_hidden_remains_visually_visible_to_workstream_h_reducer():
     clause = "nationality and first-language identity must not define the comparison cohorts"
     rendered = _visible_markdown_text(f'<span aria-hidden="true">{clause}</span>')
     assert clause in rendered
+
+
+def test_workstream_h_citation_destinations_are_pinned():
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    _assert_workstream_h_integrity(roadmap)
+    expected = "https://www.vu.edu.au/about-vu/news-events/vu-blog/australian-slang-dictionary"
+    mutated = roadmap.replace(expected, "https://www.wikipedia.org/", 1)
+    with pytest.raises(AssertionError, match="Workstream H citation destinations changed"):
+        _assert_workstream_h_integrity(mutated)

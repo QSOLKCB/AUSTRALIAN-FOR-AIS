@@ -660,6 +660,9 @@ GOVERNED_BIDI_HTML_PATTERN = re.compile(
     r"<bdo\b|<[A-Za-z][^>]*\bdir[ \t]*=",
     flags=re.IGNORECASE,
 )
+GOVERNED_CONDITIONAL_RAW_TEXT_TAGS = frozenset({
+    "noscript", "plaintext", "xmp", "listing", "noframes", "noembed",
+})
 RAW_HTML_TAG_TOKEN_PATTERN = re.compile(
     r"</?[A-Za-z][A-Za-z0-9-]*(?=[ \t\r\n/>])"
     r"(?:[^>\"']|\"[^\"]*\"|'[^']*')*>",
@@ -729,6 +732,40 @@ def _first_html_attribute_values(
     for key, value in attrs:
         values.setdefault(key.lower(), value or "")
     return values
+
+
+class _GovernedHTMLSemanticsDetector(HTMLParser):
+    """Fail closed on browser semantics the integrity reducer does not model."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.found: set[str] = set()
+
+    def handle_starttag(
+        self,
+        tag: str,
+        attrs: list[tuple[str, str | None]],
+    ) -> None:
+        tag = tag.lower()
+        names = [key.lower() for key, _ in attrs]
+        if tag == "details" and "open" not in names:
+            # A closed disclosure still renders its summary. The lightweight
+            # hidden-region masker intentionally does not try to model that
+            # split subtree, so closed disclosures are rejected in governed
+            # entries instead of letting visible summary contradictions escape
+            # the complete-entry seal.
+            self.found.add("closed-details")
+        if any(name.startswith("on") for name in names):
+            self.found.add("event-handler")
+        if tag in GOVERNED_CONDITIONAL_RAW_TEXT_TAGS:
+            self.found.add("conditional-raw-text")
+
+    def handle_startendtag(
+        self,
+        tag: str,
+        attrs: list[tuple[str, str | None]],
+    ) -> None:
+        self.handle_starttag(tag, attrs)
 
 
 def _css_hides_element(style: str) -> bool:
@@ -871,7 +908,10 @@ def _visible_html_text(text: str) -> str:
         parser.close()
     except Exception:
         return ""
-    return " ".join(parser.parts)
+    # HTML inline elements do not manufacture whitespace between adjacent text
+    # nodes. Preserve the source/browser adjacency here; the final visible-text
+    # normalizer collapses whitespace that was actually rendered by the source.
+    return "".join(parser.parts)
 
 
 def _visible_html_links(text: str) -> tuple[str, ...]:
@@ -1737,6 +1777,33 @@ def _strip_emphasis_preserving_intraword_underscores(text: str) -> str:
     return visible.replace(sentinel, "_")
 
 
+ENTITY_LITERAL_ASTERISK = "\uE001"
+ENTITY_LITERAL_UNDERSCORE = "\uE002"
+
+
+def _protect_entity_decoded_emphasis_punctuation(text: str) -> str:
+    """Protect entity-derived punctuation from the later Markdown delimiter pass."""
+    assert ENTITY_LITERAL_ASTERISK not in text
+    assert ENTITY_LITERAL_UNDERSCORE not in text
+
+    def replace(match: re.Match[str]) -> str:
+        decoded = html.unescape(match.group(0))
+        if decoded == "*":
+            return ENTITY_LITERAL_ASTERISK
+        if decoded == "_":
+            return ENTITY_LITERAL_UNDERSCORE
+        return match.group(0)
+
+    return COMMONMARK_CHARACTER_REFERENCE_PATTERN.sub(replace, text)
+
+
+def _restore_entity_decoded_emphasis_punctuation(text: str) -> str:
+    return text.replace(ENTITY_LITERAL_ASTERISK, "*").replace(
+        ENTITY_LITERAL_UNDERSCORE,
+        "_",
+    )
+
+
 def _visible_inline_text(text: str) -> str:
     """Reduce Markdown/HTML metadata to browser-visible text only."""
     rendered = _rendered_registry_text(text)
@@ -1744,10 +1811,15 @@ def _visible_inline_text(text: str) -> str:
     visible = _render_inline_code_spans(visible)
     visible = _replace_inline_markdown_links_with_labels(visible)
     visible = AUTOLINK_PATTERN.sub(lambda match: match.group("url"), visible)
+    # CommonMark decides emphasis delimiters before character references become
+    # literal rendered punctuation. Protect entity-derived '*'/'_' so they are
+    # not later mistaken for source Markdown delimiters.
+    visible = _protect_entity_decoded_emphasis_punctuation(visible)
     # HTMLParser(convert_charrefs=True) performs the browser's one character-
     # reference decoding pass. Do not decode the resulting text a second time.
     visible = _visible_html_text(visible)
     visible = _strip_emphasis_preserving_intraword_underscores(visible)
+    visible = _restore_entity_decoded_emphasis_punctuation(visible)
     return " ".join(visible.split())
 
 MARKDOWN_BACKSLASH_ESCAPE_PATTERN = re.compile(
@@ -2714,6 +2786,7 @@ def _forbidden_governed_html_constructs(text: str) -> set[str]:
     scan = _mask_multiline_code_spans(rendered)
     fence: FenceState | None = None
     found: set[str] = set()
+    live_markup_parts: list[str] = []
 
     for raw_line in scan.splitlines():
         while fence is not None and not _fence_container_continues(raw_line, fence):
@@ -2733,6 +2806,7 @@ def _forbidden_governed_html_constructs(text: str) -> set[str]:
         if is_code:
             continue
         logical = _mask_inline_code_spans(logical)
+        live_markup_parts.append(logical)
         if GOVERNED_STYLING_HTML_PATTERN.search(logical):
             found.add("styling")
         if GOVERNED_REPLACEMENT_HTML_PATTERN.search(logical):
@@ -2743,6 +2817,15 @@ def _forbidden_governed_html_constructs(text: str) -> set[str]:
             found.add("inline-style")
         if GOVERNED_BIDI_HTML_PATTERN.search(logical):
             found.add("bidi")
+
+    semantics = _GovernedHTMLSemanticsDetector()
+    try:
+        semantics.feed("\n".join(live_markup_parts))
+        semantics.close()
+    except Exception:
+        # Malformed live HTML is already unsafe for a render-integrity contract.
+        found.add("conditional-raw-text")
+    found.update(semantics.found)
     return found
 
 
@@ -2773,6 +2856,18 @@ def _require_complete_entry_integrity(entry: str, section: str) -> None:
     assert "bidi" not in forbidden_html, (
         f"{entry} contains bidirectional/direction-changing HTML; governed clauses must "
         "retain their canonical visual reading order"
+    )
+    assert "closed-details" not in forbidden_html, (
+        f"{entry} contains a closed details disclosure; governed entries reject closed "
+        "disclosures because their summary remains browser-visible while the body is hidden"
+    )
+    assert "event-handler" not in forbidden_html, (
+        f"{entry} contains an inline event-handler attribute; governed provenance anchors "
+        "must not be able to cancel or rewrite navigation"
+    )
+    assert "conditional-raw-text" not in forbidden_html, (
+        f"{entry} contains conditional/legacy raw-text HTML (noscript/plaintext/xmp/etc.); "
+        "governed entries reject tokenizer- or scripting-dependent rendering"
     )
     assert not _contains_visually_hidden_table(structural_section), (
         f"{entry} contains a visually hidden raw HTML table; governed entries reject "
@@ -4580,3 +4675,61 @@ def test_raw_html_anchor_url_label_is_not_double_counted():
     assert _usable_https_destinations(
         f'<a href="{destination}">{destination}</a>'
     ) == (destination,)
+
+
+def test_latest_4fe_browser_semantics_regressions():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = "### *Black Comedy* (ABC, 2014-2020)"
+    section = _registered_sections(corpus)[entry]
+
+    # Closed details still renders summary text. Governed entries reject this
+    # split visibility surface rather than letting a visible contradiction fall
+    # outside the complete-entry integrity value.
+    disclosure = section.rstrip() + (
+        "\n\n<details><summary>This source may be freely copied.</summary></details>\n\n"
+    )
+    with pytest.raises(AssertionError, match="closed details disclosure"):
+        _validate_registry_corpus(corpus.replace(section, disclosure, 1))
+
+    # A click-cancelling handler can make an otherwise correct href unusable.
+    source = "https://iview.abc.net.au/show/black-comedy"
+    event_anchor = f'<a href="{source}" onclick="return false">{source}</a>'
+    event_mutation = section.replace(source, event_anchor, 1)
+    with pytest.raises(AssertionError, match="event-handler"):
+        _validate_registry_corpus(corpus.replace(section, event_mutation, 1))
+
+    # Character references become literal punctuation after Markdown delimiter
+    # parsing, so they must not be erased as if they were source emphasis.
+    assert "Broadcaster programme record" in section
+    entity_mutation = section.replace(
+        "Broadcaster programme record",
+        "Broadcaster progr&#42;amme record",
+        1,
+    )
+    with pytest.raises(AssertionError, match="complete rendered governed entry changed|missing a pinned|changed pinned"):
+        _validate_registry_corpus(corpus.replace(section, entity_mutation, 1))
+
+    # Empty inline wrappers do not create a browser word boundary.
+    adjacency_mutation = section.replace(
+        "Broadcaster programme record",
+        "Broadcaster<span></span>programme record",
+        1,
+    )
+    with pytest.raises(AssertionError, match="complete rendered governed entry changed|missing a pinned|changed pinned"):
+        _validate_registry_corpus(corpus.replace(section, adjacency_mutation, 1))
+
+
+@pytest.mark.parametrize("tag", ("noscript", "xmp", "plaintext"))
+def test_conditional_and_legacy_raw_text_cannot_supply_governed_clauses(tag: str):
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = "### *Black Comedy* (ABC, 2014-2020)"
+    section = _registered_sections(corpus)[entry]
+    expected = str(ENTRY_CONTRACTS[entry][SOURCE_TYPE_FIELD])
+    assert expected in section
+    mutated_section = section.replace(expected, f"<{tag}>{expected}</{tag}>", 1)
+    assert "conditional-raw-text" in _forbidden_governed_html_constructs(mutated_section)
+    with pytest.raises(
+        AssertionError,
+        match="conditional/legacy raw-text HTML|changed pinned",
+    ):
+        _validate_registry_corpus(corpus.replace(section, mutated_section, 1))
