@@ -634,7 +634,7 @@ GOVERNED_STYLING_HTML_PATTERN = re.compile(
     flags=re.IGNORECASE,
 )
 GOVERNED_REPLACEMENT_HTML_PATTERN = re.compile(
-    r"<(?:object|embed|iframe)\b",
+    r"<(?:object|embed|iframe|canvas)\b",
     flags=re.IGNORECASE,
 )
 
@@ -698,7 +698,7 @@ def _css_hides_element(style: str) -> bool:
             continue
         raw_name, raw_value = declaration.split(":", 1)
         name = _decode_css_escapes(raw_name.strip()).casefold()
-        if name not in {"display", "visibility"}:
+        if name not in {"display", "visibility", "opacity"}:
             continue
         decoded_value = _decode_css_escapes(raw_value.strip()).casefold()
         important = re.search(r"\s*!important\s*$", decoded_value) is not None
@@ -709,7 +709,19 @@ def _css_hides_element(style: str) -> bool:
 
     display = winners.get("display", (False, ""))[1]
     visibility = winners.get("visibility", (False, ""))[1]
-    return display == "none" or visibility in {"hidden", "collapse"}
+    opacity = winners.get("opacity", (False, ""))[1]
+    opacity_hidden = False
+    if opacity:
+        numeric_opacity = opacity[:-1].strip() if opacity.endswith("%") else opacity
+        try:
+            opacity_hidden = float(numeric_opacity) <= 0.0
+        except ValueError:
+            opacity_hidden = False
+    return (
+        display == "none"
+        or visibility in {"hidden", "collapse"}
+        or opacity_hidden
+    )
 
 
 class _VisibleHTMLTextParser(HTMLParser):
@@ -827,6 +839,31 @@ class _VisuallyHiddenTableDetector(HTMLParser):
 
 def _contains_visually_hidden_table(text: str) -> bool:
     detector = _VisuallyHiddenTableDetector()
+    try:
+        detector.feed(text)
+        detector.close()
+    except Exception:
+        return True
+    return detector.found
+
+
+class _InertHTMLDetector(HTMLParser):
+    """Detect inert HTML containers without treating their visible text as hidden."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.found = False
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if any(key.lower() == "inert" for key, _ in attrs):
+            self.found = True
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.handle_starttag(tag, attrs)
+
+
+def _contains_inert_html(text: str) -> bool:
+    detector = _InertHTMLDetector()
     try:
         detector.feed(text)
         detector.close()
@@ -2370,6 +2407,10 @@ def _require_registered_source_link(
         reference_scope=reference_scope,
     )
     assert destinations, f"{entry} has no usable HTTPS destination in its registered-source field"
+    assert not _contains_inert_html(_structural_registry_text(source_value)), (
+        f"{entry} registered-source field contains inert HTML; provenance links must "
+        "remain interactive"
+    )
     assert _visible_inline_text(source_value), f"{entry} has an empty registered-source field"
     assert len(destinations) == len(set(destinations)), f"{entry} contains duplicate registered-source destinations"
     return destinations
@@ -2506,7 +2547,7 @@ def _require_complete_entry_integrity(entry: str, section: str) -> None:
     structural_section = _structural_registry_text(section)
     forbidden_html = _forbidden_governed_html_constructs(section)
     assert "replacement" not in forbidden_html, (
-        f"{entry} contains replacement-content HTML (object/embed/iframe), which is "
+        f"{entry} contains replacement-content HTML (object/embed/iframe/canvas), which is "
         "not permitted in governed entries because browser replacement semantics can "
         "hide pinned fallback provenance"
     )
@@ -4082,4 +4123,53 @@ def test_intraword_underscores_remain_literal_in_integrity_text():
 def test_character_references_are_decoded_once_for_integrity():
     mutated = _mutate_chey_phrase("&amp;#84;he article")
     with pytest.raises(AssertionError):
+        _validate_registry_corpus(mutated)
+def test_inert_markdown_registered_link_is_rejected_fail_closed():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = next(
+        heading for heading in EXPECTED_GOVERNED_ENTRIES
+        if heading.startswith("### Hurley (2025)")
+    )
+    section = _registered_sections(corpus)[entry]
+    source = str(ENTRY_CONTRACTS[entry][SOURCES_KEY][0])
+    original = f"**Registered source:** {source}"
+    replacement = (
+        f'**Registered source:** <span inert>[{source}]({source})</span>'
+    )
+    assert original in section
+    mutated_section = section.replace(original, replacement, 1)
+    mutated = corpus.replace(section, mutated_section, 1)
+    with pytest.raises(AssertionError, match="contains inert HTML"):
+        _validate_registry_corpus(mutated)
+
+
+def test_opacity_zero_cannot_hide_pinned_visible_clause():
+    assert _css_hides_element("opacity:0")
+    assert _css_hides_element("opacity:0%")
+    assert not _css_hides_element("opacity:0; opacity:1")
+    assert _css_hides_element("opacity:0 !important; opacity:1")
+
+    mutated = _mutate_chey_phrase(
+        '<span style="opacity:0">The article</span>'
+    )
+    with pytest.raises(AssertionError):
+        _validate_registry_corpus(mutated)
+
+
+def test_canvas_fallback_is_rejected_fail_closed():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = next(
+        heading for heading in EXPECTED_GOVERNED_ENTRIES
+        if heading.startswith("### Hurley (2025)")
+    )
+    section = _registered_sections(corpus)[entry]
+    source = str(ENTRY_CONTRACTS[entry][SOURCES_KEY][0])
+    original = f"**Registered source:** {source}"
+    replacement = (
+        f'**Registered source:** <canvas><a href="{source}">{source}</a></canvas>'
+    )
+    assert original in section
+    mutated_section = section.replace(original, replacement, 1)
+    mutated = corpus.replace(section, mutated_section, 1)
+    with pytest.raises(AssertionError, match="replacement-content HTML"):
         _validate_registry_corpus(mutated)

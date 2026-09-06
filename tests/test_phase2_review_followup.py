@@ -2,6 +2,7 @@
 
 import json
 import pathlib
+import runpy
 
 import pytest
 
@@ -11,6 +12,14 @@ from australian_for_ais.validation import ValidationError
 REPO_ROOT = pathlib.Path(__file__).parent.parent
 ANNOTATION_UI = REPO_ROOT / "annotation" / "index.html"
 CHANGELOG = REPO_ROOT / "CHANGELOG.md"
+POLICING_TEST = REPO_ROOT / "tests" / "test_policing_context_roadmap.py"
+PHASE2_HEADING = "## [Unreleased] — Phase 2 Pilot Human Annotation"
+PHASE1_HEADING = "## [Unreleased] — Phase 1 Research Substrate"
+PHASE2_NOTES_HEADING = "### Notes"
+FREE_TEXT_IAA_BOUNDARY = (
+    "Free-text pragmatic interpretations remain qualitative evidence and are not "
+    "assigned a misleading exact-string IAA score."
+)
 
 
 def _pilot_item(item_id: str) -> dict:
@@ -93,9 +102,47 @@ def test_browser_saved_annotations_are_bound_to_item_content():
     assert "if (annotation) records.push(annotation);" in html
 
 
+def _visible_phase2_notes(changelog: str) -> str:
+    namespace = runpy.run_path(str(POLICING_TEST))
+    structure = namespace["_rendered_structure"](changelog)
+    phase2_start, _ = namespace["_visible_markdown_heading_span"](
+        structure, PHASE2_HEADING
+    )
+    phase1_start, _ = namespace["_visible_markdown_heading_span"](
+        structure, PHASE1_HEADING
+    )
+    assert phase2_start < phase1_start, "Phase 2 changelog boundaries are out of order"
+
+    phase2_structure = structure[phase2_start:phase1_start]
+    notes_start, _ = namespace["_visible_markdown_heading_span"](
+        phase2_structure, PHASE2_NOTES_HEADING
+    )
+    absolute_notes_start = phase2_start + notes_start
+    return namespace["_visible_text"](
+        changelog[absolute_notes_start:phase1_start]
+    )
+
+
 def test_phase2_changelog_keeps_free_text_iaa_boundary():
     changelog = CHANGELOG.read_text(encoding="utf-8")
-    assert (
-        "Free-text pragmatic interpretations remain qualitative evidence and are not "
-        "assigned a misleading exact-string IAA score."
-    ) in changelog
+    assert FREE_TEXT_IAA_BOUNDARY in _visible_phase2_notes(changelog)
+
+
+def test_phase2_changelog_iaa_boundary_is_visible_and_section_scoped():
+    changelog = CHANGELOG.read_text(encoding="utf-8")
+    bullet = f"- {FREE_TEXT_IAA_BOUNDARY}\n"
+    assert bullet in changelog
+
+    commented = changelog.replace(
+        bullet,
+        f"- <!-- {FREE_TEXT_IAA_BOUNDARY} -->\n",
+        1,
+    )
+    assert FREE_TEXT_IAA_BOUNDARY not in _visible_phase2_notes(commented)
+
+    moved = changelog.replace(bullet, "", 1).replace(
+        PHASE1_HEADING,
+        PHASE1_HEADING + f"\n\n- {FREE_TEXT_IAA_BOUNDARY}",
+        1,
+    )
+    assert FREE_TEXT_IAA_BOUNDARY not in _visible_phase2_notes(moved)
