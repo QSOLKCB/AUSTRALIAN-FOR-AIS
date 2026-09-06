@@ -103,6 +103,53 @@ def test_browser_saved_annotations_are_bound_to_item_content():
     assert "if (annotation) records.push(annotation);" in html
 
 
+def _next_notes_peer_heading(structure: str, namespace: dict) -> int:
+    """Find a visible ATX, Setext, or HTML peer heading without crossing code."""
+    offset = 0
+    paragraph_start = None
+    paragraph_container = None
+    for raw_line in structure.splitlines(keepends=True):
+        if paragraph_start is not None:
+            # Setext syntax takes precedence over interpreting a lone hyphen
+            # as an empty list item. Retain the preceding paragraph's owning
+            # containers when looking for its underline.
+            candidate, continues = namespace["_strip_expected_fence_containers"](
+                raw_line, paragraph_container
+            )
+            probe, columns = namespace["_indent_columns"](candidate)
+            if (continues and columns <= 3
+                    and re.fullmatch(r"(?:=+|-+)[ \t]*", candidate[probe:])):
+                return paragraph_start
+        logical, is_code, container = namespace["_parse_fence_container_prefixes"](
+            raw_line.rstrip("\r\n")
+        )
+        stripped = logical.strip(" \t")
+        if is_code or not stripped:
+            paragraph_start = None
+            paragraph_container = None
+        elif re.match(r"^#{1,3}(?:[ \t]+|$)", stripped) or re.match(
+            r"<h[1-3](?:[ \t>])", stripped, re.IGNORECASE
+        ):
+            return offset
+        elif re.fullmatch(r"(?:=+|-+)[ \t]*", stripped):
+            # A Setext underline belongs to the preceding paragraph in the
+            # same container; a standalone thematic break is not a heading.
+            if paragraph_start is not None and paragraph_container == container:
+                return paragraph_start
+            paragraph_start = None
+            paragraph_container = None
+        elif (namespace["THEMATIC_BREAK_PATTERN"].fullmatch(stripped)
+              or re.match(r"^(?:#{4,6}(?:[ \t]+|$)|`{3,}|~{3,}|<)", stripped)):
+            paragraph_start = None
+            paragraph_container = None
+        else:
+            if paragraph_start is None or paragraph_container != container:
+                paragraph_start = offset
+            paragraph_container = container
+        offset += len(raw_line)
+    return len(structure)
+
+
 def _visible_phase2_notes(changelog: str) -> str:
     namespace = runpy.run_path(str(POLICING_TEST))
     structure = namespace["_rendered_structure"](changelog)
@@ -120,18 +167,8 @@ def _visible_phase2_notes(changelog: str) -> str:
     )
     visible_phase2_structure = namespace["_mask_hidden_html_regions"](phase2_structure)
 
-    notes_end = len(phase2_structure)
-    relative_offset = 0
     tail = visible_phase2_structure[notes_heading_end:]
-    for raw_line in tail.splitlines(keepends=True):
-        line = raw_line.rstrip("\r\n")
-        logical, is_code, _ = namespace["_parse_fence_container_prefixes"](line)
-        if not is_code:
-            stripped = logical.strip(" \t")
-            if re.match(r"^#{1,3}(?:[ \t]+|$)", stripped):
-                notes_end = notes_heading_end + relative_offset
-                break
-        relative_offset += len(raw_line)
+    notes_end = notes_heading_end + _next_notes_peer_heading(tail, namespace)
 
     absolute_notes_start = phase2_start + notes_start
     absolute_notes_end = phase2_start + notes_end

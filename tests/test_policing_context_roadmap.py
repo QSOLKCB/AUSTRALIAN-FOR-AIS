@@ -193,11 +193,15 @@ def _css_hides_element(style: str) -> bool:
     )
 
 
+RAW_HTML_LITERAL_PUNCTUATION = {"*": "\uE110", "_": "\uE111"}
+
+
 class _VisibleHTMLTextParser(HTMLParser):
-    def __init__(self) -> None:
+    def __init__(self, *, protect_raw_punctuation: bool = False) -> None:
         super().__init__(convert_charrefs=True)
         self.parts: list[str] = []
         self.stack: list[tuple[str, bool]] = []
+        self.protect_raw_punctuation = protect_raw_punctuation
 
     @staticmethod
     def _is_hidden(tag: str, attrs: list[tuple[str, str | None]]) -> bool:
@@ -209,7 +213,7 @@ class _VisibleHTMLTextParser(HTMLParser):
             values.setdefault(key.lower(), value or "")
         if tag in {"details", "dialog"} and "open" not in values:
             return True
-        if "hidden" in values:
+        if "hidden" in values or "popover" in values:
             return True
         return _css_hides_element(values.get("style", ""))
 
@@ -242,11 +246,16 @@ class _VisibleHTMLTextParser(HTMLParser):
 
     def handle_data(self, data: str) -> None:
         if not self.stack or not self.stack[-1][1]:
+            if self.protect_raw_punctuation and self.stack:
+                # Never promote punctuation emitted by raw HTML into Markdown
+                # emphasis after parsing. Retain it in the integrity value.
+                for literal, marker in RAW_HTML_LITERAL_PUNCTUATION.items():
+                    data = data.replace(literal, marker)
             self.parts.append(data)
 
 
-def _visible_html_text(text: str) -> str:
-    parser = _VisibleHTMLTextParser()
+def _visible_html_text(text: str, *, protect_raw_punctuation: bool = False) -> str:
+    parser = _VisibleHTMLTextParser(protect_raw_punctuation=protect_raw_punctuation)
     try:
         parser.feed(text)
         parser.close()
@@ -951,9 +960,14 @@ def _visible_text(markdown: str) -> str:
     # HTMLParser(convert_charrefs=True) already performs the browser's one
     # character-reference decoding pass. A second html.unescape() would turn
     # literal entity-looking text into content the browser never displays.
-    visible = _visible_html_text(visible)
+    assert not any(marker in visible for marker in RAW_HTML_LITERAL_PUNCTUATION.values()), (
+        "reserved literal-punctuation marker in governed source"
+    )
+    visible = _visible_html_text(visible, protect_raw_punctuation=True)
     visible = visible.replace("**", "").replace("__", "")
     visible = visible.replace("*", "").replace("_", "")
+    for literal, marker in RAW_HTML_LITERAL_PUNCTUATION.items():
+        visible = visible.replace(marker, literal)
     return " ".join(visible.split())
 
 def _visible_markdown_heading_span(structure: str, heading: str) -> tuple[int, int]:

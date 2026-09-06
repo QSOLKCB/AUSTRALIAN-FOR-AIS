@@ -379,9 +379,23 @@ def _normalised_workstream_h_visible_value(text: str) -> str:
     return " ".join(_workstream_h(text).split())
 
 
+def _rendered_inline_citation_links(text: str) -> tuple[tuple[str, str], ...]:
+    """Use the registry's structural view, not hidden Markdown source text."""
+    registry = runpy.run_path(str(POLICING_TEST.with_name("test_research_reference_registry.py")))
+    structure = registry["_structural_registry_text"](text)
+    structure = registry["_mask_hidden_html_regions"](structure)
+    assert not registry["_contains_inert_html"](structure), (
+        "Workstream H citations must not depend on inert, non-navigable HTML"
+    )
+    structure = registry["_mask_raw_html_tags_for_markdown_link_discovery"](structure)
+    return _inline_markdown_links(structure)
+
+
 def _assert_workstream_h_integrity(text: str) -> str:
     raw_section = _workstream_h_raw(text)
-    actual_links = set(_inline_markdown_links(raw_section))
+    rendered_links = _rendered_inline_citation_links(raw_section)
+    actual_links = set(rendered_links)
+    assert len(rendered_links) == len(actual_links), "duplicate Workstream H citation binding"
     actual_destinations = {destination for _, destination in actual_links}
     assert actual_destinations == WORKSTREAM_H_CITATION_DESTINATIONS, (
         "Workstream H citation destinations changed: expected "

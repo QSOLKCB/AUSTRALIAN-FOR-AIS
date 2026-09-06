@@ -740,6 +740,7 @@ class _GovernedHTMLSemanticsDetector(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.found: set[str] = set()
+        self.tags: list[str] = []
 
     def handle_starttag(
         self,
@@ -748,6 +749,15 @@ class _GovernedHTMLSemanticsDetector(HTMLParser):
     ) -> None:
         tag = tag.lower()
         names = [key.lower() for key, _ in attrs]
+        if "shadowrootmode" in names or "shadowroot" in names:
+            self.found.add("shadow-root")
+        table_descendants = {"caption", "colgroup", "thead", "tbody", "tfoot", "tr", "td", "th"}
+        if tag in table_descendants and {"hidden", "popover"}.intersection(names):
+            self.found.add("hidden-table-descendant")
+        if tag == "a" and "a" in self.tags:
+            self.found.add("nested-anchor")
+        if tag not in HTML_VOID_TAGS:
+            self.tags.append(tag)
         if tag == "details" and "open" not in names:
             # A closed disclosure still renders its summary. The lightweight
             # hidden-region masker intentionally does not try to model that
@@ -766,6 +776,13 @@ class _GovernedHTMLSemanticsDetector(HTMLParser):
         attrs: list[tuple[str, str | None]],
     ) -> None:
         self.handle_starttag(tag, attrs)
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        for index in range(len(self.tags) - 1, -1, -1):
+            if self.tags[index] == tag:
+                del self.tags[index:]
+                return
 
 
 def _css_hides_element(style: str) -> bool:
@@ -2899,6 +2916,11 @@ def _require_complete_entry_integrity(entry: str, section: str) -> None:
     rendered_section = _rendered_registry_text(section)
     structural_section = _structural_registry_text(section)
     forbidden_html = _forbidden_governed_html_constructs(section)
+    unsupported = forbidden_html & {"shadow-root", "hidden-table-descendant", "nested-anchor"}
+    assert not unsupported, (
+        f"{entry} contains unsupported governed HTML: {sorted(unsupported)}; "
+        "shadow rendering, table insertion modes, and nested anchors must not bypass integrity"
+    )
     assert "deletion" not in forbidden_html, (
         f"{entry} contains semantic deletion HTML (del/s/strike), which is not permitted "
         "in governed entries because deleted text cannot satisfy visible integrity"
@@ -3015,6 +3037,11 @@ def _validate_registry_corpus(corpus: str) -> None:
         "visibility:visible override; this ambiguous visual nesting is rejected fail closed"
     )
     corpus_forbidden_html = _forbidden_governed_html_constructs(corpus)
+    unsupported = corpus_forbidden_html & {"shadow-root", "hidden-table-descendant", "nested-anchor"}
+    assert not unsupported, (
+        f"registry contains unsupported governed HTML: {sorted(unsupported)}; "
+        "validate browser-sensitive constructs before masking or section slicing"
+    )
     assert "styling" not in corpus_forbidden_html, (
         "registry contains stylesheet/class-driven HTML styling; governed source "
         "visibility must not depend on embedded stylesheet selectors"
