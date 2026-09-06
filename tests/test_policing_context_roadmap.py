@@ -6,6 +6,7 @@ import hashlib
 import html
 from html.parser import HTMLParser
 import re
+import string
 
 import pytest
 
@@ -100,22 +101,71 @@ NON_RENDERING_HTML_PATTERN = re.compile(
 )
 SVG_NON_RENDERING_METADATA_TAGS = frozenset({"title", "desc"})
 CSS_COMMENT_PATTERN = re.compile(r"/\*.*?\*/", flags=re.DOTALL)
+RAW_HTML_BLOCK_TAGS = frozenset({"pre", "script", "style", "textarea"})
+RAW_HTML_PROCESSING_INSTRUCTION = "__processing_instruction__"
+RAW_HTML_DECLARATION = "__declaration__"
+RAW_HTML_CDATA = "__cdata__"
+
+
+def _decode_css_escapes(value: str) -> str:
+    """Decode CSS escapes before declaration-name/value comparison."""
+    parts: list[str] = []
+    position = 0
+    while position < len(value):
+        if value[position] != "\\":
+            parts.append(value[position])
+            position += 1
+            continue
+        if position + 1 >= len(value):
+            parts.append("\\")
+            position += 1
+            continue
+        next_character = value[position + 1]
+        if next_character in "\r\n\f":
+            if next_character == "\r" and position + 2 < len(value) and value[position + 2] == "\n":
+                position += 3
+            else:
+                position += 2
+            continue
+        cursor = position + 1
+        while (
+            cursor < len(value)
+            and cursor - (position + 1) < 6
+            and value[cursor] in string.hexdigits
+        ):
+            cursor += 1
+        if cursor > position + 1:
+            codepoint = int(value[position + 1:cursor], 16)
+            if codepoint == 0 or codepoint > 0x10FFFF or 0xD800 <= codepoint <= 0xDFFF:
+                parts.append("\uFFFD")
+            else:
+                parts.append(chr(codepoint))
+            if cursor < len(value) and value[cursor] in " \t\r\n\f":
+                if value[cursor] == "\r" and cursor + 1 < len(value) and value[cursor + 1] == "\n":
+                    cursor += 2
+                else:
+                    cursor += 1
+            position = cursor
+            continue
+        parts.append(next_character)
+        position += 2
+    return "".join(parts)
 
 
 def _css_hides_element(style: str) -> bool:
-    """Apply inline CSS declaration order and !important precedence."""
-    cleaned = CSS_COMMENT_PATTERN.sub("", style.lower())
+    """Apply CSS escapes, declaration order, and !important precedence."""
+    cleaned = CSS_COMMENT_PATTERN.sub("", style)
     winners: dict[str, tuple[bool, str]] = {}
     for declaration in cleaned.split(";"):
         if ":" not in declaration:
             continue
-        name, raw_value = declaration.split(":", 1)
-        name = name.strip()
-        if name not in {"display", "visibility", "opacity"}:
+        raw_name, raw_value = declaration.split(":", 1)
+        name = _decode_css_escapes(raw_name.strip()).casefold()
+        if name not in {"display", "visibility", "opacity", "content-visibility"}:
             continue
-        raw_value = raw_value.strip()
-        important = re.search(r"\s*!important\s*$", raw_value) is not None
-        value = re.sub(r"\s*!important\s*$", "", raw_value).strip()
+        decoded_value = _decode_css_escapes(raw_value.strip()).casefold()
+        important = re.search(r"\s*!important\s*$", decoded_value) is not None
+        value = re.sub(r"\s*!important\s*$", "", decoded_value).strip()
         previous = winners.get(name)
         if previous is None or (important and not previous[0]) or important == previous[0]:
             winners[name] = (important, value)
@@ -123,6 +173,7 @@ def _css_hides_element(style: str) -> bool:
     display = winners.get("display", (False, ""))[1]
     visibility = winners.get("visibility", (False, ""))[1]
     opacity = winners.get("opacity", (False, ""))[1]
+    content_visibility = winners.get("content-visibility", (False, ""))[1]
     opacity_hidden = False
     if opacity:
         numeric_opacity = opacity[:-1].strip() if opacity.endswith("%") else opacity
@@ -133,6 +184,7 @@ def _css_hides_element(style: str) -> bool:
     return (
         display == "none"
         or visibility in {"hidden", "collapse"}
+        or content_visibility == "hidden"
         or opacity_hidden
     )
 
@@ -383,6 +435,12 @@ class FenceState:
     containers: tuple[tuple[str, int], ...]
 
 
+@dataclass(frozen=True)
+class RawHTMLBlockState:
+    tag: str
+    containers: tuple[tuple[str, int], ...]
+
+
 def _parse_fence_container_prefixes(
     line: str,
 ) -> tuple[str, bool, tuple[tuple[str, int], ...]]:
@@ -505,6 +563,59 @@ def _is_fence_closer(line: str, state: FenceState) -> bool:
     )
 
 
+def _raw_html_block_opener(line: str) -> RawHTMLBlockState | None:
+    """Return a CommonMark raw HTML block opener with its terminator family."""
+    logical, indented_code, containers = _parse_fence_container_prefixes(line)
+    if indented_code:
+        return None
+    candidate = logical.lstrip(" \t")
+    if candidate.startswith("<?"):
+        return RawHTMLBlockState(RAW_HTML_PROCESSING_INSTRUCTION, containers)
+    if candidate.startswith("<![CDATA["):
+        return RawHTMLBlockState(RAW_HTML_CDATA, containers)
+    if re.match(r"<![A-Z]", candidate):
+        return RawHTMLBlockState(RAW_HTML_DECLARATION, containers)
+    match = re.match(
+        r"<(?P<tag>pre|script|style|textarea)(?:[ \t]|>|$)",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    if match is None:
+        return None
+    return RawHTMLBlockState(match.group("tag").lower(), containers)
+
+
+def _raw_html_block_container_continues(line: str, state: RawHTMLBlockState) -> bool:
+    if not line.strip() or not state.containers:
+        return True
+    _, ok = _strip_expected_fence_containers(line, state.containers)
+    return ok
+
+
+def _raw_html_block_logical_line(line: str, state: RawHTMLBlockState) -> str:
+    if not state.containers:
+        return line.rstrip("\r\n")
+    logical, ok = _strip_expected_fence_containers(line, state.containers)
+    return logical if ok else line.rstrip("\r\n")
+
+
+def _raw_html_block_closes(line: str, state: RawHTMLBlockState) -> bool:
+    logical = _raw_html_block_logical_line(line, state)
+    if state.tag == RAW_HTML_PROCESSING_INSTRUCTION:
+        return "?>" in logical
+    if state.tag == RAW_HTML_CDATA:
+        return "]]>" in logical
+    if state.tag == RAW_HTML_DECLARATION:
+        return ">" in logical
+    return bool(
+        re.search(
+            rf"</{re.escape(state.tag)}[ \t]*>",
+            logical,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
 def _line_opens_paragraph(line: str) -> bool:
     logical, indentation = _strip_container_prefixes(line)
     stripped = logical.strip()
@@ -557,6 +668,7 @@ def _rendered_structure(markdown: str) -> str:
     parts: list[str] = []
     in_comment = False
     fence: FenceState | None = None
+    raw_html: RawHTMLBlockState | None = None
     paragraph_open = False
 
     for raw_line in markdown.splitlines(keepends=True):
@@ -566,11 +678,20 @@ def _rendered_structure(markdown: str) -> str:
 
         while fence is not None and not _fence_container_continues(line, fence):
             fence = None
+        while raw_html is not None and not _raw_html_block_container_continues(line, raw_html):
+            raw_html = None
 
         if fence is not None:
             parts.append(_mask_non_newline(raw_line))
             if _is_fence_closer(line, fence):
                 fence = None
+            paragraph_open = False
+            continue
+
+        if raw_html is not None:
+            parts.append(_mask_non_newline(raw_line))
+            if _raw_html_block_closes(line, raw_html):
+                raw_html = None
             paragraph_open = False
             continue
 
@@ -590,6 +711,14 @@ def _rendered_structure(markdown: str) -> str:
         if opener is not None:
             fence = opener
             parts.append(_mask_non_newline(raw_line))
+            paragraph_open = False
+            continue
+
+        raw_opener = _raw_html_block_opener(line)
+        if raw_opener is not None:
+            parts.append(_mask_non_newline(raw_line))
+            if not _raw_html_block_closes(line, raw_opener):
+                raw_html = raw_opener
             paragraph_open = False
             continue
 
@@ -1104,3 +1233,20 @@ def test_policing_visibility_decodes_character_references_once():
 
 def test_policing_visible_html_void_elements_do_not_hide_following_text():
     assert _visible_html_text("<img hidden>visible safeguard") == "visible safeguard"
+
+
+def test_latest_review_shared_css_escape_and_raw_html_block_regressions():
+    assert _visible_text(
+        '<span style="display:n\\6f ne">hidden governance</span>'
+    ) == ""
+    assert _visible_text(
+        '<span style="content-visibility:hidden">hidden governance</span>'
+    ) == ""
+
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    start = roadmap.index(WORKSTREAM_HEADING)
+    end = roadmap.index(WORKSTREAM_END, start)
+    section = roadmap[start:end]
+    mutated = roadmap[:start] + f"<pre>\n{section}\n</pre>\n" + roadmap[end:]
+    with pytest.raises(AssertionError, match="rendered policing workstream"):
+        _validate_policing_workstream(mutated)

@@ -652,6 +652,23 @@ GOVERNED_DELETION_HTML_PATTERN = re.compile(
     r"<(?:del|s|strike)\b",
     flags=re.IGNORECASE,
 )
+GOVERNED_INLINE_STYLE_HTML_PATTERN = re.compile(
+    r"<[A-Za-z][^>]*\bstyle[ \t]*=",
+    flags=re.IGNORECASE,
+)
+GOVERNED_BIDI_HTML_PATTERN = re.compile(
+    r"<bdo\b|<[A-Za-z][^>]*\bdir[ \t]*=",
+    flags=re.IGNORECASE,
+)
+RAW_HTML_TAG_TOKEN_PATTERN = re.compile(
+    r"</?[A-Za-z][A-Za-z0-9-]*(?=[ \t\r\n/>])"
+    r"(?:[^>\"']|\"[^\"]*\"|'[^']*')*>",
+    flags=re.DOTALL,
+)
+RAW_HTML_ANCHOR_ELEMENT_PATTERN = re.compile(
+    r"<a\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*>.*?</a[ \t\r\n]*>",
+    flags=re.IGNORECASE | re.DOTALL,
+)
 
 
 def _decode_css_escapes(value: str) -> str:
@@ -723,7 +740,7 @@ def _css_hides_element(style: str) -> bool:
             continue
         raw_name, raw_value = declaration.split(":", 1)
         name = _decode_css_escapes(raw_name.strip()).casefold()
-        if name not in {"display", "visibility", "opacity"}:
+        if name not in {"display", "visibility", "opacity", "content-visibility"}:
             continue
         decoded_value = _decode_css_escapes(raw_value.strip()).casefold()
         important = re.search(r"\s*!important\s*$", decoded_value) is not None
@@ -735,6 +752,7 @@ def _css_hides_element(style: str) -> bool:
     display = winners.get("display", (False, ""))[1]
     visibility = winners.get("visibility", (False, ""))[1]
     opacity = winners.get("opacity", (False, ""))[1]
+    content_visibility = winners.get("content-visibility", (False, ""))[1]
     opacity_hidden = False
     if opacity:
         numeric_opacity = opacity[:-1].strip() if opacity.endswith("%") else opacity
@@ -745,6 +763,7 @@ def _css_hides_element(style: str) -> bool:
     return (
         display == "none"
         or visibility in {"hidden", "collapse"}
+        or content_visibility == "hidden"
         or opacity_hidden
     )
 
@@ -1755,16 +1774,32 @@ def _reject_non_commonmark_character_references(text: str) -> None:
             )
 
 
+def _mask_raw_html_tags_for_markdown_link_discovery(text: str) -> str:
+    """Mask raw HTML anchors/tags before interpreting Markdown link syntax."""
+    characters = list(text)
+    # The HTML parser has already recorded each visible anchor href. Mask the
+    # whole anchor for the later Markdown/autolink/bare-URL passes so a URL
+    # used as visible anchor text is not counted a second time as bare prose.
+    for match in RAW_HTML_ANCHOR_ELEMENT_PATTERN.finditer(text):
+        _mask_segment(characters, match.start(), match.end())
+    for match in RAW_HTML_TAG_TOKEN_PATTERN.finditer(text):
+        _mask_segment(characters, match.start(), match.end())
+    return "".join(characters)
+
+
 def _normalise_https_destination(
     candidate: str,
     *,
     strip_trailing_prose_punctuation: bool = False,
+    decode_markdown_syntax: bool = True,
 ) -> str | None:
-    value = COMMONMARK_CHARACTER_REFERENCE_PATTERN.sub(
-        lambda match: html.unescape(match.group(0)),
-        candidate,
-    )
-    value = MARKDOWN_BACKSLASH_ESCAPE_PATTERN.sub(r"\1", value)
+    value = candidate
+    if decode_markdown_syntax:
+        value = COMMONMARK_CHARACTER_REFERENCE_PATTERN.sub(
+            lambda match: html.unescape(match.group(0)),
+            value,
+        )
+        value = MARKDOWN_BACKSLASH_ESCAPE_PATTERN.sub(r"\1", value)
     value = value.strip().strip("<>")
     if strip_trailing_prose_punctuation:
         value = value.rstrip(".,;:!?")
@@ -2032,10 +2067,12 @@ def _require_rendered_https_destination(
     candidate: str,
     *,
     strip_trailing_prose_punctuation: bool = False,
+    decode_markdown_syntax: bool = True,
 ) -> str:
     destination = _normalise_https_destination(
         candidate,
         strip_trailing_prose_punctuation=strip_trailing_prose_punctuation,
+        decode_markdown_syntax=decode_markdown_syntax,
     )
     assert destination is not None, (
         f"registered-source rendered link has no usable HTTPS destination: {candidate!r}"
@@ -2057,9 +2094,18 @@ def _usable_https_destinations(
     destinations: list[str] = []
 
     for candidate in _visible_html_links(structure):
-        destinations.append(_require_rendered_https_destination(candidate))
+        destinations.append(
+            _require_rendered_https_destination(
+                candidate,
+                decode_markdown_syntax=False,
+            )
+        )
 
-    inline_links = _markdown_inline_links(structure)
+    markdown_structure = _mask_raw_html_tags_for_markdown_link_discovery(structure)
+    reference_markdown_structure = _mask_raw_html_tags_for_markdown_link_discovery(
+        reference_structure
+    )
+    inline_links = _markdown_inline_links(markdown_structure)
     for link in inline_links:
         if link.image:
             continue
@@ -2067,11 +2113,11 @@ def _usable_https_destinations(
             _require_rendered_https_destination(link.destination.strip("<>"))
         )
     structure_without_inline_links = _mask_inline_markdown_links(
-        structure,
+        markdown_structure,
         inline_links,
     )
 
-    definitions = _reference_definitions(reference_structure)
+    definitions = _reference_definitions(reference_markdown_structure)
 
     for match in REFERENCE_LINK_PATTERN.finditer(structure_without_inline_links):
         if match.group("image"):
@@ -2693,6 +2739,10 @@ def _forbidden_governed_html_constructs(text: str) -> set[str]:
             found.add("replacement")
         if GOVERNED_DELETION_HTML_PATTERN.search(logical):
             found.add("deletion")
+        if GOVERNED_INLINE_STYLE_HTML_PATTERN.search(logical):
+            found.add("inline-style")
+        if GOVERNED_BIDI_HTML_PATTERN.search(logical):
+            found.add("bidi")
     return found
 
 
@@ -2715,6 +2765,14 @@ def _require_complete_entry_integrity(entry: str, section: str) -> None:
         f"{entry} contains replacement-content HTML (object/embed/iframe/canvas), which is "
         "not permitted in governed entries because browser replacement semantics can "
         "hide pinned fallback provenance"
+    )
+    assert "inline-style" not in forbidden_html, (
+        f"{entry} contains live inline style HTML; governed entries reject inline CSS "
+        "rather than claiming complete browser visibility semantics"
+    )
+    assert "bidi" not in forbidden_html, (
+        f"{entry} contains bidirectional/direction-changing HTML; governed clauses must "
+        "retain their canonical visual reading order"
     )
     assert not _contains_visually_hidden_table(structural_section), (
         f"{entry} contains a visually hidden raw HTML table; governed entries reject "
@@ -2806,6 +2864,14 @@ def _validate_registry_corpus(corpus: str) -> None:
     assert "styling" not in corpus_forbidden_html, (
         "registry contains stylesheet/class-driven HTML styling; governed source "
         "visibility must not depend on embedded stylesheet selectors"
+    )
+    assert "inline-style" not in corpus_forbidden_html, (
+        "registry contains live inline style HTML; governed source visibility must not "
+        "depend on CSS properties outside the validator's complete browser model"
+    )
+    assert "bidi" not in corpus_forbidden_html, (
+        "registry contains bidirectional/direction-changing HTML; governed clauses must "
+        "retain their canonical visual reading order"
     )
     rendered, structure = _markdown_views(corpus)
     try:
@@ -4014,7 +4080,10 @@ def test_css_comment_cannot_hide_complete_governed_batch():
         f'<div style="display:/**/none">\n\n{batch}\n\n</div>\n\n',
         1,
     )
-    with pytest.raises(AssertionError, match="contains no entries"):
+    with pytest.raises(
+        AssertionError,
+        match="inline style HTML|contains no entries",
+    ):
         _validate_registry_corpus(mutated)
 
 
@@ -4465,3 +4534,49 @@ def test_html_literals_inside_code_spans_remain_literal_integrity_text():
     mutated = corpus.replace(section, mutated_section, 1)
     with pytest.raises(AssertionError):
         _validate_registry_corpus(mutated)
+
+
+def test_latest_review_inline_css_href_autolink_and_bidi_regressions():
+    assert _css_hides_element("content-visibility:hidden")
+
+    mutated = _mutate_chey_phrase(
+        '<span style="content-visibility:hidden">The article</span>'
+    )
+    with pytest.raises(AssertionError, match="inline style HTML"):
+        _validate_registry_corpus(mutated)
+
+    # HTMLParser has already decoded raw-HTML attributes exactly once. Do not
+    # apply CommonMark character-reference decoding to href values a second time.
+    with pytest.raises(AssertionError, match="no usable HTTPS destination"):
+        _usable_https_destinations(
+            '<a href="https&amp;#58;//example.org/path">source</a>'
+        )
+
+    # Markdown autolink syntax that exists only in a raw HTML attribute is not
+    # rendered as a navigable Markdown link.
+    assert _usable_https_destinations(
+        '<span title="<https://example.org/path>">plain provenance</span>'
+    ) == ()
+
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = next(
+        heading for heading in EXPECTED_GOVERNED_ENTRIES
+        if heading.startswith("### Chey (2021)")
+    )
+    section = _registered_sections(corpus)[entry]
+    rights = str(ENTRY_CONTRACTS[entry][RIGHTS_FIELD])
+    mutated_section = section.replace(
+        rights,
+        f'<bdo dir="rtl">{rights}</bdo>',
+        1,
+    )
+    mutated = corpus.replace(section, mutated_section, 1)
+    with pytest.raises(AssertionError, match="bidirectional/direction-changing HTML"):
+        _validate_registry_corpus(mutated)
+
+
+def test_raw_html_anchor_url_label_is_not_double_counted():
+    destination = "https://example.org/path"
+    assert _usable_https_destinations(
+        f'<a href="{destination}">{destination}</a>'
+    ) == (destination,)
