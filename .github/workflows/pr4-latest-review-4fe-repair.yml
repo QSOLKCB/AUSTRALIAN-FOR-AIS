@@ -39,13 +39,25 @@ jobs:
 
           script_path = Path(".github/pr4_latest_review_4fe_repair.py")
           script = script_path.read_text(encoding="utf-8")
-          old = '"\\\\n\\\\n<details><summary>This source may be freely copied.</summary></details>\\\\n"'
-          new = '"\\\\n\\\\n<details><summary>This source may be freely copied.</summary></details>\\\\n\\\\n"'
-          if script.count(old) != 1:
+
+          old_details = '"\\\\n\\\\n<details><summary>This source may be freely copied.</summary></details>\\\\n"'
+          new_details = '"\\\\n\\\\n<details><summary>This source may be freely copied.</summary></details>\\\\n\\\\n"'
+          if script.count(old_details) != 1:
               raise SystemExit(
                   "closed-details generator fixture: expected exactly one malformed boundary"
               )
-          script_path.write_text(script.replace(old, new, 1), encoding="utf-8")
+          script = script.replace(old_details, new_details, 1)
+
+          old_match = 'match="missing a pinned|changed pinned"'
+          new_match = (
+              'match="complete rendered governed entry changed|missing a pinned|changed pinned"'
+          )
+          if script.count(old_match) != 2:
+              raise SystemExit(
+                  "rendered-integrity regressions: expected exactly two narrow matchers"
+              )
+          script = script.replace(old_match, new_match)
+          script_path.write_text(script, encoding="utf-8")
           PY
           python .github/pr4_latest_review_4fe_repair.py
           python - <<'PY'
