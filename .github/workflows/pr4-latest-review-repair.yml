@@ -31,7 +31,7 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Apply exact guarded repair
-        run: python .github/scripts/pr4-latest-review-repair.py
+        run: python .github/scripts/pr4-latest-review-repair-v2.py
 
       - name: Verify exact substantive file set
         shell: bash
@@ -70,10 +70,12 @@ jobs:
         run: |
           set -euo pipefail
           rm .github/scripts/pr4-latest-review-repair.py
+          rm .github/scripts/pr4-latest-review-repair-v2.py
           rm .github/workflows/pr4-latest-review-repair.yml
           git diff --check
           actual="$(git diff --name-only | sort)"
           expected="$(printf '%s\n' \
+            .github/scripts/pr4-latest-review-repair-v2.py \
             .github/scripts/pr4-latest-review-repair.py \
             .github/workflows/pr4-latest-review-repair.yml \
             tests/test_policing_context_roadmap.py \
