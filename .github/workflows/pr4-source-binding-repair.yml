@@ -5,6 +5,7 @@ on:
     branches: [research-corpus-governed-expansion]
     paths:
       - scripts/_pr4_source_binding_repair.py
+      - scripts/_pr4_source_binding_followup.py
       - .github/workflows/pr4-source-binding-repair.yml
 
 permissions:
@@ -30,7 +31,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = f8e6508a25a3a87162acae5af56af3ace7f6dee7
+          test "$(git rev-parse HEAD^)" = 24f53536a7b573634b7e144dacb8c0d5c62d4920
           test "$(git hash-object .github/workflows/ci.yml)" = 2f7380017c0ad8b7b6a8b61f00b09c566b0bcdaa
           python -m pip install -e '.[dev]'
       - name: Reproduce all four review findings
@@ -62,7 +63,8 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/_pr4_source_binding_repair.py
-          rm scripts/_pr4_source_binding_repair.py .github/workflows/pr4-source-binding-repair.yml
+          python scripts/_pr4_source_binding_followup.py
+          rm scripts/_pr4_source_binding_repair.py scripts/_pr4_source_binding_followup.py .github/workflows/pr4-source-binding-repair.yml
           git diff --check
       - name: Verify focused governance and data
         shell: bash
@@ -96,7 +98,7 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- tests/test_pr4_source_binding_regressions.py tests/test_research_reference_registry.py tests/test_policing_context_roadmap.py scripts/_pr4_source_binding_repair.py .github/workflows/pr4-source-binding-repair.yml
+          git add -- tests/test_pr4_source_binding_regressions.py tests/test_research_reference_registry.py tests/test_policing_context_roadmap.py scripts/_pr4_source_binding_repair.py scripts/_pr4_source_binding_followup.py .github/workflows/pr4-source-binding-repair.yml
           git commit -m 'Fix source-label binding and raw HTML integrity review findings'
           python - <<'PY'
           import base64, os, subprocess
