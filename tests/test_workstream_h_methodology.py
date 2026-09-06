@@ -499,7 +499,11 @@ def test_workstream_h_and_methodology_safeguards_must_be_browser_visible():
         f'[placeholder](#\n"{listener_clause}")',
     ):
         mutated = roadmap.replace(listener_clause, hidden, 1)
-        assert listener_clause not in _workstream_h(mutated)
+        if "style=" in hidden:
+            with pytest.raises(AssertionError, match="inline style HTML"):
+                _workstream_h(mutated)
+        else:
+            assert listener_clause not in _workstream_h(mutated)
 
     methodology = METHODOLOGY.read_text(encoding="utf-8")
     stereotype_clause = "exact group-stereotyping wording must not be reproduced"
@@ -512,7 +516,11 @@ def test_workstream_h_and_methodology_safeguards_must_be_browser_visible():
         f'[placeholder [nested]](# "{stereotype_clause}")',
     ):
         mutated = methodology.replace(stereotype_clause, hidden, 1)
-        assert stereotype_clause not in _trans_tasman_methodology(mutated)
+        if "style=" in hidden:
+            with pytest.raises(AssertionError, match="inline style HTML"):
+                _trans_tasman_methodology(mutated)
+        else:
+            assert stereotype_clause not in _trans_tasman_methodology(mutated)
 
 
 def test_workstream_h_start_must_be_a_visible_heading():
@@ -561,7 +569,8 @@ def test_workstream_h_svg_title_does_not_supply_visible_safeguards():
         f"<svg><title>{listener_clause}</title></svg>",
         1,
     )
-    assert listener_clause not in _workstream_h(mutated_roadmap)
+    with pytest.raises(AssertionError, match="raw SVG HTML"):
+        _workstream_h(mutated_roadmap)
 
     methodology = METHODOLOGY.read_text(encoding="utf-8")
     stereotype_clause = "exact group-stereotyping wording must not be reproduced"
@@ -570,7 +579,8 @@ def test_workstream_h_svg_title_does_not_supply_visible_safeguards():
         f"<svg><title>{stereotype_clause}</title></svg>",
         1,
     )
-    assert stereotype_clause not in _trans_tasman_methodology(mutated_methodology)
+    with pytest.raises(AssertionError, match="raw SVG HTML"):
+        _trans_tasman_methodology(mutated_methodology)
 
 
 def test_workstream_h_visibility_ignores_reference_definition_titles():

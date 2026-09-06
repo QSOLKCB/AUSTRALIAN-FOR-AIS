@@ -739,7 +739,11 @@ def _rendered_structure(markdown: str) -> str:
 
         rendered_line, in_comment = _mask_comments_on_line(raw_line, False)
         parts.append(rendered_line)
-        paragraph_open = _line_opens_paragraph(rendered_line)
+        # Indented continuation lines do not end an already-open paragraph.
+        # Preserve successive HTML attribute lines for the parsed preflight.
+        paragraph_open = (
+            paragraph_open and indentation >= 4 and bool(rendered_line.strip())
+        ) or _line_opens_paragraph(rendered_line)
 
     return "".join(parts)
 
@@ -925,15 +929,26 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             self.violations.add("canvas")
         if tag == "img":
             self.violations.add("raw-image")
+        if tag in {"iframe", "object", "embed", "audio", "video"}:
+            self.violations.add("replacement-content")
+        # SVG needs its own rendering tree, not HTML character-data callbacks.
+        if tag == "svg":
+            self.violations.add("raw-svg")
+        if tag in {"del", "s", "strike"}:
+            self.violations.add("semantic-deletion")
+        # Parsed names cover duplicate, boolean, and multiline attributes.
+        # The reducer cannot establish readability for arbitrary inline CSS.
+        attribute_names = {key.lower() for key, _ in attrs}
+        if "style" in attribute_names:
+            self.violations.add("inline-style")
         if tag == "details":
-            attribute_names = {key.lower() for key, _ in attrs}
             if "open" not in attribute_names:
                 self.violations.add("closed-details")
 
     def handle_startendtag(
         self, tag: str, attrs: list[tuple[str, str | None]]
     ) -> None:
-        # Browsers ignore self-closing syntax on non-void canvas/details.
+        # Apply the same policy to ordinary and self-closing tag syntax.
         self.handle_starttag(tag, attrs)
 
 
@@ -985,9 +1000,25 @@ def _governed_surface_html_violations(markdown: str) -> set[str]:
     parser.close()
     return parser.violations
 
+
+def _assert_supported_governed_html(violations: set[str]) -> None:
+    """Fail closed on rendering semantics outside the shared text contract."""
+    descriptions = {
+        "replacement-content": "replacement-content HTML",
+        "raw-svg": "raw SVG HTML",
+        "inline-style": "inline style HTML",
+        "semantic-deletion": "semantic deletion HTML",
+    }
+    for kind, description in descriptions.items():
+        assert kind not in violations, (
+            f"{description} is not allowed on governed methodology surfaces"
+        )
+
+
 def _visible_text(markdown: str) -> str:
     """Return browser-visible text without hidden HTML or link metadata."""
     violations = _governed_surface_html_violations(markdown)
+    _assert_supported_governed_html(violations)
     assert "raw-image" not in violations, (
         "raw image HTML is not allowed on governed methodology surfaces"
     )
@@ -1018,6 +1049,9 @@ def _visible_text(markdown: str) -> str:
 
 def _visible_markdown_heading_span(structure: str, heading: str) -> tuple[int, int]:
     """Return the unique browser-visible Markdown heading span with preserved offsets."""
+    # Inspect before slicing or hidden-region masking can erase a wrapper
+    # that starts before the heading or encloses otherwise canonical text.
+    _assert_supported_governed_html(_governed_surface_html_violations(structure))
     visible_structure = _mask_hidden_html_regions(structure)
     matches: list[tuple[int, int]] = []
     offset = 0
@@ -1363,12 +1397,13 @@ def test_policing_visible_html_void_elements_do_not_hide_following_text():
 
 
 def test_latest_review_shared_css_escape_and_raw_html_block_regressions():
-    assert _visible_text(
-        '<span style="display:n\\6f ne">hidden governance</span>'
-    ) == ""
-    assert _visible_text(
-        '<span style="content-visibility:hidden">hidden governance</span>'
-    ) == ""
+    for markup in (
+        '<span style="display:n\\6f ne">hidden governance</span>',
+        '<span style="content-visibility:hidden">hidden governance</span>',
+    ):
+        assert _visible_html_text(markup) == ""
+        with pytest.raises(AssertionError, match="inline style HTML"):
+            _visible_text(markup)
 
     roadmap = ROADMAP.read_text(encoding="utf-8")
     start = roadmap.index(WORKSTREAM_HEADING)
@@ -1396,7 +1431,9 @@ def test_fresh_review_inline_html_adjacency_is_preserved():
 def test_fresh_review_duplicate_html_attribute_preserves_first_value():
     sentence = REQUIRED_CLAUSES[3]
     hidden = f'<span style="display:none" style="display:inline">{sentence}</span>'
-    assert sentence not in _visible_text(hidden)
+    assert sentence not in _visible_html_text(hidden)
+    with pytest.raises(AssertionError, match="inline style HTML"):
+        _visible_text(hidden)
 
     roadmap = ROADMAP.read_text(encoding="utf-8")
     assert sentence in roadmap
