@@ -91,7 +91,7 @@ text = text.replace(old_rendered, new_rendered, 1)
 test_marker = "def test_policing_fence_container_ownership_hides_top_level_code_payload():\n"
 if text.count(test_marker) != 1:
     raise SystemExit("could not uniquely locate policing regression insertion point")
-new_tests = '''def test_shared_governance_reducer_rejects_canvas_fallback():
+new_tests = r'''def test_shared_governance_reducer_rejects_canvas_fallback():
     with pytest.raises(AssertionError, match="canvas fallback HTML"):
         _visible_text("<canvas>Current sources may be skipped.</canvas>")
 
@@ -122,7 +122,7 @@ function_start = text.index("def _visible_phase2_notes(changelog: str) -> str:")
 function_end = text.index(
     "\ndef test_phase2_changelog_keeps_free_text_iaa_boundary", function_start
 )
-new_function = '''def _visible_phase2_notes(changelog: str) -> str:
+new_function = r'''def _visible_phase2_notes(changelog: str) -> str:
     namespace = runpy.run_path(str(POLICING_TEST))
     structure = namespace["_rendered_structure"](changelog)
     phase2_start, _ = namespace["_visible_markdown_heading_span"](
@@ -163,7 +163,7 @@ text = text[:function_start] + new_function + text[function_end + 1 :]
 
 if "def test_phase2_notes_stop_at_next_visible_peer_heading()" in text:
     raise SystemExit("Phase 2 peer-heading regression unexpectedly already present")
-regression = '''
+regression = r'''
 
 def test_phase2_notes_stop_at_next_visible_peer_heading():
     changelog = CHANGELOG.read_text(encoding="utf-8")
