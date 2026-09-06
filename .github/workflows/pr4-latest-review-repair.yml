@@ -6,6 +6,7 @@ on:
       - research-corpus-governed-expansion
     paths:
       - .github/pr4_review_repair_latest.py
+      - .github/pr4_review_repair_followup.py
       - .github/workflows/pr4-latest-review-repair.yml
   workflow_dispatch:
 
@@ -31,6 +32,9 @@ jobs:
 
       - name: Apply guarded review fixes
         run: python .github/pr4_review_repair_latest.py
+
+      - name: Apply guarded anchor-origin followup
+        run: python .github/pr4_review_repair_followup.py
 
       - name: Normalize generated EOF whitespace
         run: |
