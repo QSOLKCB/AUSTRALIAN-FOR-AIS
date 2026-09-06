@@ -33,7 +33,17 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Apply guarded review repair
-        run: python .github/pr4_latest_review_4fe_repair.py
+        run: |
+          python .github/pr4_latest_review_4fe_repair.py
+          python - <<'PY'
+          from pathlib import Path
+          for name in (
+              "tests/test_research_reference_registry.py",
+              "tests/test_workstream_h_methodology.py",
+          ):
+              path = Path(name)
+              path.write_text(path.read_text(encoding="utf-8").rstrip() + "\n", encoding="utf-8")
+          PY
 
       - name: Check patch whitespace
         run: git diff --check
