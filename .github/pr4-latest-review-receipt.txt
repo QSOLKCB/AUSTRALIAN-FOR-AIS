@@ -1,1 +1,0 @@
-Temporary receipt to trigger ordinary CI after the guarded latest-review repair.
