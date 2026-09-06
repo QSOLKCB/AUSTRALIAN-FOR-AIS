@@ -56,8 +56,22 @@ text = replace_once(
     "anchor-aware Markdown link masking",
 )
 
+text = replace_once(
+    text,
+    '''    with pytest.raises(AssertionError, match="contains no entries"):
+        _validate_registry_corpus(mutated)
+''',
+    '''    with pytest.raises(
+        AssertionError,
+        match="inline style HTML|contains no entries",
+    ):
+        _validate_registry_corpus(mutated)
+''',
+    "legacy hidden-batch assertion accepts stronger fail-closed rejection",
+)
+
 if "def test_raw_html_anchor_url_label_is_not_double_counted():" not in text:
     text = text.rstrip() + '''\n\n\ndef test_raw_html_anchor_url_label_is_not_double_counted():\n    destination = "https://example.org/path"\n    assert _usable_https_destinations(\n        f'<a href="{destination}">{destination}</a>'\n    ) == (destination,)\n''' + "\n"
 
 path.write_text(text, encoding="utf-8")
-print("Applied anchor-origin de-duplication follow-up.")
+print("Applied anchor-origin de-duplication and legacy assertion follow-up.")
