@@ -19,6 +19,7 @@ WORKSTREAM_I_HEADING = "### I. Australian and United States policing-context tra
 TRANS_TASMAN_METHODOLOGY_HEADING = "## Trans-Tasman and Slang/Operational Experiment Design"
 POLICING_METHODOLOGY_HEADING = "## Australian and United States Policing-Context Experiment Design"
 WORKSTREAM_H_VISIBLE_SHA256 = "c38e4bc194d820c30ee714851ec279da7649fffc921da5a331d722d22d7c34b8"
+TRANS_TASMAN_VISIBLE_SHA256 = "977cb0423a8e0690383f68ef9915ce049ed6f977feeff4f4ab28d21449db1c9b"
 
 MARKDOWN_IMAGE_PATTERN = re.compile(
     r"!\[[^\]\r\n]*\]\([^\r\n)]*(?:\)[^\r\n)]*)?\)"
@@ -324,6 +325,34 @@ def _trans_tasman_methodology(text: str) -> str:
     end, _ = _rendered_heading_span(text, POLICING_METHODOLOGY_HEADING)
     assert start < end, "rendered Trans-Tasman methodology boundary is invalid"
     return _visible_markdown_text(text[start:end])
+
+
+def _normalised_trans_tasman_visible_value(text: str) -> str:
+    return " ".join(_trans_tasman_methodology(text).split())
+
+
+def _assert_trans_tasman_integrity(text: str) -> str:
+    section = _trans_tasman_methodology(text)
+    value = " ".join(section.split())
+    actual_hash = hashlib.sha256(value.encode("utf-8")).hexdigest()
+    assert actual_hash == TRANS_TASMAN_VISIBLE_SHA256, (
+        "browser-visible Trans-Tasman methodology changed: expected hash "
+        f"{TRANS_TASMAN_VISIBLE_SHA256!r}, got {actual_hash!r}"
+    )
+    return section
+
+
+def test_trans_tasman_methodology_rejects_companion_identity_reversal():
+    methodology = METHODOLOGY.read_text(encoding="utf-8")
+    _assert_trans_tasman_integrity(methodology)
+    reversal = "Nationality and first-language identity should define the comparison cohorts."
+    mutated = methodology.replace(
+        POLICING_METHODOLOGY_HEADING,
+        reversal + "\n\n" + POLICING_METHODOLOGY_HEADING,
+        1,
+    )
+    with pytest.raises(AssertionError, match="browser-visible Trans-Tasman methodology changed"):
+        _assert_trans_tasman_integrity(mutated)
 
 
 def test_workstream_h_decouples_dialect_exposure_from_listener_identity():
