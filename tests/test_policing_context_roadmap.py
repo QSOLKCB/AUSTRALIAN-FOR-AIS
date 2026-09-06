@@ -111,7 +111,7 @@ def _css_hides_element(style: str) -> bool:
             continue
         name, raw_value = declaration.split(":", 1)
         name = name.strip()
-        if name not in {"display", "visibility"}:
+        if name not in {"display", "visibility", "opacity"}:
             continue
         raw_value = raw_value.strip()
         important = re.search(r"\s*!important\s*$", raw_value) is not None
@@ -122,7 +122,19 @@ def _css_hides_element(style: str) -> bool:
 
     display = winners.get("display", (False, ""))[1]
     visibility = winners.get("visibility", (False, ""))[1]
-    return display == "none" or visibility in {"hidden", "collapse"}
+    opacity = winners.get("opacity", (False, ""))[1]
+    opacity_hidden = False
+    if opacity:
+        numeric_opacity = opacity[:-1].strip() if opacity.endswith("%") else opacity
+        try:
+            opacity_hidden = float(numeric_opacity) <= 0.0
+        except ValueError:
+            opacity_hidden = False
+    return (
+        display == "none"
+        or visibility in {"hidden", "collapse"}
+        or opacity_hidden
+    )
 
 
 class _VisibleHTMLTextParser(HTMLParser):
@@ -945,6 +957,19 @@ def test_policing_safeguard_cannot_hide_in_hidden_html():
     roadmap = ROADMAP.read_text(encoding="utf-8")
     clause = "register official and current sources for each Australian and United States jurisdictional claim"
     mutated = roadmap.replace(clause, f"<span hidden>{clause}</span>", 1)
+    with pytest.raises(AssertionError, match="missing policing-workstream safeguard"):
+        _validate_policing_workstream(mutated)
+
+
+def test_policing_safeguard_cannot_hide_with_zero_opacity():
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    clause = "CASUAL ADDRESS != FRIENDSHIP OR CONSENT"
+    assert clause in roadmap
+    mutated = roadmap.replace(
+        clause,
+        f'<span style="opacity:0">{clause}</span>',
+        1,
+    )
     with pytest.raises(AssertionError, match="missing policing-workstream safeguard"):
         _validate_policing_workstream(mutated)
 

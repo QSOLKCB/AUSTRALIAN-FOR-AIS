@@ -211,6 +211,18 @@ def test_high_stakes_methodology_gate_must_be_browser_visible():
         _assert_canonical_high_stakes_gate(mutated)
 
 
+def test_high_stakes_methodology_gate_cannot_hide_with_zero_opacity():
+    methodology = METHODOLOGY.read_text(encoding="utf-8")
+    assert CANONICAL_HIGH_STAKES_REVIEW_SENTENCE in methodology
+    mutated = methodology.replace(
+        CANONICAL_HIGH_STAKES_REVIEW_SENTENCE,
+        f'<span style="opacity:0">{CANONICAL_HIGH_STAKES_REVIEW_SENTENCE}</span>',
+        1,
+    )
+    with pytest.raises(AssertionError):
+        _assert_canonical_high_stakes_gate(mutated)
+
+
 def test_policing_methodology_start_must_be_a_visible_heading():
     methodology = METHODOLOGY.read_text(encoding="utf-8")
     start = methodology.index(POLICING_METHODOLOGY_HEADING)

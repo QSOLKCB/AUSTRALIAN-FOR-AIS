@@ -49,7 +49,7 @@ def _css_hides_element(style: str) -> bool:
             continue
         name, raw_value = declaration.split(":", 1)
         name = name.strip()
-        if name not in {"display", "visibility"}:
+        if name not in {"display", "visibility", "opacity"}:
             continue
         raw_value = raw_value.strip()
         important = re.search(r"\s*!important\s*$", raw_value) is not None
@@ -57,9 +57,22 @@ def _css_hides_element(style: str) -> bool:
         previous = winners.get(name)
         if previous is None or (important and not previous[0]) or important == previous[0]:
             winners[name] = (important, value)
+
     display = winners.get("display", (False, ""))[1]
     visibility = winners.get("visibility", (False, ""))[1]
-    return display == "none" or visibility in {"hidden", "collapse"}
+    opacity = winners.get("opacity", (False, ""))[1]
+    opacity_hidden = False
+    if opacity:
+        numeric_opacity = opacity[:-1].strip() if opacity.endswith("%") else opacity
+        try:
+            opacity_hidden = float(numeric_opacity) <= 0.0
+        except ValueError:
+            opacity_hidden = False
+    return (
+        display == "none"
+        or visibility in {"hidden", "collapse"}
+        or opacity_hidden
+    )
 
 
 class _VisibleHTMLTextParser(HTMLParser):
@@ -398,6 +411,7 @@ def test_workstream_h_and_methodology_safeguards_must_be_browser_visible():
         f"<dialog>{listener_clause}</dialog>",
         f"<dialog />{listener_clause}</dialog>",
         f'<span style="display:/**/none">{listener_clause}</span>',
+        f'<span style="opacity:0">{listener_clause}</span>',
         f'[placeholder](# "{listener_clause}")',
         f'[placeholder](#\n"{listener_clause}")',
     ):
@@ -410,6 +424,7 @@ def test_workstream_h_and_methodology_safeguards_must_be_browser_visible():
     for hidden in (
         f"<!-- {stereotype_clause} -->",
         f"<span hidden>{stereotype_clause}</span>",
+        f'<span style="opacity:0">{stereotype_clause}</span>',
         f'[placeholder](# "{stereotype_clause}")',
         f'[placeholder [nested]](# "{stereotype_clause}")',
     ):

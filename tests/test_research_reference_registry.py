@@ -732,6 +732,7 @@ class _VisibleHTMLTextParser(HTMLParser):
         self.parts: list[str] = []
         self.hrefs: list[str] = []
         self.stack: list[tuple[str, bool, bool]] = []
+        self.open_anchors: list[tuple[int, str, int]] = []
 
     def _apply_implied_paragraph_end(self, tag: str) -> None:
         if tag in HTML_P_IMPLIED_END_START_TAGS:
@@ -777,9 +778,20 @@ class _VisibleHTMLTextParser(HTMLParser):
         if tag == "a" and not hidden and not inert:
             for key, value in attrs:
                 if key.lower() == "href" and value:
-                    self.hrefs.append(value)
+                    self.open_anchors.append((len(self.stack), value, len(self.parts)))
                     break
         self.stack.append((tag, hidden, inert))
+
+    def _close_anchors_from_depth(self, depth: int) -> None:
+        remaining: list[tuple[int, str, int]] = []
+        for anchor_depth, href, parts_start in self.open_anchors:
+            if anchor_depth < depth:
+                remaining.append((anchor_depth, href, parts_start))
+                continue
+            linked_text = " ".join(self.parts[parts_start:]).strip()
+            if linked_text:
+                self.hrefs.append(href)
+        self.open_anchors = remaining
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
@@ -793,8 +805,13 @@ class _VisibleHTMLTextParser(HTMLParser):
         tag = tag.lower()
         for index in range(len(self.stack) - 1, -1, -1):
             if self.stack[index][0] == tag:
+                self._close_anchors_from_depth(index)
                 del self.stack[index:]
                 return
+
+    def close(self) -> None:
+        super().close()
+        self._close_anchors_from_depth(0)
 
     def handle_data(self, data: str) -> None:
         if not self.stack or not self.stack[-1][1]:
@@ -2949,6 +2966,17 @@ def test_registered_source_rejects_unusable_destinations(destination: str):
     section = (
         "### Example\n\n"
         f"**Registered source:** {destination}\n\n"
+        "**Source type:** example\n"
+    )
+    with pytest.raises(AssertionError, match="no usable HTTPS destination"):
+        _require_registered_source_link("### Example", section)
+
+
+def test_empty_html_anchor_cannot_supply_registered_source_destination():
+    section = (
+        "### Example\n\n"
+        '**Registered source:** <a href="https://example.com/source"></a> '
+        "https&#58;//example.com/source\n\n"
         "**Source type:** example\n"
     )
     with pytest.raises(AssertionError, match="no usable HTTPS destination"):
