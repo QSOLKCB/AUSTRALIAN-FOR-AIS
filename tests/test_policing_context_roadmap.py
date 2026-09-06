@@ -959,6 +959,11 @@ def _replace_inline_markdown_links_for_visibility(text: str) -> str:
 
 
 
+GOVERNED_CONDITIONAL_RAW_TEXT_TAGS = frozenset({
+    "noscript", "plaintext", "xmp", "listing", "noframes", "noembed",
+})
+
+
 class _GovernedSurfaceHTMLParser(HTMLParser):
     """Detect live HTML whose browser semantics are unsafe to approximate."""
 
@@ -983,11 +988,26 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             self.violations.add("raw-mathml")
         if tag in {"style", "link"}:
             self.violations.add("stylesheet")
+        # Non-rendering character data does not make an element harmless:
+        # scripts can rewrite the document, and conditional text can vanish.
+        if tag == "script":
+            self.violations.add("executable-script")
+        if tag in GOVERNED_CONDITIONAL_RAW_TEXT_TAGS:
+            self.violations.add("conditional-raw-text")
         if tag in {"del", "s", "strike"}:
             self.violations.add("semantic-deletion")
         # Parsed names cover duplicate, boolean, and multiline attributes.
         # The reducer cannot establish readability for arbitrary inline CSS.
         attribute_names = {key.lower() for key, _ in attrs}
+        if {"shadowrootmode", "shadowroot"}.intersection(attribute_names):
+            self.violations.add("shadow-root")
+        # HTMLParser decodes attribute references once. Preserve the first
+        # duplicate attribute, matching the browser's effective directive.
+        values: dict[str, str] = {}
+        for key, value in attrs:
+            values.setdefault(key.lower(), value or "")
+        if tag == "meta" and values.get("http-equiv", "").strip().lower() == "refresh":
+            self.violations.add("meta-refresh")
         if "style" in attribute_names:
             self.violations.add("inline-style")
         if "class" in attribute_names:
@@ -1067,6 +1087,10 @@ def _assert_supported_governed_html(violations: set[str]) -> None:
         "stylesheet": "stylesheet/class-driven HTML",
         "raw-mathml": "raw MathML HTML",
         "bidirectional": "bidirectional HTML",
+        "conditional-raw-text": "conditional/legacy raw-text HTML",
+        "shadow-root": "declarative shadow-root HTML",
+        "meta-refresh": "meta-refresh HTML",
+        "executable-script": "executable script HTML",
     }
     for kind, description in descriptions.items():
         assert kind not in violations, (

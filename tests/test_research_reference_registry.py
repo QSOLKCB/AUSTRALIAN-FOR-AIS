@@ -10,10 +10,20 @@ from html.parser import HTMLParser
 import ipaddress
 from pathlib import Path
 import re
+import runpy
 import string
 from urllib.parse import urlparse
 
 import pytest
+
+
+# Reuse the raw-HTML-preserving scanner for document-active elements. Unlike
+# a structural Markdown view, it does not treat backticks inside raw HTML
+# blocks as code or discard executable script blocks before inspection.
+_SHARED_HTML_PREFLIGHT = runpy.run_path(
+    str(Path(__file__).with_name("test_policing_context_roadmap.py"))
+)["_governed_surface_html_violations"]
+ACTIVE_DOCUMENT_HTML_KINDS = frozenset({"executable-script", "meta-refresh"})
 
 
 CORPUS = Path(__file__).parent.parent / "docs" / "RESEARCH-REFERENCE-CORPUS.md"
@@ -752,6 +762,11 @@ class _GovernedHTMLSemanticsDetector(HTMLParser):
     ) -> None:
         tag = tag.lower()
         names = [key.lower() for key, _ in attrs]
+        if tag == "script":
+            self.found.add("executable-script")
+        values = _first_html_attribute_values(attrs)
+        if tag == "meta" and values.get("http-equiv", "").strip().lower() == "refresh":
+            self.found.add("meta-refresh")
         # Attribute parsing accepts every HTML whitespace form around '=' and
         # does not mistake strings inside another attribute for real styling.
         if "style" in names:
@@ -2890,7 +2905,7 @@ def _forbidden_governed_html_constructs(text: str) -> set[str]:
     rendered = _rendered_registry_text(text)
     scan = _mask_multiline_code_spans(rendered)
     fence: FenceState | None = None
-    found: set[str] = set()
+    found = _SHARED_HTML_PREFLIGHT(text) & ACTIVE_DOCUMENT_HTML_KINDS
     semantics = _GovernedHTMLSemanticsDetector()
 
     try:
@@ -2933,6 +2948,12 @@ def _forbidden_governed_html_constructs(text: str) -> set[str]:
     return found
 
 
+def _assert_no_active_document_html(found: set[str]) -> None:
+    """Reject actions that can replace the document without changing its text."""
+    assert "executable-script" not in found, "executable script HTML is not allowed in governed documents"
+    assert "meta-refresh" not in found, "meta-refresh HTML is not allowed in governed documents"
+
+
 def _normalise_complete_entry_integrity(section: str) -> str:
     """Return the complete render-aware governed-entry body for integrity pinning."""
     return _visible_inline_text(section)
@@ -2944,6 +2965,7 @@ def _require_complete_entry_integrity(entry: str, section: str) -> None:
     rendered_section = _rendered_registry_text(section)
     structural_section = _structural_registry_text(section)
     forbidden_html = _forbidden_governed_html_constructs(section)
+    _assert_no_active_document_html(forbidden_html)
     unsupported = forbidden_html & {"shadow-root", "hidden-table-descendant", "nested-anchor"}
     assert not unsupported, (
         f"{entry} contains unsupported governed HTML: {sorted(unsupported)}; "
@@ -3065,6 +3087,9 @@ def _normalised_source_use_rules_value(corpus: str) -> str:
 
 
 def _validate_registry_corpus(corpus: str) -> None:
+    # Check the original document before any heading slicing or masking.
+    corpus_forbidden_html = _forbidden_governed_html_constructs(corpus)
+    _assert_no_active_document_html(corpus_forbidden_html)
     assert not _contains_markdown_structure_in_type6_raw_html(corpus), (
         "registry contains Markdown governance structure inside a CommonMark type-6 "
         "raw HTML block; this ambiguous structure is rejected fail closed"
@@ -3074,7 +3099,6 @@ def _validate_registry_corpus(corpus: str) -> None:
         "registry contains a visibility:hidden/collapse ancestor with a descendant "
         "visibility:visible override; this ambiguous visual nesting is rejected fail closed"
     )
-    corpus_forbidden_html = _forbidden_governed_html_constructs(corpus)
     assert "replacement" not in corpus_forbidden_html, (
         "registry contains replacement-content HTML, including raw images; "
         "rendered replacement content cannot be sealed as character data"
