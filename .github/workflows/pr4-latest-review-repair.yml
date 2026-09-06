@@ -5,7 +5,7 @@ on:
     branches:
       - research-corpus-governed-expansion
     paths:
-      - .github/pr4_latest_review_repair.py
+      - .github/pr4_latest_review_repair_v2.py
       - .github/workflows/pr4-latest-review-repair.yml
 
 permissions:
@@ -32,7 +32,7 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Apply guarded review repairs
-        run: python .github/pr4_latest_review_repair.py
+        run: python .github/pr4_latest_review_repair_v2.py
 
       - name: Run focused governance tests
         run: |
