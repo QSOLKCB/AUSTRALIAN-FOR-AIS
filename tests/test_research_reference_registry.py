@@ -805,15 +805,58 @@ def _css_hides_element(style: str) -> bool:
     )
 
 
+
+RAW_HTML_LITERAL_ASTERISK = "\uE003"
+
+
+def _protect_unpaired_raw_html_asterisks(data: str) -> str:
+    """Protect literal raw-HTML asterisks that are not paired emphasis runs."""
+    assert RAW_HTML_LITERAL_ASTERISK not in data
+    runs: list[tuple[int, int]] = []
+    position = 0
+    while position < len(data):
+        if data[position] != "*":
+            position += 1
+            continue
+        end = position + 1
+        while end < len(data) and data[end] == "*":
+            end += 1
+        runs.append((position, end))
+        position = end
+
+    paired_indexes: set[int] = set()
+    pending_by_length: dict[int, list[tuple[int, int]]] = {}
+    for start, end in runs:
+        length = end - start
+        pending = pending_by_length.setdefault(length, [])
+        if pending:
+            open_start, open_end = pending.pop()
+            paired_indexes.update(range(open_start, open_end))
+            paired_indexes.update(range(start, end))
+        else:
+            pending.append((start, end))
+
+    if not runs:
+        return data
+    characters = list(data)
+    for index, character in enumerate(characters):
+        if character == "*" and index not in paired_indexes:
+            characters[index] = RAW_HTML_LITERAL_ASTERISK
+    return "".join(characters)
 class _VisibleHTMLTextParser(HTMLParser):
     """Collect browser-visible HTML text while respecting hidden containers."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        protect_raw_html_literal_asterisks: bool = False,
+    ) -> None:
         super().__init__(convert_charrefs=True)
         self.parts: list[str] = []
         self.hrefs: list[str] = []
         self.stack: list[tuple[str, bool, bool]] = []
         self.open_anchors: list[tuple[int, str, int]] = []
+        self.protect_raw_html_literal_asterisks = protect_raw_html_literal_asterisks
 
     def _apply_implied_paragraph_end(self, tag: str) -> None:
         if tag in HTML_P_IMPLIED_END_START_TAGS:
@@ -841,6 +884,10 @@ class _VisibleHTMLTextParser(HTMLParser):
         if tag in {"details", "dialog"} and "open" not in values:
             return True
         if "hidden" in values:
+            return True
+        # HTML popovers are not rendered in their resting state. Governance
+        # text must be visible without a user activation step.
+        if "popover" in values:
             return True
         return _css_hides_element(values.get("style", ""))
 
@@ -898,11 +945,19 @@ class _VisibleHTMLTextParser(HTMLParser):
 
     def handle_data(self, data: str) -> None:
         if not self.stack or not self.stack[-1][1]:
+            if self.protect_raw_html_literal_asterisks and self.stack:
+                data = _protect_unpaired_raw_html_asterisks(data)
             self.parts.append(data)
 
 
-def _visible_html_text(text: str) -> str:
-    parser = _VisibleHTMLTextParser()
+def _visible_html_text(
+    text: str,
+    *,
+    protect_raw_html_literal_asterisks: bool = False,
+) -> str:
+    parser = _VisibleHTMLTextParser(
+        protect_raw_html_literal_asterisks=protect_raw_html_literal_asterisks,
+    )
     try:
         parser.feed(text)
         parser.close()
@@ -1817,9 +1872,13 @@ def _visible_inline_text(text: str) -> str:
     visible = _protect_entity_decoded_emphasis_punctuation(visible)
     # HTMLParser(convert_charrefs=True) performs the browser's one character-
     # reference decoding pass. Do not decode the resulting text a second time.
-    visible = _visible_html_text(visible)
+    visible = _visible_html_text(
+        visible,
+        protect_raw_html_literal_asterisks=True,
+    )
     visible = _strip_emphasis_preserving_intraword_underscores(visible)
     visible = _restore_entity_decoded_emphasis_punctuation(visible)
+    visible = visible.replace(RAW_HTML_LITERAL_ASTERISK, "*")
     return " ".join(visible.split())
 
 MARKDOWN_BACKSLASH_ESCAPE_PATTERN = re.compile(
@@ -4732,4 +4791,35 @@ def test_conditional_and_legacy_raw_text_cannot_supply_governed_clauses(tag: str
         AssertionError,
         match="conditional/legacy raw-text HTML|changed pinned",
     ):
+        _validate_registry_corpus(corpus.replace(section, mutated_section, 1))
+
+
+def test_eaa_review_raw_html_literal_asterisk_and_popover_visibility():
+    # A literal asterisk emitted by a raw-HTML text node is not a Markdown
+    # emphasis delimiter and must remain reader-visible integrity text.
+    assert _visible_inline_text("The art<span>*</span>icle") == "The art*icle"
+
+    # Popover content is hidden until explicit activation, so it cannot supply a
+    # governance clause that is required to be visible by default.
+    assert _visible_inline_text("<span popover>The article</span>") == ""
+
+    corpus = CORPUS.read_text(encoding="utf-8")
+    entry = next(
+        heading
+        for heading in EXPECTED_GOVERNED_ENTRIES
+        if heading.startswith("### Chey (2021)")
+    )
+    section = _registered_sections(corpus)[entry]
+    rights = str(ENTRY_CONTRACTS[entry][RIGHTS_FIELD])
+    assert "article" in rights
+    assert rights in section
+
+    raw_html_corruption = rights.replace("article", "art<span>*</span>icle", 1)
+    mutated_section = section.replace(rights, raw_html_corruption, 1)
+    with pytest.raises(AssertionError):
+        _validate_registry_corpus(corpus.replace(section, mutated_section, 1))
+
+    popover_hidden = rights.replace("article", "<span popover>article</span>", 1)
+    mutated_section = section.replace(rights, popover_hidden, 1)
+    with pytest.raises(AssertionError):
         _validate_registry_corpus(corpus.replace(section, mutated_section, 1))
