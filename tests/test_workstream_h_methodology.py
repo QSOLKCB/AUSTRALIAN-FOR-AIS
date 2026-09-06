@@ -19,13 +19,16 @@ WORKSTREAM_I_HEADING = "### I. Australian and United States policing-context tra
 TRANS_TASMAN_METHODOLOGY_HEADING = "## Trans-Tasman and Slang/Operational Experiment Design"
 POLICING_METHODOLOGY_HEADING = "## Australian and United States Policing-Context Experiment Design"
 WORKSTREAM_H_VISIBLE_SHA256 = "c38e4bc194d820c30ee714851ec279da7649fffc921da5a331d722d22d7c34b8"
-WORKSTREAM_H_CITATION_DESTINATIONS = frozenset({
-    "https://www.vu.edu.au/about-vu/news-events/vu-blog/australian-slang-dictionary",
-    "https://www.reddit.com/r/australia/comments/1g73mue/best_aussie_slang/",
-    "https://www.defence.gov.au/news-events/news/2022-09-08/communication-key-combined-exercise",
-    "https://www.defence.gov.au/news-events/news/2026-06-11/partner-nations-rehearse-war",
-    "https://www.awm.gov.au/collection/LIB100000077",
+WORKSTREAM_H_CITATION_LINKS = frozenset({
+    ("Australian slang dictionary", "https://www.vu.edu.au/about-vu/news-events/vu-blog/australian-slang-dictionary"),
+    ("Best Aussie slang", "https://www.reddit.com/r/australia/comments/1g73mue/best_aussie_slang/"),
+    ("Communication key on combined exercise", "https://www.defence.gov.au/news-events/news/2022-09-08/communication-key-combined-exercise"),
+    ("Partner nations rehearse for war", "https://www.defence.gov.au/news-events/news/2026-06-11/partner-nations-rehearse-war"),
+    ("Welcome to Australia", "https://www.awm.gov.au/collection/LIB100000077"),
 })
+WORKSTREAM_H_CITATION_DESTINATIONS = frozenset(
+    destination for _, destination in WORKSTREAM_H_CITATION_LINKS
+)
 TRANS_TASMAN_VISIBLE_SHA256 = "977cb0423a8e0690383f68ef9915ce049ed6f977feeff4f4ab28d21449db1c9b"
 
 MARKDOWN_IMAGE_PATTERN = re.compile(
@@ -91,9 +94,11 @@ class _VisibleHTMLTextParser(HTMLParser):
     @staticmethod
     def _is_hidden(tag: str, attrs: list[tuple[str, str | None]]) -> bool:
         tag = tag.lower()
-        if tag in {"script", "style", "template"}:
+        if tag in {"script", "style", "template", "title"}:
             return True
-        values = {key.lower(): (value or "") for key, value in attrs}
+        values: dict[str, str] = {}
+        for key, value in attrs:
+            values.setdefault(key.lower(), value or "")
         if tag in {"details", "dialog"} and "open" not in values:
             return True
         if "hidden" in values:
@@ -138,7 +143,7 @@ def _visible_html_text(text: str) -> str:
         parser.close()
     except Exception:
         return ""
-    return " ".join(parser.parts)
+    return "".join(parser.parts)
 
 
 def _is_escaped_markdown_character(text: str, index: int) -> bool:
@@ -267,9 +272,9 @@ def _inline_link_destination(inner: str) -> str | None:
     return destination
 
 
-def _inline_markdown_link_destinations(text: str) -> tuple[str, ...]:
-    """Return non-image inline-link destinations from a rendered section source."""
-    destinations: list[str] = []
+def _inline_markdown_links(text: str) -> tuple[tuple[str, str], ...]:
+    """Return rendered non-image inline-link label/destination pairs."""
+    links: list[tuple[str, str]] = []
     cursor = 0
     while cursor < len(text):
         bracket = text.find("[", cursor)
@@ -297,9 +302,15 @@ def _inline_markdown_link_destinations(text: str) -> tuple[str, ...]:
             and not _is_escaped_markdown_character(text, bracket - 1)
         )
         if not image:
-            destinations.append(html.unescape(destination.strip("<>")))
+            label = html.unescape(text[bracket + 1:label_end]).strip()
+            links.append((label, html.unescape(destination.strip("<>"))))
         cursor = paren_end + 1
-    return tuple(destinations)
+    return tuple(links)
+
+
+def _inline_markdown_link_destinations(text: str) -> tuple[str, ...]:
+    """Return non-image inline-link destinations from a rendered section source."""
+    return tuple(destination for _, destination in _inline_markdown_links(text))
 
 
 def _replace_inline_markdown_links_for_visibility(text: str) -> str:
@@ -370,11 +381,16 @@ def _normalised_workstream_h_visible_value(text: str) -> str:
 
 def _assert_workstream_h_integrity(text: str) -> str:
     raw_section = _workstream_h_raw(text)
-    actual_destinations = set(_inline_markdown_link_destinations(raw_section))
+    actual_links = set(_inline_markdown_links(raw_section))
+    actual_destinations = {destination for _, destination in actual_links}
     assert actual_destinations == WORKSTREAM_H_CITATION_DESTINATIONS, (
         "Workstream H citation destinations changed: expected "
         f"{sorted(WORKSTREAM_H_CITATION_DESTINATIONS)!r}, got "
         f"{sorted(actual_destinations)!r}"
+    )
+    assert actual_links == WORKSTREAM_H_CITATION_LINKS, (
+        "Workstream H citation label/destination bindings changed: expected "
+        f"{sorted(WORKSTREAM_H_CITATION_LINKS)!r}, got {sorted(actual_links)!r}"
     )
     section = _visible_markdown_text(raw_section)
     value = " ".join(section.split())
@@ -575,4 +591,24 @@ def test_workstream_h_citation_destinations_are_pinned():
     expected = "https://www.vu.edu.au/about-vu/news-events/vu-blog/australian-slang-dictionary"
     mutated = roadmap.replace(expected, "https://www.wikipedia.org/", 1)
     with pytest.raises(AssertionError, match="Workstream H citation destinations changed"):
+        _assert_workstream_h_integrity(mutated)
+
+def test_fresh_review_workstream_h_binds_citation_labels_to_destinations():
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    vu_url = "https://www.vu.edu.au/about-vu/news-events/vu-blog/australian-slang-dictionary"
+    reddit_url = "https://www.reddit.com/r/australia/comments/1g73mue/best_aussie_slang/"
+    vu_link = f"[Australian slang dictionary]({vu_url})"
+    reddit_link = f"[Best Aussie slang]({reddit_url})"
+    assert vu_link in roadmap
+    assert reddit_link in roadmap
+    mutated = roadmap.replace(
+        vu_link,
+        f"[Australian slang dictionary]({reddit_url})",
+        1,
+    ).replace(
+        reddit_link,
+        f"[Best Aussie slang]({vu_url})",
+        1,
+    )
+    with pytest.raises(AssertionError, match="citation label/destination bindings changed"):
         _assert_workstream_h_integrity(mutated)

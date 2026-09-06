@@ -105,6 +105,10 @@ RAW_HTML_BLOCK_TAGS = frozenset({"pre", "script", "style", "textarea"})
 RAW_HTML_PROCESSING_INSTRUCTION = "__processing_instruction__"
 RAW_HTML_DECLARATION = "__declaration__"
 RAW_HTML_CDATA = "__cdata__"
+INTERACTIVE_FORM_CONTROL_PATTERN = re.compile(
+    r"<\s*(?:form|input|button|select|textarea|option|optgroup)\b",
+    flags=re.IGNORECASE,
+)
 
 
 def _decode_css_escapes(value: str) -> str:
@@ -198,9 +202,11 @@ class _VisibleHTMLTextParser(HTMLParser):
     @staticmethod
     def _is_hidden(tag: str, attrs: list[tuple[str, str | None]]) -> bool:
         tag = tag.lower()
-        if tag in {"script", "style", "template"}:
+        if tag in {"script", "style", "template", "title"}:
             return True
-        values = {key.lower(): (value or "") for key, value in attrs}
+        values: dict[str, str] = {}
+        for key, value in attrs:
+            values.setdefault(key.lower(), value or "")
         if tag in {"details", "dialog"} and "open" not in values:
             return True
         if "hidden" in values:
@@ -246,7 +252,7 @@ def _visible_html_text(text: str) -> str:
         parser.close()
     except Exception:
         return ""
-    return " ".join(parser.parts)
+    return "".join(parser.parts)
 
 
 HTML_VOID_TAGS = {
@@ -896,6 +902,9 @@ def _replace_inline_markdown_links_for_visibility(text: str) -> str:
 
 def _visible_text(markdown: str) -> str:
     """Return browser-visible text without hidden HTML or link metadata."""
+    assert INTERACTIVE_FORM_CONTROL_PATTERN.search(markdown) is None, (
+        "interactive form control HTML is not allowed on governed methodology surfaces"
+    )
     visible = _mask_link_reference_definitions_for_visibility(markdown)
     visible = _replace_inline_markdown_links_for_visibility(visible)
     visible = AUTOLINK_PATTERN.sub(lambda match: match.group("url"), visible)
@@ -1249,4 +1258,52 @@ def test_latest_review_shared_css_escape_and_raw_html_block_regressions():
     section = roadmap[start:end]
     mutated = roadmap[:start] + f"<pre>\n{section}\n</pre>\n" + roadmap[end:]
     with pytest.raises(AssertionError, match="rendered policing workstream"):
+        _validate_policing_workstream(mutated)
+
+def test_fresh_review_inline_html_adjacency_is_preserved():
+    assert _visible_text("Every<span></span>implemented") == "Everyimplemented"
+
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    sentence = REQUIRED_CLAUSES[3]
+    assert sentence in roadmap
+    mutated = roadmap.replace(
+        sentence,
+        sentence.replace("Every implemented", "Every<span></span>implemented", 1),
+        1,
+    )
+    with pytest.raises(AssertionError):
+        _validate_policing_workstream(mutated)
+
+
+def test_fresh_review_duplicate_html_attribute_preserves_first_value():
+    sentence = REQUIRED_CLAUSES[3]
+    hidden = f'<span style="display:none" style="display:inline">{sentence}</span>'
+    assert sentence not in _visible_text(hidden)
+
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    assert sentence in roadmap
+    mutated = roadmap.replace(sentence, hidden, 1)
+    with pytest.raises(AssertionError):
+        _validate_policing_workstream(mutated)
+
+
+def test_fresh_review_interactive_form_control_is_rejected():
+    with pytest.raises(AssertionError, match="interactive form control HTML"):
+        _visible_text('<input value="Current sources may be skipped.">')
+
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    end = roadmap.index(WORKSTREAM_END, roadmap.index(WORKSTREAM_HEADING))
+    mutated = roadmap[:end] + '\n<input value="Current sources may be skipped.">\n' + roadmap[end:]
+    with pytest.raises(AssertionError, match="interactive form control HTML"):
+        _validate_policing_workstream(mutated)
+
+
+def test_fresh_review_html_title_is_non_rendering():
+    sentence = REQUIRED_CLAUSES[3]
+    assert _visible_text(f"<title>{sentence}</title>") == ""
+
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    assert sentence in roadmap
+    mutated = roadmap.replace(sentence, f"<title>{sentence}</title>", 1)
+    with pytest.raises(AssertionError):
         _validate_policing_workstream(mutated)
