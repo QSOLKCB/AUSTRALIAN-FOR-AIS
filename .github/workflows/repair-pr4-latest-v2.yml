@@ -1,0 +1,231 @@
+name: Guarded PR4 latest review repair v2
+
+on:
+  push:
+    branches:
+      - research-corpus-governed-expansion
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Patch latest review findings
+        shell: python
+        run: |
+          from pathlib import Path
+
+          policing = Path('tests/test_policing_context_roadmap.py')
+          text = policing.read_text(encoding='utf-8')
+
+          helper_marker = '\ndef _visible_text(markdown: str) -> str:\n'
+          if text.count(helper_marker) != 1:
+              raise SystemExit('could not uniquely locate _visible_text')
+
+          helper = '''
+class _GovernedSurfaceHTMLParser(HTMLParser):
+    """Detect live HTML whose browser semantics are unsafe to approximate."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.violations: set[str] = set()
+
+    def handle_starttag(
+        self, tag: str, attrs: list[tuple[str, str | None]]
+    ) -> None:
+        tag = tag.lower()
+        if tag == "canvas":
+            self.violations.add("canvas")
+        if tag == "details":
+            attribute_names = {key.lower() for key, _ in attrs}
+            if "open" not in attribute_names:
+                self.violations.add("closed-details")
+
+    def handle_startendtag(
+        self, tag: str, attrs: list[tuple[str, str | None]]
+    ) -> None:
+        # Browsers ignore self-closing syntax on non-void canvas/details.
+        self.handle_starttag(tag, attrs)
+
+
+def _governed_surface_html_violations(markdown: str) -> set[str]:
+    """Inspect live rendered structure while leaving comments/code inert."""
+    parser = _GovernedSurfaceHTMLParser()
+    parser.feed(_rendered_structure(markdown))
+    parser.close()
+    return parser.violations
+
+'''
+          text = text.replace(helper_marker, '\n' + helper + 'def _visible_text(markdown: str) -> str:\n', 1)
+
+          old_visible_head = '''def _visible_text(markdown: str) -> str:
+    """Return browser-visible text without hidden HTML or link metadata."""
+    assert INTERACTIVE_FORM_CONTROL_PATTERN.search(markdown) is None, (
+        "interactive form control HTML is not allowed on governed methodology surfaces"
+    )
+'''
+          new_visible_head = '''def _visible_text(markdown: str) -> str:
+    """Return browser-visible text without hidden HTML or link metadata."""
+    violations = _governed_surface_html_violations(markdown)
+    assert "canvas" not in violations, (
+        "canvas fallback HTML is not allowed on governed methodology surfaces"
+    )
+    assert "closed-details" not in violations, (
+        "default-closed <details> is not allowed on governed methodology surfaces"
+    )
+    assert INTERACTIVE_FORM_CONTROL_PATTERN.search(markdown) is None, (
+        "interactive form control HTML is not allowed on governed methodology surfaces"
+    )
+'''
+          if text.count(old_visible_head) != 1:
+              raise SystemExit('could not uniquely patch _visible_text guard')
+          text = text.replace(old_visible_head, new_visible_head, 1)
+
+          old_rendered = '''    end, _ = _visible_markdown_heading_span(structure, WORKSTREAM_END_HEADING)
+    assert start < end, "rendered policing workstream boundary is invalid"
+    visible_structure = _mask_hidden_html_regions(structure)
+    return visible_structure[start:end]
+'''
+          new_rendered = '''    end, _ = _visible_markdown_heading_span(structure, WORKSTREAM_END_HEADING)
+    assert start < end, "rendered policing workstream boundary is invalid"
+    assert "closed-details" not in _governed_surface_html_violations(roadmap[start:end]), (
+        "default-closed <details> is not allowed in the rendered policing workstream"
+    )
+    visible_structure = _mask_hidden_html_regions(structure)
+    return visible_structure[start:end]
+'''
+          if text.count(old_rendered) != 1:
+              raise SystemExit('could not uniquely patch policing workstream renderer')
+          text = text.replace(old_rendered, new_rendered, 1)
+
+          test_marker = 'def test_policing_fence_container_ownership_hides_top_level_code_payload():\n'
+          if text.count(test_marker) != 1:
+              raise SystemExit('could not uniquely locate policing regression insertion point')
+          new_tests = '''def test_shared_governance_reducer_rejects_canvas_fallback():
+    with pytest.raises(AssertionError, match="canvas fallback HTML"):
+        _visible_text("<canvas>Current sources may be skipped.</canvas>")
+
+
+def test_closed_details_summary_cannot_escape_policing_integrity():
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    contradiction = (
+        "<details><summary>Current sources may be skipped.</summary></details>\n\n"
+    )
+    mutated = roadmap.replace(WORKSTREAM_END, contradiction + WORKSTREAM_END, 1)
+    with pytest.raises(AssertionError, match="default-closed <details>"):
+        _validate_policing_workstream(mutated)
+
+
+'''
+          text = text.replace(test_marker, new_tests + test_marker, 1)
+          policing.write_text(text, encoding='utf-8')
+
+          phase2 = Path('tests/test_phase2_review_followup.py')
+          text = phase2.read_text(encoding='utf-8')
+          import_marker = 'import runpy' + chr(10)
+          if text.count(import_marker) != 1:
+              raise SystemExit('could not uniquely locate runpy import')
+          text = text.replace(
+              import_marker,
+              'import runpy' + chr(10) + 'import re' + chr(10),
+              1,
+          )
+
+          function_start = text.index('def _visible_phase2_notes(changelog: str) -> str:')
+          function_end = text.index('\ndef test_phase2_changelog_keeps_free_text_iaa_boundary', function_start)
+          new_function = '''def _visible_phase2_notes(changelog: str) -> str:
+    namespace = runpy.run_path(str(POLICING_TEST))
+    structure = namespace["_rendered_structure"](changelog)
+    phase2_start, _ = namespace["_visible_markdown_heading_span"](
+        structure, PHASE2_HEADING
+    )
+    phase1_start, _ = namespace["_visible_markdown_heading_span"](
+        structure, PHASE1_HEADING
+    )
+    assert phase2_start < phase1_start, "Phase 2 changelog boundaries are out of order"
+
+    phase2_structure = structure[phase2_start:phase1_start]
+    notes_start, notes_heading_end = namespace["_visible_markdown_heading_span"](
+        phase2_structure, PHASE2_NOTES_HEADING
+    )
+    visible_phase2_structure = namespace["_mask_hidden_html_regions"](phase2_structure)
+
+    notes_end = len(phase2_structure)
+    relative_offset = 0
+    tail = visible_phase2_structure[notes_heading_end:]
+    for raw_line in tail.splitlines(keepends=True):
+        line = raw_line.rstrip("\r\n")
+        logical, is_code, _ = namespace["_parse_fence_container_prefixes"](line)
+        if not is_code:
+            stripped = logical.strip(" \t")
+            heading_match = re.match(r"^(#{1,3})(?:[ \t]+|$)", stripped)
+            if heading_match:
+                notes_end = notes_heading_end + relative_offset
+                break
+        relative_offset += len(raw_line)
+
+    absolute_notes_start = phase2_start + notes_start
+    absolute_notes_end = phase2_start + notes_end
+    return namespace["_visible_text"](
+        changelog[absolute_notes_start:absolute_notes_end]
+    )
+
+'''
+          text = text[:function_start] + new_function + text[function_end + 1:]
+
+          if 'def test_phase2_notes_stop_at_next_visible_peer_heading()' in text:
+              raise SystemExit('Phase 2 peer-heading regression unexpectedly already present')
+          regression = '''
+
+def test_phase2_notes_stop_at_next_visible_peer_heading():
+    changelog = CHANGELOG.read_text(encoding="utf-8")
+    bullet = f"- {FREE_TEXT_IAA_BOUNDARY}\n"
+    assert bullet in changelog
+    moved = changelog.replace(bullet, "", 1).replace(
+        PHASE1_HEADING,
+        "### Additional Phase 2 subsection\n\n"
+        f"- {FREE_TEXT_IAA_BOUNDARY}\n\n"
+        + PHASE1_HEADING,
+        1,
+    )
+    assert FREE_TEXT_IAA_BOUNDARY not in _visible_phase2_notes(moved)
+'''
+          phase2.write_text(text.rstrip() + regression + '\n', encoding='utf-8')
+
+      - name: Install test dependencies
+        run: python -m pip install -e . pytest
+
+      - name: Focused governance verification
+        run: >-
+          python -m pytest -q
+          tests/test_policing_context_roadmap.py
+          tests/test_workstream_h_methodology.py
+          tests/test_policing_contract_receipt.py
+          tests/test_phase2_review_followup.py
+          tests/test_research_reference_registry.py
+
+      - name: Full suite
+        run: python -m pytest -q
+
+      - name: Whitespace check
+        run: git diff --check
+
+      - name: Commit verified repair and remove runner
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm .github/workflows/repair-pr4-latest-v2.yml
+          git add tests/test_policing_context_roadmap.py tests/test_phase2_review_followup.py .github/workflows/repair-pr4-latest-v2.yml
+          git commit -m "Harden latest governance rendering edges"
+          git push origin HEAD:research-corpus-governed-expansion
