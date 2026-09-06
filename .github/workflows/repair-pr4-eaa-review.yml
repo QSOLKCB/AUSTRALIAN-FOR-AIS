@@ -39,6 +39,14 @@ jobs:
       - name: Full suite
         run: python -m pytest -q
 
+      - name: Normalize generated test EOF
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("tests/test_research_reference_registry.py")
+          path.write_text(path.read_text(encoding="utf-8").rstrip() + "\n", encoding="utf-8")
+          PY
+
       - name: Whitespace check
         run: git diff --check
 
