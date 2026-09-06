@@ -39,15 +39,6 @@ old_underscore = r'''def _strip_emphasis_preserving_intraword_underscores(text: 
     visible = visible.replace("*", "").replace("_", "")
     return visible.replace(sentinel, "_")
 '''
-new_underscore = r'''OBFUSCATED_INTRAW word_PLACEHOLDER = None
-'''.replace('OBFUSCATED_INTRAW word_PLACEHOLDER = None', r'''OBFUSCATED_INTRAW word_PLACEHOLDER = None''')
-# Build this separately to keep the repair script itself easy to inspect.
-new_underscore = r'''OBFUSCATED_INTRAW word_PLACEHOLDER = None'''.replace(
-    'OBFUSCATED_INTRAW word_PLACEHOLDER = None',
-    '''OBFUSCATED_INTRAW word_PLACEHOLDER = None''',
-)
-# Replace the placeholder with the real source after construction so no broad
-# string transformations touch the target file.
 new_underscore = r'''OBFUSCATED_INTRAW_WORD_PATTERN = re.compile(
     r"(?<![A-Za-z0-9])(?:[A-Za-z]_){2,}[A-Za-z]_?(?![A-Za-z0-9])"
 )
@@ -102,4 +93,6 @@ text = replace_once(
     "registered-source validation ordering",
 )
 
-TARGET.write_text(text, encoding="utf-8")
+# Keep the generated target compatible with git diff --check: exactly one
+# trailing newline, never an extra blank line at EOF.
+TARGET.write_text(text.rstrip("\r\n") + "\n", encoding="utf-8")
