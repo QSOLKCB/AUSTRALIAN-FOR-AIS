@@ -85,6 +85,9 @@ def _string_constants_in_tuple(name: str) -> tuple[str, ...]:
 
 def _policing_methodology_section(methodology: str) -> str:
     policing_namespace = runpy.run_path(str(POLICING_TEST))
+    policing_namespace["_assert_supported_governed_html"](
+        policing_namespace["_governed_surface_html_violations"](methodology)
+    )
     structure = policing_namespace["_rendered_structure"](methodology)
     heading_span = policing_namespace["_visible_markdown_heading_span"]
     start, _ = heading_span(structure, POLICING_METHODOLOGY_HEADING)

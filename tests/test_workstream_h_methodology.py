@@ -360,6 +360,9 @@ def _visible_markdown_text(markdown: str) -> str:
 def _rendered_heading_span(text: str, heading: str) -> tuple[int, int]:
     """Locate one browser-visible heading using the hardened structural renderer."""
     namespace = runpy.run_path(str(POLICING_TEST))
+    namespace["_assert_supported_governed_html"](
+        namespace["_governed_surface_html_violations"](text)
+    )
     structure = namespace["_rendered_structure"](text)
     return namespace["_visible_markdown_heading_span"](structure, heading)
 

@@ -105,6 +105,22 @@ RAW_HTML_BLOCK_TAGS = frozenset({"pre", "script", "style", "textarea"})
 RAW_HTML_PROCESSING_INSTRUCTION = "__processing_instruction__"
 RAW_HTML_DECLARATION = "__declaration__"
 RAW_HTML_CDATA = "__cdata__"
+PREFLIGHT_HTML_BLANK_LINE = "__blank_line__"
+# CommonMark type-6 blocks end at a blank line, not at a closing HTML tag.
+PREFLIGHT_HTML_BLOCK_TAGS = frozenset({
+    "address", "article", "aside", "base", "basefont", "blockquote", "body",
+    "caption", "center", "col", "colgroup", "dd", "details", "dialog", "dir",
+    "div", "dl", "dt", "fieldset", "figcaption", "figure", "footer", "form",
+    "frame", "frameset", "h1", "h2", "h3", "h4", "h5", "h6", "head",
+    "header", "hr", "html", "iframe", "legend", "li", "link", "main", "menu",
+    "menuitem", "nav", "noframes", "ol", "optgroup", "option", "p", "param",
+    "search", "section", "summary", "table", "tbody", "td", "tfoot", "th",
+    "thead", "title", "tr", "track", "ul",
+})
+PREFLIGHT_HTML_TAG = re.compile(
+    r"</?[A-Za-z][A-Za-z0-9-]*(?=[ \t\r\n\f/>])"
+    r"(?:[^>\"']|\"[^\"]*\"|'[^']*')*>", re.DOTALL,
+)
 INTERACTIVE_FORM_CONTROL_PATTERN = re.compile(
     r"<\s*(?:form|input|button|select|textarea|option|optgroup)\b",
     flags=re.IGNORECASE,
@@ -616,6 +632,8 @@ def _raw_html_block_logical_line(line: str, state: RawHTMLBlockState) -> str:
 
 def _raw_html_block_closes(line: str, state: RawHTMLBlockState) -> bool:
     logical = _raw_html_block_logical_line(line, state)
+    if state.tag == PREFLIGHT_HTML_BLANK_LINE:
+        return not logical.strip()
     if state.tag == RAW_HTML_PROCESSING_INSTRUCTION:
         return "?>" in logical
     if state.tag == RAW_HTML_CDATA:
@@ -678,15 +696,25 @@ def _mask_comments_on_line(raw_line: str, in_comment: bool) -> tuple[str, bool]:
     return "".join(characters), in_comment
 
 
-def _rendered_structure(markdown: str) -> str:
-    """Mask code and comments while preserving rendered prose for inspection."""
+def _rendered_structure(
+    markdown: str, *, html_spans: list[tuple[int, int]] | None = None,
+) -> str:
+    """Mask code/comments; optionally retain raw HTML for the policy preflight.
+
+    The ordinary structural view is unchanged. The preflight view preserves
+    raw HTML blocks and records their offsets so backticks within those blocks
+    cannot be reinterpreted as Markdown code and conceal live HTML elements.
+    """
     parts: list[str] = []
     in_comment = False
     fence: FenceState | None = None
     raw_html: RawHTMLBlockState | None = None
     paragraph_open = False
 
+    offset = 0
     for raw_line in markdown.splitlines(keepends=True):
+        line_start = offset
+        offset += len(raw_line)
         line = raw_line.rstrip("\r\n")
         if not line.strip():
             paragraph_open = False
@@ -704,7 +732,11 @@ def _rendered_structure(markdown: str) -> str:
             continue
 
         if raw_html is not None:
-            parts.append(_mask_non_newline(raw_line))
+            if html_spans is not None:
+                parts.append(raw_line)
+                html_spans.append((line_start, offset))
+            else:
+                parts.append(_mask_non_newline(raw_line))
             if _raw_html_block_closes(line, raw_html):
                 raw_html = None
             paragraph_open = False
@@ -730,8 +762,21 @@ def _rendered_structure(markdown: str) -> str:
             continue
 
         raw_opener = _raw_html_block_opener(line)
+        if raw_opener is None and html_spans is not None:
+            logical_html, is_code, containers = _parse_fence_container_prefixes(line)
+            candidate = logical_html.strip(" \t")
+            tag_match = re.match(r"</?([A-Za-z][A-Za-z0-9-]*)(?=[ \t\r\n\f/>]|$)", candidate)
+            if not is_code and tag_match is not None:
+                type6 = tag_match.group(1).lower() in PREFLIGHT_HTML_BLOCK_TAGS
+                type7 = not paragraph_open and PREFLIGHT_HTML_TAG.fullmatch(candidate) is not None
+                if type6 or type7:
+                    raw_opener = RawHTMLBlockState(PREFLIGHT_HTML_BLANK_LINE, containers)
         if raw_opener is not None:
-            parts.append(_mask_non_newline(raw_line))
+            if html_spans is not None:
+                parts.append(raw_line)
+                html_spans.append((line_start, offset))
+            else:
+                parts.append(_mask_non_newline(raw_line))
             if not _raw_html_block_closes(line, raw_opener):
                 raw_html = raw_opener
             paragraph_open = False
@@ -934,6 +979,10 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         # SVG needs its own rendering tree, not HTML character-data callbacks.
         if tag == "svg":
             self.violations.add("raw-svg")
+        if tag == "math":
+            self.violations.add("raw-mathml")
+        if tag in {"style", "link"}:
+            self.violations.add("stylesheet")
         if tag in {"del", "s", "strike"}:
             self.violations.add("semantic-deletion")
         # Parsed names cover duplicate, boolean, and multiline attributes.
@@ -941,6 +990,10 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         attribute_names = {key.lower() for key, _ in attrs}
         if "style" in attribute_names:
             self.violations.add("inline-style")
+        if "class" in attribute_names:
+            self.violations.add("stylesheet")
+        if tag == "bdo" or "dir" in attribute_names:
+            self.violations.add("bidirectional")
         if tag == "details":
             if "open" not in attribute_names:
                 self.violations.add("closed-details")
@@ -955,18 +1008,21 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
 def _governed_surface_html_violations(markdown: str) -> set[str]:
     """Inspect live rendered structure while leaving comments/code inert."""
     parser = _GovernedSurfaceHTMLParser()
-    structure = _rendered_structure(markdown)
+    html_spans: list[tuple[int, int]] = []
+    structure = _rendered_structure(markdown, html_spans=html_spans)
     # Exclude definite same-line literal code examples before parsing HTML.
     # Delimiter runs inside a raw HTML attribute are not Markdown syntax.
     # Multiline code ambiguity remains fail-closed at this HTML preflight.
-    raw_tag = re.compile(
-        r"</?[A-Za-z][A-Za-z0-9-]*(?=[ \t\r\n\f/>])"
-        r"(?:[^>\"']|\"[^\"]*\"|'[^']*')*>", re.DOTALL,
-    )
     characters = list(structure)
     cursor = 0
+    span_index = 0
     while cursor < len(structure):
-        tag_match = raw_tag.match(structure, cursor)
+        while span_index < len(html_spans) and html_spans[span_index][1] <= cursor:
+            span_index += 1
+        if span_index < len(html_spans) and html_spans[span_index][0] <= cursor:
+            cursor = html_spans[span_index][1]
+            continue
+        tag_match = PREFLIGHT_HTML_TAG.match(structure, cursor)
         if tag_match is not None:
             cursor = tag_match.end()
             continue
@@ -1008,6 +1064,9 @@ def _assert_supported_governed_html(violations: set[str]) -> None:
         "raw-svg": "raw SVG HTML",
         "inline-style": "inline style HTML",
         "semantic-deletion": "semantic deletion HTML",
+        "stylesheet": "stylesheet/class-driven HTML",
+        "raw-mathml": "raw MathML HTML",
+        "bidirectional": "bidirectional HTML",
     }
     for kind, description in descriptions.items():
         assert kind not in violations, (
@@ -1068,8 +1127,11 @@ def _visible_markdown_heading_span(structure: str, heading: str) -> tuple[int, i
 
 
 def _rendered_policing_workstream(roadmap: str) -> str:
-    structure = _rendered_structure(roadmap)
     try:
+        # Global styles and ancestor direction can affect a section even when
+        # their source lies outside its heading boundaries.
+        _assert_supported_governed_html(_governed_surface_html_violations(roadmap))
+        structure = _rendered_structure(roadmap)
         start, _ = _visible_markdown_heading_span(structure, WORKSTREAM_HEADING)
     except AssertionError as exc:
         raise AssertionError("rendered policing workstream is missing; missing policing-workstream safeguard") from exc
