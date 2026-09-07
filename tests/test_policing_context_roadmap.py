@@ -996,8 +996,10 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             self.violations.add("canvas")
         if tag == "img":
             self.violations.add("raw-image")
-        if tag in {"iframe", "object", "embed", "audio", "video"}:
+        if tag in {"iframe", "object", "embed", "audio", "video", "meter", "progress"}:
             self.violations.add("replacement-content")
+        if tag == "table":
+            self.violations.add("raw-table")
         # SVG needs its own rendering tree, not HTML character-data callbacks.
         if tag == "svg":
             self.violations.add("raw-svg")
@@ -1018,6 +1020,8 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         attribute_names = {key.lower() for key, _ in attrs}
         if any(name.startswith("on") for name in attribute_names):
             self.violations.add("event-handler")
+        if "title" in attribute_names:
+            self.violations.add("tooltip-title")
         # Raw Markdown is embedded into an existing HTML document. A live
         # duplicate root tag can merge attributes onto that document root, so
         # reject html/body rather than approximating tree-builder semantics.
@@ -1037,7 +1041,7 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             for name in GOVERNED_EXECUTABLE_URL_ATTRIBUTES
         ):
             self.violations.add("executable-url")
-        if tag == "datalist":
+        if tag in {"datalist", "rp"}:
             self.violations.add("non-rendering-container")
         if "style" in attribute_names:
             self.violations.add("inline-style")
@@ -1046,6 +1050,8 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         if tag == "bdo" or "dir" in attribute_names:
             self.violations.add("bidirectional")
         if tag == "details":
+            if "name" in attribute_names:
+                self.violations.add("named-details")
             if "open" not in attribute_names:
                 self.violations.add("closed-details")
 
@@ -1125,7 +1131,10 @@ def _assert_supported_governed_html(violations: set[str]) -> None:
         "executable-url": "executable URL HTML",
         "event-handler": "inline event-handler HTML",
         "document-root": "document-root HTML",
-        "non-rendering-container": "non-rendering datalist HTML",
+        "raw-table": "raw table HTML",
+        "named-details": "named details-group HTML",
+        "tooltip-title": "tooltip title-attribute HTML",
+        "non-rendering-container": "non-rendering container HTML",
     }
     for kind, description in descriptions.items():
         assert kind not in violations, (

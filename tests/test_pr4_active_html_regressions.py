@@ -154,8 +154,6 @@ def test_commented_examples_do_not_invalidate_unchanged_documents(validators, su
     '<meta data-http-equiv="refresh" content="0">',
     '<meta http-equiv="content-type" http-equiv="refresh" content="0">',
     '<meta http-equiv="&amp;#114;efresh" content="0">',
-    '<span title="<script>example</script>">text</span>',
-    '<span title="<meta http-equiv=refresh content=0>">text</span>',
     '<span data-shadowrootmode="open">text</span>',
     '<template>ordinary inert text</template>',
 ])

@@ -30,6 +30,10 @@ ACTIVE_DOCUMENT_HTML_KINDS = frozenset({
     "executable-url",
     "event-handler",
     "document-root",
+    "replacement-content",
+    "raw-table",
+    "named-details",
+    "tooltip-title",
     "non-rendering-container",
 })
 
@@ -2974,8 +2978,20 @@ def _assert_no_active_document_html(found: set[str]) -> None:
     assert "document-root" not in found, (
         "document-root HTML is not allowed in governed documents"
     )
+    assert "replacement-content" not in found, (
+        "replacement-content HTML is not allowed in governed documents"
+    )
+    assert "raw-table" not in found, (
+        "raw table HTML, including visually hidden raw HTML table semantics, is not allowed in governed documents"
+    )
+    assert "named-details" not in found, (
+        "named details-group HTML is not allowed in governed documents"
+    )
+    assert "tooltip-title" not in found, (
+        "tooltip title-attribute HTML is not allowed in governed documents"
+    )
     assert "non-rendering-container" not in found, (
-        "non-rendering datalist HTML is not allowed in governed documents"
+        "non-rendering datalist/rp container HTML is not allowed in governed documents"
     )
 
 

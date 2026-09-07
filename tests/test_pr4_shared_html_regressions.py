@@ -181,11 +181,7 @@ def test_literal_examples_do_not_become_live_html(validators, payload, wrapper):
 
 
 @pytest.mark.parametrize("markup", [
-    '<span title="style=font-size:0">text</span>',
     '<span data-style="font-size:0">text</span>',
-    '<span title="<iframe srcdoc=example>">text</span>',
-    '<span title="<svg><defs>example</defs></svg>">text</span>',
-    '<span title="<del>not</del>">text</span>',
     '<strong>text</strong>',
 ])
 def test_attributes_and_ordinary_markup_remain_supported(validators, markup):

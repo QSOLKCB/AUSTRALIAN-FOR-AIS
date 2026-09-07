@@ -147,11 +147,6 @@ def test_literal_code_and_comment_examples_remain_inert(validators, payload, wra
 
 
 @pytest.mark.parametrize("markup", (
-    '<span title="<style>body { display:none }</style>">text</span>',
-    '<span title="<link rel=stylesheet href=example.css>">text</span>',
-    '<span title="<math><mphantom>example</mphantom></math>">text</span>',
-    '<span title="<bdo dir=rtl>example</bdo>">text</span>',
-    '<span title="dir=rtl" data-dir="rtl">text</span>',
     '<span data-class="hidden">text</span>',
     '<strong>text</strong>',
 ))
