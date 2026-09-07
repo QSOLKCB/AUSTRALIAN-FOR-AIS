@@ -54,11 +54,24 @@ jobs:
               '''    new_restore = \'\'\'    visible = _protect_unmatched_markdown_emphasis_delimiters(visible)\\n    visible = _strip_emphasis_preserving_intraword_underscores(visible)\\n    visible = _restore_entity_decoded_emphasis_punctuation(visible)\\n    visible = _restore_unmatched_markdown_emphasis_delimiters(visible)\\n    visible = visible.replace(RAW_HTML_LITERAL_ASTERISK, "*")\\n\'\'\'\n''',
               1,
           )
+          # Registry raw-HTML punctuation already owns the low private-use
+          # sentinels. Give unmatched/surplus Markdown delimiters a distinct
+          # namespace so the two protection passes cannot collide.
+          text = text.replace('\\uE003', '\\uE101').replace('\\uE004', '\\uE102')
           path.write_text(text, encoding='utf-8')
           PY
 
       - name: Reproduce and apply guarded repair
         run: python scripts/pr4_delimiter_autolink_repair.py
+
+      - name: Add raw-HTML punctuation compatibility receipt
+        run: |
+          cat >> tests/test_pr4_delimiter_autolink_regressions.py <<'PY'
+
+          def test_registry_raw_html_literal_punctuation_stays_literal():
+              assert REGISTRY["_visible_inline_text"]("The art<span>*</span>icle") == "The art*icle"
+              assert REGISTRY["_visible_inline_text"]("The art<span>_</span>icle") == "The art_icle"
+          PY
 
       - name: Remove temporary repair machinery
         run: |
