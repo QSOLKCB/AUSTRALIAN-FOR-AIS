@@ -39,109 +39,109 @@ jobs:
           registry = registry_path.read_text(encoding='utf-8')
           regressions = regression_path.read_text(encoding='utf-8')
 
-          old = 'AUTOLINK_PATTERN = re.compile(r"<(?P<url>https?://[^>\\s]+)>")'
-          new = '''AUTOLINK_PATTERN = re.compile(
-              r"<(?P<url>[A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\\x00-\\x20]*)>"
-          )'''
-          assert old in policing
-          policing = policing.replace(old, new, 1)
+          def replace_once(text: str, old: str, new: str) -> str:
+              assert old in text, old
+              return text.replace(old, new, 1)
 
-          old = 'HTML_HEADING_TAGS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})\n'
-          new = '''HTML_HEADING_TAGS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
-          HTML_IMPLIED_SIBLING_END_TAGS = {
-              "li": frozenset({"li"}),
-              "dt": frozenset({"dt", "dd"}),
-              "dd": frozenset({"dt", "dd"}),
-          }
-          '''
-          assert old in policing
-          policing = policing.replace(old, new, 1)
+          policing = replace_once(
+              policing,
+              'AUTOLINK_PATTERN = re.compile(r"<(?P<url>https?://[^>\\s]+)>")',
+              'AUTOLINK_PATTERN = re.compile(\n'
+              '    r"<(?P<url>[A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\\x00-\\x20]*)>"\n'
+              ')',
+          )
 
-          anchor = '        inherited = self.stack[-1][1] if self.stack else False\n'
-          insertion = '''        implied_siblings = HTML_IMPLIED_SIBLING_END_TAGS.get(tag)
-              if implied_siblings:
-                  for index in range(len(self.stack) - 1, -1, -1):
-                      if self.stack[index][0] in implied_siblings:
-                          del self.stack[index:]
-                          break
-          '''
-          assert policing.count(anchor) == 1
-          policing = policing.replace(anchor, insertion + anchor, 1)
+          policing = replace_once(
+              policing,
+              'HTML_HEADING_TAGS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})\n',
+              'HTML_HEADING_TAGS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})\n'
+              'HTML_IMPLIED_SIBLING_END_TAGS = {\n'
+              '    "li": frozenset({"li"}),\n'
+              '    "dt": frozenset({"dt", "dd"}),\n'
+              '    "dd": frozenset({"dt", "dd"}),\n'
+              '}\n',
+          )
 
-          anchor = '        parent_hidden = self.stack[-1][1] if self.stack else False\n'
-          insertion = '''        implied_siblings = HTML_IMPLIED_SIBLING_END_TAGS.get(tag)
-              if implied_siblings:
-                  for index in range(len(self.stack) - 1, -1, -1):
-                      if self.stack[index][0] not in implied_siblings:
-                          continue
-                      popped = self.stack[index:]
-                      del self.stack[index:]
-                      for _, _, root_start in popped:
-                          if root_start is not None:
-                              self.spans.append((root_start, start))
-                      break
-          '''
-          assert policing.count(anchor) == 1
-          policing = policing.replace(anchor, insertion + anchor, 1)
+          visible_start = policing.index('class _VisibleHTMLTextParser')
+          visible_end = policing.index('\ndef _visible_html_text', visible_start)
+          visible = policing[visible_start:visible_end]
+          visible = replace_once(
+              visible,
+              '        inherited = self.stack[-1][1] if self.stack else False\n',
+              '        implied_siblings = HTML_IMPLIED_SIBLING_END_TAGS.get(tag)\n'
+              '        if implied_siblings:\n'
+              '            for index in range(len(self.stack) - 1, -1, -1):\n'
+              '                if self.stack[index][0] in implied_siblings:\n'
+              '                    del self.stack[index:]\n'
+              '                    break\n'
+              '        inherited = self.stack[-1][1] if self.stack else False\n',
+          )
+          policing = policing[:visible_start] + visible + policing[visible_end:]
 
-          anchor = '''        parser.violations.add("executable-url")
-              if _contains_live_markdown_image_syntax(markdown_source):
-          '''
-          insertion = '''        parser.violations.add("executable-url")
-              if any(
-                  _has_executable_url_scheme(
-                      _decode_markdown_destination_for_scheme(match.group("url"))
-                  )
-                  for match in AUTOLINK_PATTERN.finditer(markdown_source)
-              ):
-                  parser.violations.add("executable-url")
-              if _contains_live_markdown_image_syntax(markdown_source):
-          '''
-          assert anchor in policing
-          policing = policing.replace(anchor, insertion, 1)
+          hidden_start = policing.index('class _HiddenHTMLRegionParser')
+          hidden_end = policing.index('\ndef _mask_hidden_html_regions', hidden_start)
+          hidden = policing[hidden_start:hidden_end]
+          hidden = replace_once(
+              hidden,
+              '        parent_hidden = self.stack[-1][1] if self.stack else False\n',
+              '        implied_siblings = HTML_IMPLIED_SIBLING_END_TAGS.get(tag)\n'
+              '        if implied_siblings:\n'
+              '            for index in range(len(self.stack) - 1, -1, -1):\n'
+              '                if self.stack[index][0] not in implied_siblings:\n'
+              '                    continue\n'
+              '                popped = self.stack[index:]\n'
+              '                del self.stack[index:]\n'
+              '                for _, _, root_start in popped:\n'
+              '                    if root_start is not None:\n'
+              '                        self.spans.append((root_start, start))\n'
+              '                break\n'
+              '        parent_hidden = self.stack[-1][1] if self.stack else False\n',
+          )
+          policing = policing[:hidden_start] + hidden + policing[hidden_end:]
 
-          anchor = '''            if re.match(r"#{2,3}(?:[ \\t]+|$)", candidate):
-                  return True
-              continue
-          '''
-          insertion = '''            if re.match(r"#{2,3}(?:[ \\t]+|$)", candidate):
-                  return True
-              if re.search(
-                  r"(?:\\*\\*|__)[^\\r\\n]*?:(?:\\*\\*|__)",
-                  candidate,
-              ):
-                  return True
-              if re.search(
-                  r"(?<!!)\\[[^]\\r\\n]+\\](?:\\([^\\r\\n)]*\\)|\\[[^]\\r\\n]*\\])",
-                  candidate,
-              ):
-                  return True
-              if re.search(
-                  r"<[A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\\s]*>",
-                  candidate,
-              ):
-                  return True
-              continue
-          '''
-          assert anchor in registry
-          registry = registry.replace(anchor, insertion, 1)
+          policing = replace_once(
+              policing,
+              '        parser.violations.add("executable-url")\n'
+              '    if _contains_live_markdown_image_syntax(markdown_source):\n',
+              '        parser.violations.add("executable-url")\n'
+              '    if any(\n'
+              '        _has_executable_url_scheme(\n'
+              '            _decode_markdown_destination_for_scheme(match.group("url"))\n'
+              '        )\n'
+              '        for match in AUTOLINK_PATTERN.finditer(markdown_source)\n'
+              '    ):\n'
+              '        parser.violations.add("executable-url")\n'
+              '    if _contains_live_markdown_image_syntax(markdown_source):\n',
+          )
 
-          old_doc = '''    """Detect Markdown headings made inert by a CommonMark type-6 raw HTML block.
-
-              The registry intentionally supports visible raw HTML headings and containers, so
-              we do not globally mask type-6 HTML. Instead, fail closed when such a block
-              contains Markdown heading syntax before its terminating blank line. This is the
-              ambiguity that can fabricate registry boundaries during heading discovery.
-              """'''
-          new_doc = '''    """Detect governed Markdown made inert by a CommonMark type-6 raw HTML block.
-
-              The registry supports visible raw HTML containers, but Markdown syntax inside a
-              type-6 block is literal until the next blank line. Fail closed when such a block
-              contains headings, governed strong-metadata labels, or navigable Markdown link
-              syntax that later registry passes could otherwise misinterpret as rendered nodes.
-              """'''
-          assert old_doc in registry
-          registry = registry.replace(old_doc, new_doc, 1)
+          type6_start = registry.index('def _contains_markdown_structure_in_type6_raw_html')
+          type6_end = registry.index('\ndef _matching_backtick_run_start', type6_start)
+          type6 = registry[type6_start:type6_end]
+          type6 = replace_once(
+              type6,
+              '            if re.match(r"#{2,3}(?:[ \\t]+|$)", candidate):\n'
+              '                return True\n'
+              '            continue\n',
+              '            if re.match(r"#{2,3}(?:[ \\t]+|$)", candidate):\n'
+              '                return True\n'
+              '            if re.search(\n'
+              '                r"(?:\\*\\*|__)[^\\r\\n]*?:(?:\\*\\*|__)",\n'
+              '                candidate,\n'
+              '            ):\n'
+              '                return True\n'
+              '            if re.search(\n'
+              '                r"(?<!!)\\[[^]\\r\\n]+\\](?:\\([^\\r\\n)]*\\)|\\[[^]\\r\\n]*\\])",\n'
+              '                candidate,\n'
+              '            ):\n'
+              '                return True\n'
+              '            if re.search(\n'
+              '                r"<[A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\\s]*>",\n'
+              '                candidate,\n'
+              '            ):\n'
+              '                return True\n'
+              '            continue\n',
+          )
+          registry = registry[:type6_start] + type6 + registry[type6_end:]
 
           marker = '\n\n# Human receipt: the guarded repair run verified this regression set before self-cleanup.\n'
           assert marker in regressions
