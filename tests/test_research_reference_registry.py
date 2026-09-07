@@ -38,6 +38,7 @@ ACTIVE_DOCUMENT_HTML_KINDS = frozenset({
     "accessible-name",
     "accessibility-hidden",
     "nested-anchor",
+    "interactive-form",
     "non-rendering-container",
     "generated-quotation",
     "markdown-image",
@@ -630,6 +631,7 @@ HTML_P_IMPLIED_END_START_TAGS = frozenset({
     "hgroup", "hr", "main", "menu", "nav", "ol", "p", "pre", "search",
     "section", "table", "ul",
 })
+HTML_HEADING_TAGS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
 
 HTML_IMPLIED_END_TARGETS = {
     "li": frozenset({"li"}),
@@ -923,13 +925,11 @@ class _VisibleHTMLTextParser(HTMLParser):
         self.protect_raw_html_literal_asterisks = protect_raw_html_literal_asterisks
 
     def _apply_implied_paragraph_end(self, tag: str) -> None:
+        targets: set[str] = set(HTML_IMPLIED_END_TARGETS.get(tag, ()))
         if tag in HTML_P_IMPLIED_END_START_TAGS:
-            for index in range(len(self.stack) - 1, -1, -1):
-                if self.stack[index][0] == "p":
-                    del self.stack[index:]
-                    return
-
-        targets = HTML_IMPLIED_END_TARGETS.get(tag)
+            targets.add("p")
+        if tag in HTML_HEADING_TAGS:
+            targets.update(HTML_HEADING_TAGS)
         if not targets:
             return
         for index in range(len(self.stack) - 1, -1, -1):
@@ -1196,11 +1196,11 @@ class _HiddenHTMLRegionParser(HTMLParser):
         return len(self.text) if close < 0 else close + 1
 
     def _apply_implied_paragraph_end(self, tag: str, start: int) -> None:
-        targets: frozenset[str] | None = None
+        targets: set[str] = set(HTML_IMPLIED_END_TARGETS.get(tag, ()))
         if tag in HTML_P_IMPLIED_END_START_TAGS:
-            targets = frozenset({"p"})
-        else:
-            targets = HTML_IMPLIED_END_TARGETS.get(tag)
+            targets.add("p")
+        if tag in HTML_HEADING_TAGS:
+            targets.update(HTML_HEADING_TAGS)
         if not targets:
             return
 
@@ -2388,7 +2388,41 @@ def _registered_batch(corpus: str) -> str:
     return rendered[start:end]
 
 
+def _rendered_level3_headings(corpus: str) -> list[str]:
+    """Return reader-visible level-three headings across the complete corpus."""
+    rendered, structure = _markdown_views(corpus)
+    visible_rendered = _mask_hidden_html_regions(rendered)
+    visible_structure = _mask_hidden_html_regions(structure)
+    headings: list[str] = []
+    for raw_line in visible_structure.splitlines():
+        logical, is_code = _strip_composed_container_prefixes(raw_line)
+        if is_code:
+            continue
+        match = re.fullmatch(r" {0,3}(?P<heading>### .+?)[ \t]*", logical)
+        if match:
+            headings.append(match.group("heading"))
+    for match in HTML_ENTRY_HEADING_PATTERN.finditer(visible_structure):
+        visible_heading = _visible_inline_text(
+            visible_rendered[match.start():match.end()]
+        )
+        if visible_heading:
+            headings.append(f"### {visible_heading}")
+    return headings
+
+
+def _assert_governed_headings_globally_unique(corpus: str) -> None:
+    counts = Counter(_rendered_level3_headings(corpus))
+    duplicates = sorted(
+        heading for heading in ENTRY_CONTRACTS if counts.get(heading, 0) > 1
+    )
+    assert not duplicates, (
+        "governed entry headings must occur at most once across the rendered corpus: "
+        f"{duplicates}"
+    )
+
+
 def _registered_sections(corpus: str) -> dict[str, str]:
+    _assert_governed_headings_globally_unique(corpus)
     batch = _registered_batch(corpus)
     rendered, structure = _markdown_views(batch)
     visible_rendered = _mask_hidden_html_regions(rendered)
@@ -3007,6 +3041,9 @@ def _assert_no_active_document_html(found: set[str]) -> None:
     )
     assert "nested-anchor" not in found, (
         "nested anchor HTML is not allowed in governed documents"
+    )
+    assert "interactive-form" not in found, (
+        "interactive HTML form controls are not allowed in governed documents"
     )
     assert "non-rendering-container" not in found, (
         "non-rendering datalist/rp container HTML is not allowed in governed documents"

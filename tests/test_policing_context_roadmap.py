@@ -239,6 +239,92 @@ def _restore_entity_decoded_emphasis_punctuation(text: str) -> str:
     )
 
 
+UNMATCHED_MARKDOWN_ASTERISK = "\uE114"
+UNMATCHED_MARKDOWN_UNDERSCORE = "\uE115"
+
+
+def _protect_unmatched_markdown_emphasis_delimiters(text: str) -> str:
+    """Protect unmatched emphasis-candidate runs that CommonMark renders literally."""
+    assert UNMATCHED_MARKDOWN_ASTERISK not in text
+    assert UNMATCHED_MARKDOWN_UNDERSCORE not in text
+
+    runs: list[dict[str, object]] = []
+    position = 0
+    while position < len(text):
+        marker = text[position]
+        if marker not in {"*", "_"}:
+            position += 1
+            continue
+        end = position + 1
+        while end < len(text) and text[end] == marker:
+            end += 1
+        previous = text[position - 1] if position else None
+        following = text[end] if end < len(text) else None
+        previous_whitespace = previous is None or previous.isspace()
+        following_whitespace = following is None or following.isspace()
+        previous_punctuation = previous is not None and previous in string.punctuation
+        following_punctuation = following is not None and following in string.punctuation
+        left_flanking = (
+            not following_whitespace
+            and (not following_punctuation or previous_whitespace or previous_punctuation)
+        )
+        right_flanking = (
+            not previous_whitespace
+            and (not previous_punctuation or following_whitespace or following_punctuation)
+        )
+        if marker == "_":
+            can_open = left_flanking and (not right_flanking or previous_punctuation)
+            can_close = right_flanking and (not left_flanking or following_punctuation)
+        else:
+            can_open = left_flanking
+            can_close = right_flanking
+        runs.append({
+            "start": position,
+            "end": end,
+            "marker": marker,
+            "can_open": can_open,
+            "can_close": can_close,
+            "paired": False,
+        })
+        position = end
+
+    openers: dict[str, list[int]] = {"*": [], "_": []}
+    for index, run in enumerate(runs):
+        marker = str(run["marker"])
+        if bool(run["can_close"]) and openers[marker]:
+            opener_index = openers[marker].pop()
+            runs[opener_index]["paired"] = True
+            run["paired"] = True
+        if bool(run["can_open"]) and not bool(run["paired"]):
+            openers[marker].append(index)
+
+    if not runs:
+        return text
+    characters = list(text)
+    for run in runs:
+        if bool(run["paired"]):
+            continue
+        # Keep the legacy treatment of intraword/non-delimiter punctuation, but
+        # preserve delimiter runs that CommonMark considered candidates and then
+        # rendered literally because no matching partner existed.
+        if not (bool(run["can_open"]) or bool(run["can_close"])):
+            continue
+        sentinel = (
+            UNMATCHED_MARKDOWN_ASTERISK
+            if run["marker"] == "*"
+            else UNMATCHED_MARKDOWN_UNDERSCORE
+        )
+        for index in range(int(run["start"]), int(run["end"])):
+            characters[index] = sentinel
+    return "".join(characters)
+
+
+def _restore_unmatched_markdown_emphasis_delimiters(text: str) -> str:
+    return text.replace(UNMATCHED_MARKDOWN_ASTERISK, "*").replace(
+        UNMATCHED_MARKDOWN_UNDERSCORE, "_"
+    )
+
+
 class _VisibleHTMLTextParser(HTMLParser):
     def __init__(self, *, protect_raw_punctuation: bool = False) -> None:
         super().__init__(convert_charrefs=True)
@@ -265,6 +351,11 @@ class _VisibleHTMLTextParser(HTMLParser):
         if tag in HTML_P_IMPLIED_END_START_TAGS:
             for index in range(len(self.stack) - 1, -1, -1):
                 if self.stack[index][0] == "p":
+                    del self.stack[index:]
+                    break
+        if tag in HTML_HEADING_TAGS:
+            for index in range(len(self.stack) - 1, -1, -1):
+                if self.stack[index][0] in HTML_HEADING_TAGS:
                     del self.stack[index:]
                     break
         inherited = self.stack[-1][1] if self.stack else False
@@ -328,6 +419,8 @@ HTML_P_IMPLIED_END_START_TAGS = frozenset({
     "section", "table", "ul",
 })
 
+HTML_HEADING_TAGS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
+
 
 class _HiddenHTMLRegionParser(HTMLParser):
     """Locate browser-hidden HTML regions while preserving source offsets."""
@@ -358,6 +451,16 @@ class _HiddenHTMLRegionParser(HTMLParser):
         if tag in HTML_P_IMPLIED_END_START_TAGS:
             for index in range(len(self.stack) - 1, -1, -1):
                 if self.stack[index][0] != "p":
+                    continue
+                popped = self.stack[index:]
+                del self.stack[index:]
+                for _, _, root_start in popped:
+                    if root_start is not None:
+                        self.spans.append((root_start, start))
+                break
+        if tag in HTML_HEADING_TAGS:
+            for index in range(len(self.stack) - 1, -1, -1):
+                if self.stack[index][0] not in HTML_HEADING_TAGS:
                     continue
                 popped = self.stack[index:]
                 del self.stack[index:]
@@ -1346,6 +1449,7 @@ def _visible_text(markdown: str) -> str:
     # character-reference decoding pass. A second html.unescape() would turn
     # literal entity-looking text into content the browser never displays.
     visible = _protect_entity_decoded_emphasis_punctuation(visible)
+    visible = _protect_unmatched_markdown_emphasis_delimiters(visible)
     assert not any(marker in visible for marker in RAW_HTML_LITERAL_PUNCTUATION.values()), (
         "reserved literal-punctuation marker in governed source"
     )
@@ -1355,6 +1459,7 @@ def _visible_text(markdown: str) -> str:
     for literal, marker in RAW_HTML_LITERAL_PUNCTUATION.items():
         visible = visible.replace(marker, literal)
     visible = _restore_entity_decoded_emphasis_punctuation(visible)
+    visible = _restore_unmatched_markdown_emphasis_delimiters(visible)
     return " ".join(visible.split())
 
 def _visible_markdown_heading_span(structure: str, heading: str) -> tuple[int, int]:
