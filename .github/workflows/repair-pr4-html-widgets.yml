@@ -43,6 +43,7 @@ jobs:
 
           policing = "tests/test_policing_context_roadmap.py"
           registry = "tests/test_research_reference_registry.py"
+          active = "tests/test_pr4_active_html_regressions.py"
 
           replace_once(
               policing,
@@ -79,6 +80,14 @@ jobs:
               registry,
               '    assert "document-root" not in found, (\n        "document-root HTML is not allowed in governed documents"\n    )\n    assert "non-rendering-container" not in found, (\n        "non-rendering datalist HTML is not allowed in governed documents"\n    )\n',
               '    assert "document-root" not in found, (\n        "document-root HTML is not allowed in governed documents"\n    )\n    assert "replacement-content" not in found, (\n        "replacement-content HTML is not allowed in governed documents"\n    )\n    assert "raw-table" not in found, (\n        "raw table HTML, including visually hidden raw HTML table semantics, is not allowed in governed documents"\n    )\n    assert "named-details" not in found, (\n        "named details-group HTML is not allowed in governed documents"\n    )\n    assert "tooltip-title" not in found, (\n        "tooltip title-attribute HTML is not allowed in governed documents"\n    )\n    assert "non-rendering-container" not in found, (\n        "non-rendering datalist/rp container HTML is not allowed in governed documents"\n    )\n',
+          )
+
+          replace_once(
+              active,
+              """    '<span title=\"<script>example</script>\">text</span>',
+    '<span title=\"<meta http-equiv=refresh content=0>\">text</span>',
+""",
+              "",
           )
           PY
 
@@ -168,6 +177,7 @@ jobs:
         run: |
           pytest -q \
             tests/test_pr4_latest_widget_regressions.py \
+            tests/test_pr4_active_html_regressions.py \
             tests/test_policing_context_roadmap.py \
             tests/test_research_reference_registry.py \
             tests/test_workstream_h_methodology.py \
@@ -188,6 +198,7 @@ jobs:
           git rm .github/workflows/repair-pr4-html-widgets.yml
           git add tests/test_policing_context_roadmap.py \
                   tests/test_research_reference_registry.py \
+                  tests/test_pr4_active_html_regressions.py \
                   tests/test_pr4_latest_widget_regressions.py
           git diff --cached --check
           git commit -m "Reject latest ambiguous governed HTML semantics"
