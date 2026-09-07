@@ -99,3 +99,17 @@ def test_shared_reducer_rejects_semicolonless_html_only_references(replacement):
     mutated = roadmap.replace("source-gated research proposal", replacement, 1)
     with pytest.raises(AssertionError):
         policing["_validate_policing_workstream"](mutated)
+
+
+@pytest.mark.parametrize(
+    ("snippet", "kind"),
+    (
+        ("<svg></svg>", "raw-svg"),
+        ("<math></math>", "raw-mathml"),
+        ("<nobr><nobr>x</nobr></nobr>", "nested-nobr"),
+        ("<td hidden>x</td>", "in-body-structure"),
+        ("source-gated&#32research proposal", "non-commonmark-character-reference"),
+    ),
+)
+def test_shared_preflight_receipt_exposes_new_review_kinds(snippet, kind):
+    assert kind in policing["_governed_surface_html_violations"](snippet)
