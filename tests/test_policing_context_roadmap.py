@@ -964,6 +964,23 @@ GOVERNED_CONDITIONAL_RAW_TEXT_TAGS = frozenset({
 })
 
 
+GOVERNED_EXECUTABLE_URL_ATTRIBUTES = frozenset({
+    "href", "src", "action", "formaction", "xlink:href",
+})
+GOVERNED_EXECUTABLE_URL_SCHEMES = frozenset({"javascript", "vbscript"})
+
+
+def _has_executable_url_scheme(value: str) -> bool:
+    """Detect script-capable URL schemes after browser-style whitespace folding."""
+    if ":" not in value:
+        return False
+    raw_scheme = value.split(":", 1)[0]
+    # HTMLParser has already decoded character references. Fail closed
+    # on ASCII whitespace/control characters embedded in a URL scheme.
+    scheme = re.sub(r"[\x00-\x20\x7f]+", "", raw_scheme).casefold()
+    return scheme in GOVERNED_EXECUTABLE_URL_SCHEMES
+
+
 class _GovernedSurfaceHTMLParser(HTMLParser):
     """Detect live HTML whose browser semantics are unsafe to approximate."""
 
@@ -1008,6 +1025,13 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             values.setdefault(key.lower(), value or "")
         if tag == "meta" and values.get("http-equiv", "").strip().lower() == "refresh":
             self.violations.add("meta-refresh")
+        if any(
+            name in values and _has_executable_url_scheme(values[name])
+            for name in GOVERNED_EXECUTABLE_URL_ATTRIBUTES
+        ):
+            self.violations.add("executable-url")
+        if tag == "datalist":
+            self.violations.add("non-rendering-container")
         if "style" in attribute_names:
             self.violations.add("inline-style")
         if "class" in attribute_names:
@@ -1091,6 +1115,8 @@ def _assert_supported_governed_html(violations: set[str]) -> None:
         "shadow-root": "declarative shadow-root HTML",
         "meta-refresh": "meta-refresh HTML",
         "executable-script": "executable script HTML",
+        "executable-url": "executable URL HTML",
+        "non-rendering-container": "non-rendering datalist HTML",
     }
     for kind, description in descriptions.items():
         assert kind not in violations, (
@@ -1548,3 +1574,20 @@ def test_fresh_review_html_title_is_non_rendering():
     mutated = roadmap.replace(sentence, f"<title>{sentence}</title>", 1)
     with pytest.raises(AssertionError):
         _validate_policing_workstream(mutated)
+@pytest.mark.parametrize(
+    ("markup", "kind"),
+    (
+        ('<a href="javascript:alert(1)">governed clause</a>', "executable-url"),
+        ('<a href="java&#x0A;script:alert(1)">governed clause</a>', "executable-url"),
+        ('<form action="vbscript:msgbox(1)">governed clause</form>', "executable-url"),
+        ('<datalist><option>governed clause</option></datalist>', "non-rendering-container"),
+    ),
+)
+def test_governed_surface_preflight_rejects_executable_urls_and_datalist(
+    markup: str,
+    kind: str,
+) -> None:
+    violations = _governed_surface_html_violations(markup)
+    assert kind in violations
+    with pytest.raises(AssertionError):
+        _assert_supported_governed_html(violations)

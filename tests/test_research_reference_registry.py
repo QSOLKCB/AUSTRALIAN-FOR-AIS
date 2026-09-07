@@ -23,7 +23,13 @@ import pytest
 _SHARED_HTML_PREFLIGHT = runpy.run_path(
     str(Path(__file__).with_name("test_policing_context_roadmap.py"))
 )["_governed_surface_html_violations"]
-ACTIVE_DOCUMENT_HTML_KINDS = frozenset({"executable-script", "meta-refresh"})
+ACTIVE_DOCUMENT_HTML_KINDS = frozenset({
+    "executable-script",
+    "meta-refresh",
+    "conditional-raw-text",
+    "executable-url",
+    "non-rendering-container",
+})
 
 
 CORPUS = Path(__file__).parent.parent / "docs" / "RESEARCH-REFERENCE-CORPUS.md"
@@ -2952,6 +2958,15 @@ def _assert_no_active_document_html(found: set[str]) -> None:
     """Reject actions that can replace the document without changing its text."""
     assert "executable-script" not in found, "executable script HTML is not allowed in governed documents"
     assert "meta-refresh" not in found, "meta-refresh HTML is not allowed in governed documents"
+    assert "conditional-raw-text" not in found, (
+        "conditional/legacy raw-text HTML is not allowed in governed documents"
+    )
+    assert "executable-url" not in found, (
+        "executable URL HTML is not allowed in governed documents"
+    )
+    assert "non-rendering-container" not in found, (
+        "non-rendering datalist HTML is not allowed in governed documents"
+    )
 
 
 def _normalise_complete_entry_integrity(section: str) -> str:
@@ -2995,6 +3010,14 @@ def _require_complete_entry_integrity(entry: str, section: str) -> None:
     assert "event-handler" not in forbidden_html, (
         f"{entry} contains an inline event-handler attribute; governed provenance anchors "
         "must not be able to cancel or rewrite navigation"
+    )
+    assert "executable-url" not in forbidden_html, (
+        f"{entry} contains an executable URL attribute; governed HTML must not "
+        "carry javascript:/vbscript: navigation"
+    )
+    assert "non-rendering-container" not in forbidden_html, (
+        f"{entry} contains a non-rendering datalist container; governed clauses "
+        "must remain ordinary reader-visible document prose"
     )
     assert "conditional-raw-text" not in forbidden_html, (
         f"{entry} contains conditional/legacy raw-text HTML (noscript/plaintext/xmp/etc.); "
@@ -4916,3 +4939,29 @@ def test_eaa_review_raw_html_literal_asterisk_and_popover_visibility():
     mutated_section = section.replace(rights, popover_hidden, 1)
     with pytest.raises(AssertionError):
         _validate_registry_corpus(corpus.replace(section, mutated_section, 1))
+@pytest.mark.parametrize(
+    ("replacement", "error"),
+    (
+        (
+            f"<noscript>{REDISTRIBUTION_INVARIANT}</noscript>",
+            "conditional/legacy raw-text",
+        ),
+        (
+            f'<a href="javascript:alert(1)">{REDISTRIBUTION_INVARIANT}</a>',
+            "executable URL",
+        ),
+        (
+            f"<datalist>{REDISTRIBUTION_INVARIANT}</datalist>",
+            "non-rendering datalist",
+        ),
+    ),
+)
+def test_registry_status_rejects_document_wide_active_or_nonrendering_html(
+    replacement: str,
+    error: str,
+) -> None:
+    corpus = CORPUS.read_text(encoding="utf-8")
+    assert REDISTRIBUTION_INVARIANT in corpus
+    mutation = corpus.replace(REDISTRIBUTION_INVARIANT, replacement, 1)
+    with pytest.raises(AssertionError, match=error):
+        _validate_registry_corpus(mutation)
