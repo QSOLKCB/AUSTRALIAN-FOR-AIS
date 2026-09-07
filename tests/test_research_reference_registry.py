@@ -28,6 +28,8 @@ ACTIVE_DOCUMENT_HTML_KINDS = frozenset({
     "meta-refresh",
     "conditional-raw-text",
     "executable-url",
+    "event-handler",
+    "document-root",
     "non-rendering-container",
 })
 
@@ -799,6 +801,8 @@ class _GovernedHTMLSemanticsDetector(HTMLParser):
             self.found.add("closed-details")
         if any(name.startswith("on") for name in names):
             self.found.add("event-handler")
+        if tag in {"html", "body"}:
+            self.found.add("document-root")
         if tag in GOVERNED_CONDITIONAL_RAW_TEXT_TAGS:
             self.found.add("conditional-raw-text")
 
@@ -2964,6 +2968,12 @@ def _assert_no_active_document_html(found: set[str]) -> None:
     assert "executable-url" not in found, (
         "executable URL HTML is not allowed in governed documents"
     )
+    assert "event-handler" not in found, (
+        "inline event-handler HTML is not allowed in governed documents"
+    )
+    assert "document-root" not in found, (
+        "document-root HTML is not allowed in governed documents"
+    )
     assert "non-rendering-container" not in found, (
         "non-rendering datalist HTML is not allowed in governed documents"
     )
@@ -4965,3 +4975,39 @@ def test_registry_status_rejects_document_wide_active_or_nonrendering_html(
     mutation = corpus.replace(REDISTRIBUTION_INVARIANT, replacement, 1)
     with pytest.raises(AssertionError, match=error):
         _validate_registry_corpus(mutation)
+
+def test_latest_registry_active_html_policy_is_corpus_wide():
+    handler = _forbidden_governed_html_constructs(
+        '<span onclick="document.body.textContent=\'weakened\'">canonical text</span>'
+    )
+    assert "event-handler" in handler
+    with pytest.raises(AssertionError, match="event-handler"):
+        _assert_no_active_document_html(handler)
+
+    for tag in ("html", "body"):
+        root_tag = _forbidden_governed_html_constructs(f"<{tag} hidden></{tag}>")
+        assert "document-root" in root_tag
+        with pytest.raises(AssertionError, match="document-root"):
+            _assert_no_active_document_html(root_tag)
+
+
+def test_registry_rejects_event_handler_outside_registered_entries():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    invariant = "RESEARCH REFERENCE != REDISTRIBUTABLE DATA"
+    mutated = corpus.replace(
+        invariant,
+        '<span onclick="document.body.textContent=\'weakened\'">'
+        + invariant
+        + "</span>",
+        1,
+    )
+    with pytest.raises(AssertionError, match="event-handler"):
+        _validate_registry_corpus(mutated)
+
+
+@pytest.mark.parametrize("tag", ("html", "body"))
+def test_registry_rejects_duplicate_document_root_tags_before_slicing(tag: str):
+    corpus = CORPUS.read_text(encoding="utf-8")
+    mutated = corpus + f"\n<{tag} hidden></{tag}>\n"
+    with pytest.raises(AssertionError, match="document-root"):
+        _validate_registry_corpus(mutated)

@@ -1016,6 +1016,13 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         # Parsed names cover duplicate, boolean, and multiline attributes.
         # The reducer cannot establish readability for arbitrary inline CSS.
         attribute_names = {key.lower() for key, _ in attrs}
+        if any(name.startswith("on") for name in attribute_names):
+            self.violations.add("event-handler")
+        # Raw Markdown is embedded into an existing HTML document. A live
+        # duplicate root tag can merge attributes onto that document root, so
+        # reject html/body rather than approximating tree-builder semantics.
+        if tag in {"html", "body"}:
+            self.violations.add("document-root")
         if {"shadowrootmode", "shadowroot"}.intersection(attribute_names):
             self.violations.add("shadow-root")
         # HTMLParser decodes attribute references once. Preserve the first
@@ -1116,6 +1123,8 @@ def _assert_supported_governed_html(violations: set[str]) -> None:
         "meta-refresh": "meta-refresh HTML",
         "executable-script": "executable script HTML",
         "executable-url": "executable URL HTML",
+        "event-handler": "inline event-handler HTML",
+        "document-root": "document-root HTML",
         "non-rendering-container": "non-rendering datalist HTML",
     }
     for kind, description in descriptions.items():
@@ -1591,3 +1600,39 @@ def test_governed_surface_preflight_rejects_executable_urls_and_datalist(
     assert kind in violations
     with pytest.raises(AssertionError):
         _assert_supported_governed_html(violations)
+
+def test_latest_active_html_policy_rejects_event_handlers_and_document_roots():
+    handler = _governed_surface_html_violations(
+        '<span onclick="document.body.textContent=\'weakened\'">canonical text</span>'
+    )
+    assert "event-handler" in handler
+    with pytest.raises(AssertionError, match="event-handler"):
+        _assert_supported_governed_html(handler)
+
+    for tag in ("html", "body"):
+        root_tag = _governed_surface_html_violations(f"<{tag} hidden></{tag}>")
+        assert "document-root" in root_tag
+        with pytest.raises(AssertionError, match="document-root"):
+            _assert_supported_governed_html(root_tag)
+
+
+def test_policing_workstream_rejects_event_handlers_before_section_slicing():
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    clause = "source-gated research proposal"
+    mutated = roadmap.replace(
+        clause,
+        '<span onclick="document.body.textContent=\'weakened\'">'
+        + clause
+        + "</span>",
+        1,
+    )
+    with pytest.raises(AssertionError):
+        _validate_policing_workstream(mutated)
+
+
+@pytest.mark.parametrize("tag", ("html", "body"))
+def test_policing_workstream_rejects_duplicate_document_root_tags(tag: str):
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    mutated = roadmap + f"\n<{tag} hidden></{tag}>\n"
+    with pytest.raises(AssertionError):
+        _validate_policing_workstream(mutated)
