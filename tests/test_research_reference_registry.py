@@ -42,6 +42,11 @@ ACTIVE_DOCUMENT_HTML_KINDS = frozenset({
     "non-rendering-container",
     "generated-quotation",
     "markdown-image",
+    "raw-svg",
+    "raw-mathml",
+    "nested-nobr",
+    "in-body-structure",
+    "non-commonmark-character-reference",
 })
 
 
@@ -3068,6 +3073,21 @@ def _assert_no_active_document_html(found: set[str]) -> None:
     )
     assert "markdown-image" not in found, (
         "Markdown images are not allowed in governed documents"
+    )
+    assert "raw-svg" not in found, (
+        "raw SVG is not allowed in governed documents"
+    )
+    assert "raw-mathml" not in found, (
+        "raw MathML is not allowed in governed documents"
+    )
+    assert "nested-nobr" not in found, (
+        "nested nobr HTML is not allowed in governed documents"
+    )
+    assert "in-body-structure" not in found, (
+        "discarded in-body structural HTML is not allowed in governed documents"
+    )
+    assert "non-commonmark-character-reference" not in found, (
+        "semicolonless HTML-only character references are not allowed in governed documents"
     )
 
 

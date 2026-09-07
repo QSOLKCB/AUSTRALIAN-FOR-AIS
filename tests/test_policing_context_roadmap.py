@@ -215,6 +215,22 @@ RAW_HTML_LITERAL_PUNCTUATION = {"*": "\uE110", "_": "\uE111"}
 COMMONMARK_CHARACTER_REFERENCE_PATTERN = re.compile(
     r"&(?:#[0-9]{1,7}|#[xX][0-9A-Fa-f]{1,6}|[A-Za-z][A-Za-z0-9]{1,31});"
 )
+
+
+def _contains_non_commonmark_character_reference(text: str) -> bool:
+    """Detect HTML-only semicolonless references before HTML reduction."""
+    for match in re.finditer(
+        r"&(?:#[xX][0-9A-Fa-f]{1,6}|#[0-9]{1,7}|[A-Za-z][A-Za-z0-9]{0,31})",
+        text,
+    ):
+        token = match.group(0)
+        if match.end() < len(text) and text[match.end()] == ";":
+            continue
+        if html.unescape(token) != token:
+            return True
+    return False
+
+
 ENTITY_LITERAL_ASTERISK = "\uE112"
 ENTITY_LITERAL_UNDERSCORE = "\uE113"
 
@@ -432,6 +448,8 @@ HTML_IMPLIED_SIBLING_END_TAGS = {
     "li": frozenset({"li"}),
     "dt": frozenset({"dt", "dd"}),
     "dd": frozenset({"dt", "dd"}),
+    "rt": frozenset({"rt", "rp"}),
+    "rp": frozenset({"rt", "rp"}),
 }
 
 
@@ -1248,6 +1266,7 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.violations: set[str] = set()
         self._anchor_open = False
+        self._nobr_open = False
 
     def handle_starttag(
         self, tag: str, attrs: list[tuple[str, str | None]]
@@ -1257,6 +1276,10 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             if self._anchor_open:
                 self.violations.add("nested-anchor")
             self._anchor_open = True
+        if tag == "nobr":
+            if self._nobr_open:
+                self.violations.add("nested-nobr")
+            self._nobr_open = True
         if tag == "canvas":
             self.violations.add("canvas")
         if tag == "img":
@@ -1304,6 +1327,8 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         # reject html/body rather than approximating tree-builder semantics.
         if tag in {"html", "body"}:
             self.violations.add("document-root")
+        if tag in {"head", "caption", "col", "colgroup", "tbody", "td", "tfoot", "th", "thead", "tr"}:
+            self.violations.add("in-body-structure")
         if {"shadowrootmode", "shadowroot"}.intersection(attribute_names):
             self.violations.add("shadow-root")
         # HTMLParser decodes attribute references once. Preserve the first
@@ -1333,8 +1358,11 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
                 self.violations.add("closed-details")
 
     def handle_endtag(self, tag: str) -> None:
-        if tag.lower() == "a":
+        tag = tag.lower()
+        if tag == "a":
             self._anchor_open = False
+        if tag == "nobr":
+            self._nobr_open = False
 
     def handle_startendtag(
         self, tag: str, attrs: list[tuple[str, str | None]]
@@ -1417,6 +1445,8 @@ def _governed_surface_html_violations(markdown: str) -> set[str]:
         for match in AUTOLINK_PATTERN.finditer(markdown_source)
     ):
         parser.violations.add("executable-url")
+    if _contains_non_commonmark_character_reference(markdown_source):
+        parser.violations.add("non-commonmark-character-reference")
     if _contains_live_markdown_image_syntax(markdown_source):
         parser.violations.add("markdown-image")
 
@@ -1449,6 +1479,9 @@ def _assert_supported_governed_html(violations: set[str]) -> None:
         "accessible-name": "accessible-name override HTML",
         "accessibility-hidden": "aria-hidden accessibility suppression HTML",
         "nested-anchor": "nested anchor HTML",
+        "nested-nobr": "nested nobr HTML",
+        "in-body-structure": "discarded in-body structural HTML",
+        "non-commonmark-character-reference": "semicolonless HTML-only character reference",
         "interactive-form": "interactive form control HTML",
         "non-rendering-container": "non-rendering container HTML",
         "generated-quotation": "generated quotation HTML",

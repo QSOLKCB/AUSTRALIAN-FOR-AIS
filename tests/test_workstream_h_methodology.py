@@ -385,6 +385,9 @@ def _normalised_workstream_h_visible_value(text: str) -> str:
 def _rendered_inline_citation_links(text: str) -> tuple[tuple[str, str], ...]:
     """Use the registry's structural view, not hidden Markdown source text."""
     registry = runpy.run_path(str(POLICING_TEST.with_name("test_research_reference_registry.py")))
+    assert not registry["_contains_markdown_structure_in_type6_raw_html"](text), (
+        "Workstream H citations must not depend on Markdown made literal by a CommonMark type-6 raw HTML block"
+    )
     structure = registry["_structural_registry_text"](text)
     structure = registry["_mask_hidden_html_regions"](structure)
     assert not registry["_contains_inert_html"](structure), (

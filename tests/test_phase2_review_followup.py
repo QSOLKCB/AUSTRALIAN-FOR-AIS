@@ -112,10 +112,20 @@ def test_browser_saved_annotations_are_bound_to_item_content():
 
 def _next_notes_peer_heading(structure: str, namespace: dict) -> int:
     """Find a visible ATX, Setext, or HTML peer heading without crossing code."""
+    html_heading_starts = [
+        match.start()
+        for match in re.finditer(
+            r"^[ \t]{0,3}<h[1-3](?=[ \t\r\n\f/>])(?:[^>\"']|\"[^\"]*\"|'[^']*')*>",
+            structure,
+            flags=re.IGNORECASE | re.MULTILINE | re.DOTALL,
+        )
+    ]
     offset = 0
     paragraph_start = None
     paragraph_container = None
     for raw_line in structure.splitlines(keepends=True):
+        if html_heading_starts and offset <= html_heading_starts[0] < offset + len(raw_line):
+            return html_heading_starts[0]
         if paragraph_start is not None:
             # Setext syntax takes precedence over interpreting a lone hyphen
             # as an empty list item. Retain the preceding paragraph's owning
