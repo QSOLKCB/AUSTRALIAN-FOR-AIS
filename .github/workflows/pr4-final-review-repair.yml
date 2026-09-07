@@ -1,0 +1,120 @@
+name: PR4 final review repair
+
+on:
+  push:
+    branches:
+      - research-corpus-governed-expansion
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research-corpus-governed-expansion
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Apply final review repairs
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one match, found {count}")
+              p.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          shared = "tests/test_policing_context_roadmap.py"
+          registry = "tests/test_research_reference_registry.py"
+
+          replace_once(
+              shared,
+              'RAW_HTML_LITERAL_PUNCTUATION = {"*": "\\uE110", "_": "\\uE111"}\n\n\nclass _VisibleHTMLTextParser',
+              '''RAW_HTML_LITERAL_PUNCTUATION = {"*": "\\uE110", "_": "\\uE111"}\nCOMMONMARK_CHARACTER_REFERENCE_PATTERN = re.compile(\n    r"&(?:#[0-9]{1,7}|#[xX][0-9A-Fa-f]{1,6}|[A-Za-z][A-Za-z0-9]{1,31});"\n)\nENTITY_LITERAL_ASTERISK = "\\uE112"\nENTITY_LITERAL_UNDERSCORE = "\\uE113"\n\n\ndef _protect_entity_decoded_emphasis_punctuation(text: str) -> str:\n    """Protect entity-derived punctuation from Markdown-delimiter stripping."""\n    assert ENTITY_LITERAL_ASTERISK not in text\n    assert ENTITY_LITERAL_UNDERSCORE not in text\n\n    def replace(match: re.Match[str]) -> str:\n        decoded = html.unescape(match.group(0))\n        if decoded == "*":\n            return ENTITY_LITERAL_ASTERISK\n        if decoded == "_":\n            return ENTITY_LITERAL_UNDERSCORE\n        return match.group(0)\n\n    return COMMONMARK_CHARACTER_REFERENCE_PATTERN.sub(replace, text)\n\n\ndef _restore_entity_decoded_emphasis_punctuation(text: str) -> str:\n    return text.replace(ENTITY_LITERAL_ASTERISK, "*").replace(\n        ENTITY_LITERAL_UNDERSCORE, "_"\n    )\n\n\nclass _VisibleHTMLTextParser''',
+          )
+
+          replace_once(
+              shared,
+              '''        if tag in {"del", "s", "strike"}:\n            self.violations.add("semantic-deletion")\n        # Parsed names cover duplicate, boolean, and multiline attributes.''',
+              '''        if tag in {"del", "s", "strike"}:\n            self.violations.add("semantic-deletion")\n        if tag == "q":\n            self.violations.add("generated-quotation")\n        # Parsed names cover duplicate, boolean, and multiline attributes.''',
+          )
+
+          replace_once(
+              shared,
+              '''def _replace_inline_markdown_links_for_visibility(text: str) -> str:\n    parts: list[str] = []''',
+              '''def _contains_live_markdown_image_syntax(text: str) -> bool:\n    """Detect unescaped image syntax in the rendered Markdown structure."""\n    cursor = 0\n    while cursor < len(text):\n        bracket = text.find("[", cursor)\n        if bracket < 0:\n            return False\n        if _is_escaped_markdown_character(text, bracket):\n            cursor = bracket + 1\n            continue\n        label_end = _balanced_markdown_label_end(text, bracket)\n        if label_end is None:\n            cursor = bracket + 1\n            continue\n        image = (\n            bracket > 0\n            and text[bracket - 1] == "!"\n            and not _is_escaped_markdown_character(text, bracket - 1)\n        )\n        if image:\n            # A balanced image label is enough to fail closed on governed\n            # surfaces. This covers inline plus full/collapsed/shortcut\n            # reference-image forms without pretending to render remote media.\n            return True\n        cursor = label_end + 1\n    return False\n\n\ndef _replace_inline_markdown_links_for_visibility(text: str) -> str:\n    parts: list[str] = []''',
+          )
+
+          replace_once(
+              shared,
+              '''    if any(\n        _has_executable_url_scheme(_decode_markdown_destination_for_scheme(destination))\n        for destination in _iter_inline_markdown_destinations(markdown_source)\n    ):\n        # Reuse the existing executable-url policy kind so the registry's\n        # corpus-wide active-document gate consumes this shared finding too.\n        parser.violations.add("executable-url")\n\n    parser.feed(live_markup)''',
+              '''    if any(\n        _has_executable_url_scheme(_decode_markdown_destination_for_scheme(destination))\n        for destination in _iter_inline_markdown_destinations(markdown_source)\n    ):\n        # Reuse the existing executable-url policy kind so the registry's\n        # corpus-wide active-document gate consumes this shared finding too.\n        parser.violations.add("executable-url")\n    if _contains_live_markdown_image_syntax(markdown_source):\n        parser.violations.add("markdown-image")\n\n    parser.feed(live_markup)''',
+          )
+
+          replace_once(
+              shared,
+              '''        "non-rendering-container": "non-rendering container HTML",\n    }''',
+              '''        "non-rendering-container": "non-rendering container HTML",\n        "generated-quotation": "generated quotation HTML",\n        "markdown-image": "Markdown image content",\n    }''',
+          )
+
+          replace_once(
+              shared,
+              '''    assert not any(marker in visible for marker in RAW_HTML_LITERAL_PUNCTUATION.values()), (\n        "reserved literal-punctuation marker in governed source"\n    )\n    visible = _visible_html_text(visible, protect_raw_punctuation=True)''',
+              '''    # CommonMark chooses emphasis delimiters before character references\n    # decode. Preserve entity-derived '*'/'_' as literal rendered punctuation\n    # through the later delimiter-normalisation pass.\n    visible = _protect_entity_decoded_emphasis_punctuation(visible)\n    assert not any(marker in visible for marker in RAW_HTML_LITERAL_PUNCTUATION.values()), (\n        "reserved literal-punctuation marker in governed source"\n    )\n    visible = _visible_html_text(visible, protect_raw_punctuation=True)''',
+          )
+
+          replace_once(
+              shared,
+              '''    for literal, marker in RAW_HTML_LITERAL_PUNCTUATION.items():\n        visible = visible.replace(marker, literal)\n    return " ".join(visible.split())''',
+              '''    for literal, marker in RAW_HTML_LITERAL_PUNCTUATION.items():\n        visible = visible.replace(marker, literal)\n    visible = _restore_entity_decoded_emphasis_punctuation(visible)\n    return " ".join(visible.split())''',
+          )
+
+          replace_once(
+              registry,
+              '''    "nested-anchor",\n    "non-rendering-container",\n})''',
+              '''    "nested-anchor",\n    "non-rendering-container",\n    "generated-quotation",\n    "markdown-image",\n})''',
+          )
+
+          replace_once(
+              registry,
+              '''    assert "non-rendering-container" not in found, (\n        "non-rendering datalist/rp container HTML is not allowed in governed documents"\n    )\n''',
+              '''    assert "non-rendering-container" not in found, (\n        "non-rendering datalist/rp container HTML is not allowed in governed documents"\n    )\n    assert "generated-quotation" not in found, (\n        "generated quotation HTML is not allowed in governed documents"\n    )\n    assert "markdown-image" not in found, (\n        "Markdown images are not allowed in governed documents"\n    )\n''',
+          )
+
+          Path("tests/test_pr4_final_review_regressions.py").write_text(r'''"""Regressions for the final rendered-governance review round on PR #4."""\n\nfrom pathlib import Path\nimport runpy\n\nimport pytest\n\n\nROOT = Path(__file__).parent.parent\nPOLICING = runpy.run_path(str(ROOT / "tests" / "test_policing_context_roadmap.py"))\nREGISTRY = runpy.run_path(str(ROOT / "tests" / "test_research_reference_registry.py"))\n\n\ndef _mutate_workstream(old: str, new: str) -> str:\n    roadmap = (ROOT / "ROADMAP.md").read_text(encoding="utf-8")\n    start = roadmap.index(POLICING["WORKSTREAM_HEADING"])\n    end = roadmap.index(POLICING["WORKSTREAM_END_HEADING"], start)\n    section = roadmap[start:end]\n    assert old in section\n    section = section.replace(old, new, 1)\n    return roadmap[:start] + section + roadmap[end:]\n\n\ndef test_entity_decoded_emphasis_punctuation_remains_literal() -> None:\n    mutated = _mutate_workstream("not legal advice", "not&#95; legal advice")\n    with pytest.raises(AssertionError):\n        POLICING["_validate_policing_workstream"](mutated)\n\n\ndef test_generated_q_markup_is_rejected_on_shared_and_registry_surfaces() -> None:\n    mutated_roadmap = _mutate_workstream(\n        "not legal advice", "<q>not legal advice</q>"\n    )\n    with pytest.raises(AssertionError):\n        POLICING["_validate_policing_workstream"](mutated_roadmap)\n\n    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")\n    invariant = "RESEARCH REFERENCE != REDISTRIBUTABLE DATA"\n    assert invariant in corpus\n    mutated_corpus = corpus.replace(invariant, f"<q>{invariant}</q>", 1)\n    with pytest.raises(AssertionError):\n        REGISTRY["_validate_registry_corpus"](mutated_corpus)\n\n\ndef test_markdown_images_are_rejected_before_registry_integrity_reduction() -> None:\n    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")\n    boundary = REGISTRY["SOURCE_USE_HEADING"]\n    index = corpus.index(boundary)\n    image = "![Current sources may be skipped](https://example.com/x.png)\\n\\n"\n    mutated = corpus[:index] + image + corpus[index:]\n    with pytest.raises(AssertionError):\n        REGISTRY["_validate_registry_corpus"](mutated)\n''', encoding="utf-8")
+          PY
+
+      - name: Verify focused regressions
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pytest -q tests/test_pr4_final_review_regressions.py
+          pytest -q tests/test_research_reference_registry.py tests/test_policing_context_roadmap.py tests/test_workstream_h_methodology.py tests/test_policing_contract_receipt.py tests/test_governance_review_regressions.py tests/test_pr4_*.py
+          git diff --check
+
+      - name: Verify full suite
+        run: |
+          pytest -q --disable-warnings --maxfail=1
+          python -m australian_for_ais.cli validate data/starter/examples.jsonl
+          python -m australian_for_ais.cli validate-pilot data/pilot/items.jsonl
+
+      - name: Commit repaired tree and self-delete runner
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/pr4-final-review-repair.yml
+          git add tests/test_policing_context_roadmap.py tests/test_research_reference_registry.py tests/test_pr4_final_review_regressions.py
+          git diff --cached --check
+          git commit -m "Harden final rendered governance semantics"
+          git push origin HEAD:research-corpus-governed-expansion
