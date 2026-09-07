@@ -211,7 +211,13 @@ jobs:
 
       - name: Run focused governance tests
         run: |
-          pytest -q tests/test_research_reference_registry.py tests/test_policing_context_roadmap.py tests/test_workstream_h_methodology.py tests/test_trans_tasman_methodology.py
+          pytest -q \
+            tests/test_research_reference_registry.py \
+            tests/test_policing_context_roadmap.py \
+            tests/test_workstream_h_methodology.py \
+            tests/test_pr4_active_html_regressions.py \
+            tests/test_pr4_global_rendering_regressions.py \
+            tests/test_pr4_shared_html_regressions.py
 
       - name: Run full verification
         run: |
