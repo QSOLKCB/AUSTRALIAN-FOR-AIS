@@ -49,8 +49,8 @@ jobs:
 
       - name: Remove temporary repair machinery
         run: |
-          git rm scripts/pr4_delimiter_autolink_repair.py
-          git rm .github/workflows/pr4-delimiter-autolink-repair.yml
+          git rm -f scripts/pr4_delimiter_autolink_repair.py
+          git rm -f .github/workflows/pr4-delimiter-autolink-repair.yml
 
       - name: Verify exact regressions
         run: pytest -q tests/test_pr4_delimiter_autolink_regressions.py
