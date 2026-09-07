@@ -235,6 +235,11 @@ class _VisibleHTMLTextParser(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
+        if tag in HTML_P_IMPLIED_END_START_TAGS:
+            for index in range(len(self.stack) - 1, -1, -1):
+                if self.stack[index][0] == "p":
+                    del self.stack[index:]
+                    break
         inherited = self.stack[-1][1] if self.stack else False
         svg_metadata_hidden = (
             tag in SVG_NON_RENDERING_METADATA_TAGS
@@ -285,6 +290,17 @@ HTML_VOID_TAGS = {
     "link", "meta", "param", "source", "track", "wbr",
 }
 
+# Opening these elements closes an in-scope HTML paragraph before the
+# new element inherits visibility. Keep the lightweight reducer aligned
+# with browser tree construction for governed-content visibility.
+HTML_P_IMPLIED_END_START_TAGS = frozenset({
+    "address", "article", "aside", "blockquote", "center", "details",
+    "dialog", "dir", "div", "dl", "fieldset", "figcaption", "figure",
+    "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6", "header",
+    "hgroup", "hr", "main", "menu", "nav", "ol", "p", "pre", "search",
+    "section", "table", "ul",
+})
+
 
 class _HiddenHTMLRegionParser(HTMLParser):
     """Locate browser-hidden HTML regions while preserving source offsets."""
@@ -311,6 +327,17 @@ class _HiddenHTMLRegionParser(HTMLParser):
         self, tag: str, attrs: list[tuple[str, str | None]]
     ) -> None:
         tag = tag.lower()
+        start = self._offset()
+        if tag in HTML_P_IMPLIED_END_START_TAGS:
+            for index in range(len(self.stack) - 1, -1, -1):
+                if self.stack[index][0] != "p":
+                    continue
+                popped = self.stack[index:]
+                del self.stack[index:]
+                for _, _, root_start in popped:
+                    if root_start is not None:
+                        self.spans.append((root_start, start))
+                break
         parent_hidden = self.stack[-1][1] if self.stack else False
         svg_metadata_hidden = (
             tag in SVG_NON_RENDERING_METADATA_TAGS
@@ -318,7 +345,6 @@ class _HiddenHTMLRegionParser(HTMLParser):
         )
         own_hidden = svg_metadata_hidden or _VisibleHTMLTextParser._is_hidden(tag, attrs)
         hidden = parent_hidden or own_hidden
-        start = self._offset()
 
         if tag in HTML_VOID_TAGS:
             if own_hidden and not parent_hidden:
@@ -996,6 +1022,8 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             self.violations.add("canvas")
         if tag == "img":
             self.violations.add("raw-image")
+        if tag in {"form", "input", "button", "select", "textarea", "option", "optgroup"}:
+            self.violations.add("interactive-form")
         if tag in {"iframe", "object", "embed", "audio", "video", "meter", "progress"}:
             self.violations.add("replacement-content")
         if tag == "table":
@@ -1026,7 +1054,7 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             self.violations.add("event-handler")
         if "title" in attribute_names:
             self.violations.add("tooltip-title")
-        if tag == "a" and {"aria-label", "aria-labelledby"}.intersection(attribute_names):
+        if {"aria-label", "aria-labelledby"}.intersection(attribute_names):
             self.violations.add("accessible-name")
         # Raw Markdown is embedded into an existing HTML document. A live
         # duplicate root tag can merge attributes onto that document root, so
@@ -1142,6 +1170,7 @@ def _assert_supported_governed_html(violations: set[str]) -> None:
         "tooltip-title": "tooltip title-attribute HTML",
         "presentational-font": "legacy presentational font HTML",
         "accessible-name": "accessible-name override HTML",
+        "interactive-form": "interactive form control HTML",
         "non-rendering-container": "non-rendering container HTML",
     }
     for kind, description in descriptions.items():
@@ -1162,9 +1191,6 @@ def _visible_text(markdown: str) -> str:
     )
     assert "closed-details" not in violations, (
         "default-closed <details> is not allowed on governed methodology surfaces"
-    )
-    assert INTERACTIVE_FORM_CONTROL_PATTERN.search(markdown) is None, (
-        "interactive form control HTML is not allowed on governed methodology surfaces"
     )
     visible = _mask_link_reference_definitions_for_visibility(markdown)
     visible = _replace_inline_markdown_links_for_visibility(visible)
@@ -1210,6 +1236,11 @@ def _rendered_policing_workstream(roadmap: str) -> str:
         structure = _rendered_structure(roadmap)
         start, _ = _visible_markdown_heading_span(structure, WORKSTREAM_HEADING)
     except AssertionError as exc:
+        # Preserve the established generic safeguard diagnostic for legacy
+        # rendering-policy failures while allowing the newly migrated form
+        # control preflight to retain its specific contract.
+        if "interactive form control HTML" in str(exc):
+            raise
         raise AssertionError("rendered policing workstream is missing; missing policing-workstream safeguard") from exc
     end, _ = _visible_markdown_heading_span(structure, WORKSTREAM_END_HEADING)
     assert start < end, "rendered policing workstream boundary is invalid"
