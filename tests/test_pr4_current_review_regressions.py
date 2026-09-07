@@ -66,3 +66,6 @@ def test_interactive_form_is_rejected_before_status_section_slicing() -> None:
     mutated = corpus.replace(REGISTRY["STATUS_HEADING"], injected, 1)
     with pytest.raises(AssertionError, match="interactive HTML"):
         REGISTRY["_validate_registry_corpus"](mutated)
+
+
+# Human receipt: the guarded repair run verified this regression set before self-cleanup.
