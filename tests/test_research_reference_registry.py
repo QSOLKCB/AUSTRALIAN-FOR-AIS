@@ -1602,6 +1602,21 @@ def _contains_markdown_structure_in_type6_raw_html(text: str) -> bool:
                 continue
             if re.match(r"#{2,3}(?:[ \t]+|$)", candidate):
                 return True
+            if re.search(
+                r"(?:\*\*|__)[^\r\n]*?:(?:\*\*|__)",
+                candidate,
+            ):
+                return True
+            if re.search(
+                r"(?<!!)\[[^]\r\n]+\](?:\([^\r\n)]*\)|\[[^]\r\n]*\])",
+                candidate,
+            ):
+                return True
+            if re.search(
+                r"<[A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\s]*>",
+                candidate,
+            ):
+                return True
             continue
         tag_match = re.match(
             r"</?(?P<tag>[A-Za-z][A-Za-z0-9-]*)(?=[ \t/>]|$)",

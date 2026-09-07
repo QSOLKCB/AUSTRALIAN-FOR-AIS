@@ -82,7 +82,9 @@ MARKDOWN_LINK_PATTERN = re.compile(
     r"(?:[ \t]+(?:\"[^\"\r\n]*\"|'[^'\r\n]*'|\([^)]*\)))?"
     r"[ \t]*\)"
 )
-AUTOLINK_PATTERN = re.compile(r"<(?P<url>https?://[^>\s]+)>")
+AUTOLINK_PATTERN = re.compile(
+    r"<(?P<url>[A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\x00-\x20]*)>"
+)
 LINK_REFERENCE_DEFINITION_PATTERN = re.compile(
     r"(?m)^ {0,3}\[(?P<label>[^\]\r\n]+)\]:[ \t]*"
     r"(?:\r?\n {1,3})?"
@@ -358,6 +360,12 @@ class _VisibleHTMLTextParser(HTMLParser):
                 if self.stack[index][0] in HTML_HEADING_TAGS:
                     del self.stack[index:]
                     break
+        implied_siblings = HTML_IMPLIED_SIBLING_END_TAGS.get(tag)
+        if implied_siblings:
+            for index in range(len(self.stack) - 1, -1, -1):
+                if self.stack[index][0] in implied_siblings:
+                    del self.stack[index:]
+                    break
         inherited = self.stack[-1][1] if self.stack else False
         svg_metadata_hidden = (
             tag in SVG_NON_RENDERING_METADATA_TAGS
@@ -420,6 +428,11 @@ HTML_P_IMPLIED_END_START_TAGS = frozenset({
 })
 
 HTML_HEADING_TAGS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
+HTML_IMPLIED_SIBLING_END_TAGS = {
+    "li": frozenset({"li"}),
+    "dt": frozenset({"dt", "dd"}),
+    "dd": frozenset({"dt", "dd"}),
+}
 
 
 class _HiddenHTMLRegionParser(HTMLParser):
@@ -461,6 +474,17 @@ class _HiddenHTMLRegionParser(HTMLParser):
         if tag in HTML_HEADING_TAGS:
             for index in range(len(self.stack) - 1, -1, -1):
                 if self.stack[index][0] not in HTML_HEADING_TAGS:
+                    continue
+                popped = self.stack[index:]
+                del self.stack[index:]
+                for _, _, root_start in popped:
+                    if root_start is not None:
+                        self.spans.append((root_start, start))
+                break
+        implied_siblings = HTML_IMPLIED_SIBLING_END_TAGS.get(tag)
+        if implied_siblings:
+            for index in range(len(self.stack) - 1, -1, -1):
+                if self.stack[index][0] not in implied_siblings:
                     continue
                 popped = self.stack[index:]
                 del self.stack[index:]
@@ -1385,6 +1409,13 @@ def _governed_surface_html_violations(markdown: str) -> set[str]:
     ):
         # Reuse the existing executable-url policy kind so the registry's
         # corpus-wide active-document gate consumes this shared finding too.
+        parser.violations.add("executable-url")
+    if any(
+        _has_executable_url_scheme(
+            _decode_markdown_destination_for_scheme(match.group("url"))
+        )
+        for match in AUTOLINK_PATTERN.finditer(markdown_source)
+    ):
         parser.violations.add("executable-url")
     if _contains_live_markdown_image_syntax(markdown_source):
         parser.violations.add("markdown-image")

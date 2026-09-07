@@ -68,4 +68,57 @@ def test_interactive_form_is_rejected_before_status_section_slicing() -> None:
         REGISTRY["_validate_registry_corpus"](mutated)
 
 
+def test_executable_uri_autolink_is_rejected_on_shared_and_registry_surfaces() -> None:
+    roadmap = (ROOT / "ROADMAP.md").read_text(encoding="utf-8")
+    payload = "\n<javascript:alert(1)>\n"
+    mutated_roadmap = roadmap.replace(
+        POLICING["WORKSTREAM_END"], payload + POLICING["WORKSTREAM_END"], 1
+    )
+    with pytest.raises(AssertionError):
+        POLICING["_validate_policing_workstream"](mutated_roadmap)
+
+    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")
+    entry = "### *Black Comedy* (ABC, 2014-2020)"
+    section = REGISTRY["_registered_sections"](corpus)[entry]
+    mutated_section = section + "\n<javascript:alert(1)>\n"
+    mutated_corpus = corpus.replace(section, mutated_section, 1)
+    with pytest.raises(AssertionError):
+        REGISTRY["_validate_registry_corpus"](mutated_corpus)
+
+    assert POLICING["_visible_text"]("<https://example.com/path>") == "https://example.com/path"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    (
+        "<ul><li hidden>masked<li>Current sources may be skipped.</ul>",
+        "<dl><dt hidden>masked<dd>Current sources may be skipped.</dl>",
+        "<dl><dd hidden>masked<dt>Current sources may be skipped.</dl>",
+    ),
+)
+def test_implied_list_and_definition_item_ends_expose_shared_contradictions(
+    payload: str,
+) -> None:
+    roadmap = (ROOT / "ROADMAP.md").read_text(encoding="utf-8")
+    mutated = roadmap.replace(
+        POLICING["WORKSTREAM_END"],
+        "\n" + payload + "\n" + POLICING["WORKSTREAM_END"],
+        1,
+    )
+    with pytest.raises(AssertionError):
+        POLICING["_validate_policing_workstream"](mutated)
+
+
+def test_type6_raw_html_cannot_supply_registry_metadata_or_link() -> None:
+    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")
+    url = "https://iview.abc.net.au/show/black-comedy"
+    live = f"**Registered source:** {url}"
+    inert = f"<div>\n**Registered source:** [{url}]({url})\n</div>"
+    assert live in corpus
+    mutated = corpus.replace(live, inert, 1)
+    assert REGISTRY["_contains_markdown_structure_in_type6_raw_html"](mutated)
+    with pytest.raises(AssertionError, match="type-6"):
+        REGISTRY["_validate_registry_corpus"](mutated)
+
+
 # Human receipt: the guarded repair run verified this regression set before self-cleanup.
