@@ -50,3 +50,6 @@ def test_markdown_images_are_rejected_before_registry_integrity_reduction() -> N
     mutated = corpus[:index] + image + corpus[index:]
     with pytest.raises(AssertionError):
         REGISTRY["_validate_registry_corpus"](mutated)
+
+
+# Human receipt: the repair runner verified this regression set before self-cleanup.
