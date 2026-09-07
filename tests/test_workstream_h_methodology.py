@@ -606,10 +606,10 @@ def test_workstream_h_companion_identity_contradiction_changes_section_seal():
         _assert_workstream_h_integrity(mutated)
 
 
-def test_aria_hidden_remains_visually_visible_to_workstream_h_reducer():
+def test_aria_hidden_is_rejected_on_workstream_h_governed_surface():
     clause = "nationality and first-language identity must not define the comparison cohorts"
-    rendered = _visible_markdown_text(f'<span aria-hidden="true">{clause}</span>')
-    assert clause in rendered
+    with pytest.raises(AssertionError, match="aria-hidden accessibility suppression HTML"):
+        _visible_markdown_text(f'<span aria-hidden="true">{clause}</span>')
 
 
 def test_workstream_h_citation_destinations_are_pinned():

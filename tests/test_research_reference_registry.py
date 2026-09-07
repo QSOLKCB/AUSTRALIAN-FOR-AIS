@@ -36,6 +36,8 @@ ACTIVE_DOCUMENT_HTML_KINDS = frozenset({
     "tooltip-title",
     "presentational-font",
     "accessible-name",
+    "accessibility-hidden",
+    "nested-anchor",
     "non-rendering-container",
 })
 
@@ -2996,7 +2998,13 @@ def _assert_no_active_document_html(found: set[str]) -> None:
         "legacy presentational font HTML is not allowed in governed documents"
     )
     assert "accessible-name" not in found, (
-        "accessible-name overrides on governed anchors are not allowed in governed documents"
+        "accessible-name overrides are not allowed in governed documents"
+    )
+    assert "accessibility-hidden" not in found, (
+        "aria-hidden accessibility suppression is not allowed in governed documents"
+    )
+    assert "nested-anchor" not in found, (
+        "nested anchor HTML is not allowed in governed documents"
     )
     assert "non-rendering-container" not in found, (
         "non-rendering datalist/rp container HTML is not allowed in governed documents"

@@ -1013,11 +1013,16 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.violations: set[str] = set()
+        self._anchor_open = False
 
     def handle_starttag(
         self, tag: str, attrs: list[tuple[str, str | None]]
     ) -> None:
         tag = tag.lower()
+        if tag == "a":
+            if self._anchor_open:
+                self.violations.add("nested-anchor")
+            self._anchor_open = True
         if tag == "canvas":
             self.violations.add("canvas")
         if tag == "img":
@@ -1056,6 +1061,8 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             self.violations.add("tooltip-title")
         if {"aria-label", "aria-labelledby"}.intersection(attribute_names):
             self.violations.add("accessible-name")
+        if "aria-hidden" in attribute_names:
+            self.violations.add("accessibility-hidden")
         # Raw Markdown is embedded into an existing HTML document. A live
         # duplicate root tag can merge attributes onto that document root, so
         # reject html/body rather than approximating tree-builder semantics.
@@ -1088,6 +1095,10 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
                 self.violations.add("named-details")
             if "open" not in attribute_names:
                 self.violations.add("closed-details")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() == "a":
+            self._anchor_open = False
 
     def handle_startendtag(
         self, tag: str, attrs: list[tuple[str, str | None]]
@@ -1170,6 +1181,8 @@ def _assert_supported_governed_html(violations: set[str]) -> None:
         "tooltip-title": "tooltip title-attribute HTML",
         "presentational-font": "legacy presentational font HTML",
         "accessible-name": "accessible-name override HTML",
+        "accessibility-hidden": "aria-hidden accessibility suppression HTML",
+        "nested-anchor": "nested anchor HTML",
         "interactive-form": "interactive form control HTML",
         "non-rendering-container": "non-rendering container HTML",
     }
