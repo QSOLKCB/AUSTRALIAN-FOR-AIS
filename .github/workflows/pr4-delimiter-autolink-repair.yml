@@ -36,19 +36,12 @@ jobs:
 
           path = Path('scripts/pr4_delimiter_autolink_repair.py')
           text = path.read_text(encoding='utf-8')
-          old = '''    email_corpus = corpus.replace(
-              "The article is registered as scholarship",
-              f"The article is registered as scholarship {email}",
-              1,
-          )
-          registry["_validate_registry_corpus"](email_corpus)
-          '''
-          new = '''    assert registry["_visible_inline_text"](email) == "", (
+          start = text.index('    email_corpus = corpus.replace(\n')
+          end = text.index('\n\n\nCOMMON_DELIMITER_FUNCTION', start)
+          replacement = '''    assert registry["_visible_inline_text"](email) == "", (
               "expected the pre-fix registry reducer to drop CommonMark email autolinks"
-          )
-          '''
-          assert old in text, 'expected email-corpus reproduction block not found'
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          )'''
+          path.write_text(text[:start] + replacement + text[end:], encoding='utf-8')
           PY
 
       - name: Reproduce and apply guarded repair
