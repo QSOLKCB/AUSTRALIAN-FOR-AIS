@@ -26,6 +26,16 @@ def test_registry_unmatched_delimiter_remains_visible_and_breaks_receipt():
         REGISTRY["_validate_registry_corpus"](mutated)
 
 
+def test_registry_surplus_delimiter_characters_remain_visible():
+    phrase = "The article is registered as scholarship"
+    assert REGISTRY["_visible_inline_text"]("***" + phrase + "**") == "*" + phrase
+    assert REGISTRY["_visible_inline_text"]("**" + phrase + "***") == phrase + "*"
+    corpus = (ROOT / "docs/RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")
+    mutated = corpus.replace(phrase, "***" + phrase + "**", 1)
+    with pytest.raises(AssertionError):
+        REGISTRY["_validate_registry_corpus"](mutated)
+
+
 def test_commonmark_email_autolinks_are_visible_governed_content():
     email_markup = "<current.sources.may.be.skipped@example.com>"
     visible_email = "current.sources.may.be.skipped@example.com"
@@ -56,6 +66,7 @@ def test_registered_source_email_autolink_is_not_https_provenance():
         REGISTRY["_usable_https_source_bindings"](
             "**Registered source:** <source@example.com>"
         )
+
 
 def test_registry_raw_html_literal_asterisk_stays_literal():
     assert REGISTRY["_visible_inline_text"]("The art<span>*</span>icle") == "The art*icle"
