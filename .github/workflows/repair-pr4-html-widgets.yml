@@ -1,0 +1,194 @@
+name: Repair PR4 HTML widgets
+
+on:
+  push:
+    branches: ["research-corpus-governed-expansion"]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research-corpus-governed-expansion
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Patch governed HTML policy
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one match, found {count}: {old!r}")
+              file.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          policing = "tests/test_policing_context_roadmap.py"
+          registry = "tests/test_research_reference_registry.py"
+
+          replace_once(
+              policing,
+              '        if tag in {"iframe", "object", "embed", "audio", "video"}:\n            self.violations.add("replacement-content")\n        # SVG needs its own rendering tree, not HTML character-data callbacks.\n',
+              '        if tag in {"iframe", "object", "embed", "audio", "video", "meter", "progress"}:\n            self.violations.add("replacement-content")\n        if tag == "table":\n            self.violations.add("raw-table")\n        # SVG needs its own rendering tree, not HTML character-data callbacks.\n',
+          )
+          replace_once(
+              policing,
+              '        if any(name.startswith("on") for name in attribute_names):\n            self.violations.add("event-handler")\n',
+              '        if any(name.startswith("on") for name in attribute_names):\n            self.violations.add("event-handler")\n        if "title" in attribute_names:\n            self.violations.add("tooltip-title")\n',
+          )
+          replace_once(
+              policing,
+              '        if tag == "datalist":\n            self.violations.add("non-rendering-container")\n',
+              '        if tag in {"datalist", "rp"}:\n            self.violations.add("non-rendering-container")\n',
+          )
+          replace_once(
+              policing,
+              '        if tag == "details":\n            if "open" not in attribute_names:\n                self.violations.add("closed-details")\n',
+              '        if tag == "details":\n            if "name" in attribute_names:\n                self.violations.add("named-details")\n            if "open" not in attribute_names:\n                self.violations.add("closed-details")\n',
+          )
+          replace_once(
+              policing,
+              '        "event-handler": "inline event-handler HTML",\n        "document-root": "document-root HTML",\n        "non-rendering-container": "non-rendering datalist HTML",\n',
+              '        "event-handler": "inline event-handler HTML",\n        "document-root": "document-root HTML",\n        "raw-table": "raw table HTML",\n        "named-details": "named details-group HTML",\n        "tooltip-title": "tooltip title-attribute HTML",\n        "non-rendering-container": "non-rendering container HTML",\n',
+          )
+
+          replace_once(
+              registry,
+              '    "document-root",\n    "non-rendering-container",\n})\n',
+              '    "document-root",\n    "replacement-content",\n    "raw-table",\n    "named-details",\n    "tooltip-title",\n    "non-rendering-container",\n})\n',
+          )
+          replace_once(
+              registry,
+              '    assert "document-root" not in found, (\n        "document-root HTML is not allowed in governed documents"\n    )\n    assert "non-rendering-container" not in found, (\n        "non-rendering datalist HTML is not allowed in governed documents"\n    )\n',
+              '    assert "document-root" not in found, (\n        "document-root HTML is not allowed in governed documents"\n    )\n    assert "replacement-content" not in found, (\n        "replacement-content HTML is not allowed in governed documents"\n    )\n    assert "raw-table" not in found, (\n        "raw table HTML is not allowed in governed documents"\n    )\n    assert "named-details" not in found, (\n        "named details-group HTML is not allowed in governed documents"\n    )\n    assert "tooltip-title" not in found, (\n        "tooltip title-attribute HTML is not allowed in governed documents"\n    )\n    assert "non-rendering-container" not in found, (\n        "non-rendering container HTML is not allowed in governed documents"\n    )\n',
+          )
+          PY
+
+          cat > tests/test_pr4_latest_widget_regressions.py <<'PY'
+          """Exact regressions for the latest PR #4 raw-HTML rendering findings."""
+
+          from pathlib import Path
+          import runpy
+
+          import pytest
+
+
+          ROOT = Path(__file__).parent.parent
+          POLICING = runpy.run_path(str(ROOT / "tests/test_policing_context_roadmap.py"))
+          REGISTRY = runpy.run_path(str(ROOT / "tests/test_research_reference_registry.py"))
+
+          ROADMAP_TEXT = (ROOT / "ROADMAP.md").read_text(encoding="utf-8")
+          CORPUS_TEXT = (ROOT / "docs/RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")
+          POLICING_CLAUSE = "source-gated research proposal"
+          REGISTRY_CLAUSE = REGISTRY["REDISTRIBUTION_INVARIANT"]
+
+          CASES = (
+              ("meter", "<meter>{clause}</meter>", "replacement-content"),
+              ("progress", "<progress>{clause}</progress>", "replacement-content"),
+              (
+                  "table",
+                  "<table>{clause}<tr><td>dialogue</td></tr> or audiovisual</table>",
+                  "raw-table",
+              ),
+              (
+                  "named-details",
+                  '<details name="gate" open></details><details name="gate" open>{clause}</details>',
+                  "named-details",
+              ),
+              ("ruby-rp", "<ruby><rp>{clause}</rp></ruby>", "non-rendering-container"),
+              (
+                  "title-tooltip",
+                  '<span title="This material may be copied freely.">{clause}</span>',
+                  "tooltip-title",
+              ),
+          )
+
+
+          @pytest.mark.parametrize(("name", "template", "kind"), CASES)
+          def test_shared_preflight_rejects_latest_rendering_semantics(
+              name: str, template: str, kind: str
+          ) -> None:
+              del name
+              markup = template.format(clause="governed clause")
+              violations = POLICING["_governed_surface_html_violations"](markup)
+              assert kind in violations
+              with pytest.raises(AssertionError):
+                  POLICING["_assert_supported_governed_html"](violations)
+
+
+          @pytest.mark.parametrize(("name", "template", "kind"), CASES)
+          def test_policing_validator_rejects_latest_rendering_semantics(
+              name: str, template: str, kind: str
+          ) -> None:
+              del name, kind
+              assert ROADMAP_TEXT.count(POLICING_CLAUSE) >= 1
+              mutation = ROADMAP_TEXT.replace(
+                  POLICING_CLAUSE,
+                  template.format(clause=POLICING_CLAUSE),
+                  1,
+              )
+              with pytest.raises(AssertionError):
+                  POLICING["_validate_policing_workstream"](mutation)
+
+
+          @pytest.mark.parametrize(("name", "template", "kind"), CASES)
+          def test_registry_validator_rejects_latest_rendering_semantics(
+              name: str, template: str, kind: str
+          ) -> None:
+              del name, kind
+              assert CORPUS_TEXT.count(REGISTRY_CLAUSE) >= 1
+              mutation = CORPUS_TEXT.replace(
+                  REGISTRY_CLAUSE,
+                  template.format(clause=REGISTRY_CLAUSE),
+                  1,
+              )
+              with pytest.raises(AssertionError):
+                  REGISTRY["_validate_registry_corpus"](mutation)
+          PY
+
+      - name: Focused governance tests
+        run: |
+          pytest -q \
+            tests/test_pr4_latest_widget_regressions.py \
+            tests/test_policing_context_roadmap.py \
+            tests/test_research_reference_registry.py \
+            tests/test_workstream_h_methodology.py \
+            tests/test_policing_contract_receipt.py
+
+      - name: Validate datasets
+        run: |
+          python -m australian_for_ais.cli validate data/starter/examples.jsonl
+          python -m australian_for_ais.cli validate-pilot data/pilot/items.jsonl
+
+      - name: Full test suite
+        run: pytest -q --disable-warnings --maxfail=1
+
+      - name: Commit verified repair and self-clean
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/repair-pr4-html-widgets.yml
+          git add tests/test_policing_context_roadmap.py \
+                  tests/test_research_reference_registry.py \
+                  tests/test_pr4_latest_widget_regressions.py
+          git diff --cached --check
+          git commit -m "Reject latest ambiguous governed HTML semantics"
+          git push origin HEAD:research-corpus-governed-expansion
