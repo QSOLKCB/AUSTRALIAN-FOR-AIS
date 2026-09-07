@@ -210,6 +210,33 @@ def _css_hides_element(style: str) -> bool:
 
 
 RAW_HTML_LITERAL_PUNCTUATION = {"*": "\uE110", "_": "\uE111"}
+COMMONMARK_CHARACTER_REFERENCE_PATTERN = re.compile(
+    r"&(?:#[0-9]{1,7}|#[xX][0-9A-Fa-f]{1,6}|[A-Za-z][A-Za-z0-9]{1,31});"
+)
+ENTITY_LITERAL_ASTERISK = "\uE112"
+ENTITY_LITERAL_UNDERSCORE = "\uE113"
+
+
+def _protect_entity_decoded_emphasis_punctuation(text: str) -> str:
+    """Protect entity-derived punctuation from Markdown-delimiter stripping."""
+    assert ENTITY_LITERAL_ASTERISK not in text
+    assert ENTITY_LITERAL_UNDERSCORE not in text
+
+    def replace(match: re.Match[str]) -> str:
+        decoded = html.unescape(match.group(0))
+        if decoded == "*":
+            return ENTITY_LITERAL_ASTERISK
+        if decoded == "_":
+            return ENTITY_LITERAL_UNDERSCORE
+        return match.group(0)
+
+    return COMMONMARK_CHARACTER_REFERENCE_PATTERN.sub(replace, text)
+
+
+def _restore_entity_decoded_emphasis_punctuation(text: str) -> str:
+    return text.replace(ENTITY_LITERAL_ASTERISK, "*").replace(
+        ENTITY_LITERAL_UNDERSCORE, "_"
+    )
 
 
 class _VisibleHTMLTextParser(HTMLParser):
@@ -1001,6 +1028,31 @@ def _iter_inline_markdown_destinations(text: str):
         cursor = paren_end + 1
 
 
+def _contains_live_markdown_image_syntax(text: str) -> bool:
+    """Detect unescaped image syntax in the rendered Markdown structure."""
+    cursor = 0
+    while cursor < len(text):
+        bracket = text.find("[", cursor)
+        if bracket < 0:
+            return False
+        if _is_escaped_markdown_character(text, bracket):
+            cursor = bracket + 1
+            continue
+        label_end = _balanced_markdown_label_end(text, bracket)
+        if label_end is None:
+            cursor = bracket + 1
+            continue
+        image = (
+            bracket > 0
+            and text[bracket - 1] == "!"
+            and not _is_escaped_markdown_character(text, bracket - 1)
+        )
+        if image:
+            return True
+        cursor = label_end + 1
+    return False
+
+
 def _replace_inline_markdown_links_for_visibility(text: str) -> str:
     parts: list[str] = []
     cursor = 0
@@ -1107,6 +1159,8 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             self.violations.add("conditional-raw-text")
         if tag in {"del", "s", "strike"}:
             self.violations.add("semantic-deletion")
+        if tag == "q":
+            self.violations.add("generated-quotation")
         # Parsed names cover duplicate, boolean, and multiline attributes.
         # The reducer cannot establish readability for arbitrary inline CSS.
         attribute_names = {key.lower() for key, _ in attrs}
@@ -1229,6 +1283,8 @@ def _governed_surface_html_violations(markdown: str) -> set[str]:
         # Reuse the existing executable-url policy kind so the registry's
         # corpus-wide active-document gate consumes this shared finding too.
         parser.violations.add("executable-url")
+    if _contains_live_markdown_image_syntax(markdown_source):
+        parser.violations.add("markdown-image")
 
     parser.feed(live_markup)
     parser.close()
@@ -1261,6 +1317,8 @@ def _assert_supported_governed_html(violations: set[str]) -> None:
         "nested-anchor": "nested anchor HTML",
         "interactive-form": "interactive form control HTML",
         "non-rendering-container": "non-rendering container HTML",
+        "generated-quotation": "generated quotation HTML",
+        "markdown-image": "Markdown image content",
     }
     for kind, description in descriptions.items():
         assert kind not in violations, (
@@ -1287,6 +1345,7 @@ def _visible_text(markdown: str) -> str:
     # HTMLParser(convert_charrefs=True) already performs the browser's one
     # character-reference decoding pass. A second html.unescape() would turn
     # literal entity-looking text into content the browser never displays.
+    visible = _protect_entity_decoded_emphasis_punctuation(visible)
     assert not any(marker in visible for marker in RAW_HTML_LITERAL_PUNCTUATION.values()), (
         "reserved literal-punctuation marker in governed source"
     )
@@ -1295,6 +1354,7 @@ def _visible_text(markdown: str) -> str:
     visible = visible.replace("*", "").replace("_", "")
     for literal, marker in RAW_HTML_LITERAL_PUNCTUATION.items():
         visible = visible.replace(marker, literal)
+    visible = _restore_entity_decoded_emphasis_punctuation(visible)
     return " ".join(visible.split())
 
 def _visible_markdown_heading_span(structure: str, heading: str) -> tuple[int, int]:

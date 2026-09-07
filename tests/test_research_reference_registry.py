@@ -39,6 +39,8 @@ ACTIVE_DOCUMENT_HTML_KINDS = frozenset({
     "accessibility-hidden",
     "nested-anchor",
     "non-rendering-container",
+    "generated-quotation",
+    "markdown-image",
 })
 
 
@@ -3008,6 +3010,12 @@ def _assert_no_active_document_html(found: set[str]) -> None:
     )
     assert "non-rendering-container" not in found, (
         "non-rendering datalist/rp container HTML is not allowed in governed documents"
+    )
+    assert "generated-quotation" not in found, (
+        "generated quotation HTML is not allowed in governed documents"
+    )
+    assert "markdown-image" not in found, (
+        "Markdown images are not allowed in governed documents"
     )
 
 
