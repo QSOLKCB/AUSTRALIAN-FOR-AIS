@@ -21,6 +21,13 @@ FREE_TEXT_IAA_BOUNDARY = (
     "Free-text pragmatic interpretations remain qualitative evidence and are not "
     "assigned a misleading exact-string IAA score."
 )
+EXPECTED_VISIBLE_PHASE2_NOTES = (
+    "### Notes - The Phase 2 pilot is an unannotated research fixture. "
+    "No human annotation results, ethical approvals, or empirical agreement statistics "
+    "are claimed until real pilot collection occurs. - "
+    "Free-text pragmatic interpretations remain qualitative evidence and are not "
+    "assigned a misleading exact-string IAA score. ---"
+)
 
 
 def _pilot_item(item_id: str) -> dict:
@@ -178,7 +185,19 @@ def _visible_phase2_notes(changelog: str) -> str:
 
 def test_phase2_changelog_keeps_free_text_iaa_boundary():
     changelog = CHANGELOG.read_text(encoding="utf-8")
-    assert FREE_TEXT_IAA_BOUNDARY in _visible_phase2_notes(changelog)
+    assert _visible_phase2_notes(changelog) == EXPECTED_VISIBLE_PHASE2_NOTES
+
+
+def test_phase2_changelog_rejects_contradictory_iaa_continuation():
+    changelog = CHANGELOG.read_text(encoding="utf-8")
+    bullet = f"- {FREE_TEXT_IAA_BOUNDARY}\n"
+    contradictory = changelog.replace(
+        bullet,
+        f"- {FREE_TEXT_IAA_BOUNDARY} However, these interpretations are assigned "
+        "an exact-string IAA score after all.\n",
+        1,
+    )
+    assert _visible_phase2_notes(contradictory) != EXPECTED_VISIBLE_PHASE2_NOTES
 
 
 def test_phase2_changelog_iaa_boundary_is_visible_and_section_scoped():

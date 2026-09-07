@@ -1000,6 +1000,10 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             self.violations.add("replacement-content")
         if tag == "table":
             self.violations.add("raw-table")
+        # Legacy font presentation can make sealed prose unreadable without
+        # changing its character data. Do not approximate that rendering.
+        if tag in {"font", "basefont"}:
+            self.violations.add("presentational-font")
         # SVG needs its own rendering tree, not HTML character-data callbacks.
         if tag == "svg":
             self.violations.add("raw-svg")
@@ -1022,6 +1026,8 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             self.violations.add("event-handler")
         if "title" in attribute_names:
             self.violations.add("tooltip-title")
+        if tag == "a" and {"aria-label", "aria-labelledby"}.intersection(attribute_names):
+            self.violations.add("accessible-name")
         # Raw Markdown is embedded into an existing HTML document. A live
         # duplicate root tag can merge attributes onto that document root, so
         # reject html/body rather than approximating tree-builder semantics.
@@ -1134,6 +1140,8 @@ def _assert_supported_governed_html(violations: set[str]) -> None:
         "raw-table": "raw table HTML",
         "named-details": "named details-group HTML",
         "tooltip-title": "tooltip title-attribute HTML",
+        "presentational-font": "legacy presentational font HTML",
+        "accessible-name": "accessible-name override HTML",
         "non-rendering-container": "non-rendering container HTML",
     }
     for kind, description in descriptions.items():

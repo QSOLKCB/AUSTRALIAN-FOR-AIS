@@ -34,6 +34,8 @@ ACTIVE_DOCUMENT_HTML_KINDS = frozenset({
     "raw-table",
     "named-details",
     "tooltip-title",
+    "presentational-font",
+    "accessible-name",
     "non-rendering-container",
 })
 
@@ -2989,6 +2991,12 @@ def _assert_no_active_document_html(found: set[str]) -> None:
     )
     assert "tooltip-title" not in found, (
         "tooltip title-attribute HTML is not allowed in governed documents"
+    )
+    assert "presentational-font" not in found, (
+        "legacy presentational font HTML is not allowed in governed documents"
+    )
+    assert "accessible-name" not in found, (
+        "accessible-name overrides on governed anchors are not allowed in governed documents"
     )
     assert "non-rendering-container" not in found, (
         "non-rendering datalist/rp container HTML is not allowed in governed documents"
