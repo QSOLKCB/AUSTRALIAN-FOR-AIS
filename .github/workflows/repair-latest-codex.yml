@@ -1,0 +1,245 @@
+name: Repair latest Codex findings
+
+on:
+  push:
+    branches:
+      - research-corpus-governed-expansion
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research-corpus-governed-expansion
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Apply fail-closed HTML policy repairs
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one match, found {count}")
+              return text.replace(old, new, 1)
+
+          shared_path = Path("tests/test_policing_context_roadmap.py")
+          shared = shared_path.read_text(encoding="utf-8")
+
+          shared = replace_once(
+              shared,
+              '''GOVERNED_CONDITIONAL_RAW_TEXT_TAGS = frozenset({
+              "noscript", "plaintext", "xmp", "listing", "noframes", "noembed",
+          })
+
+
+          class _GovernedSurfaceHTMLParser(HTMLParser):''',
+              '''GOVERNED_CONDITIONAL_RAW_TEXT_TAGS = frozenset({
+              "noscript", "plaintext", "xmp", "listing", "noframes", "noembed",
+          })
+          GOVERNED_EXECUTABLE_URL_ATTRIBUTES = frozenset({
+              "href", "src", "action", "formaction", "xlink:href",
+          })
+          GOVERNED_EXECUTABLE_URL_SCHEMES = frozenset({"javascript", "vbscript"})
+
+
+          def _has_executable_url_scheme(value: str) -> bool:
+              """Detect script-capable URL schemes after browser-style whitespace folding."""
+              if ":" not in value:
+                  return False
+              raw_scheme = value.split(":", 1)[0]
+              # HTMLParser has already decoded character references. Browsers ignore
+              # ASCII whitespace/control characters while tokenising URL schemes, so
+              # fold them before comparing rather than accepting java&#x0A;script:.
+              scheme = re.sub(r"[\\x00-\\x20\\x7f]+", "", raw_scheme).casefold()
+              return scheme in GOVERNED_EXECUTABLE_URL_SCHEMES
+
+
+          class _GovernedSurfaceHTMLParser(HTMLParser):''',
+              "insert shared executable URL policy",
+          )
+
+          shared = replace_once(
+              shared,
+              '''        if tag == "meta" and values.get("http-equiv", "").strip().lower() == "refresh":
+              self.violations.add("meta-refresh")
+          if "style" in attribute_names:
+              self.violations.add("inline-style")''',
+              '''        if tag == "meta" and values.get("http-equiv", "").strip().lower() == "refresh":
+              self.violations.add("meta-refresh")
+          if any(
+              name in values and _has_executable_url_scheme(values[name])
+              for name in GOVERNED_EXECUTABLE_URL_ATTRIBUTES
+          ):
+              self.violations.add("executable-url")
+          if tag == "datalist":
+              self.violations.add("non-rendering-container")
+          if "style" in attribute_names:
+              self.violations.add("inline-style")''',
+              "detect executable URLs and datalist",
+          )
+
+          shared = replace_once(
+              shared,
+              '''        "meta-refresh": "meta-refresh HTML",
+              "executable-script": "executable script HTML",
+          }''',
+              '''        "meta-refresh": "meta-refresh HTML",
+              "executable-script": "executable script HTML",
+              "executable-url": "executable URL HTML",
+              "non-rendering-container": "non-rendering datalist HTML",
+          }''',
+              "reject new shared violation kinds",
+          )
+
+          shared_tests = r'''
+
+          @pytest.mark.parametrize(
+              ("markup", "kind"),
+              (
+                  ('<a href="javascript:document.body.textContent=\'weakened\'">governed clause</a>', "executable-url"),
+                  ('<a href="java&#x0A;script:alert(1)">governed clause</a>', "executable-url"),
+                  ('<form action="vbscript:msgbox(1)">governed clause</form>', "executable-url"),
+                  ('<datalist><option>governed clause</option></datalist>', "non-rendering-container"),
+              ),
+          )
+          def test_governed_surface_preflight_rejects_executable_urls_and_datalist(
+              markup: str,
+              kind: str,
+          ) -> None:
+              violations = _governed_surface_html_violations(markup)
+              assert kind in violations
+              with pytest.raises(AssertionError):
+                  _assert_supported_governed_html(violations)
+          '''
+          marker = "def test_governed_surface_preflight_rejects_executable_urls_and_datalist("
+          if marker not in shared:
+              shared = shared.rstrip() + "\n" + shared_tests.lstrip("\n")
+          shared_path.write_text(shared, encoding="utf-8")
+
+          registry_path = Path("tests/test_research_reference_registry.py")
+          registry = registry_path.read_text(encoding="utf-8")
+
+          registry = replace_once(
+              registry,
+              'ACTIVE_DOCUMENT_HTML_KINDS = frozenset({"executable-script", "meta-refresh"})',
+              '''ACTIVE_DOCUMENT_HTML_KINDS = frozenset({
+              "executable-script",
+              "meta-refresh",
+              "conditional-raw-text",
+              "executable-url",
+              "non-rendering-container",
+          })''',
+              "expand document-wide active HTML kinds",
+          )
+
+          registry = replace_once(
+              registry,
+              '''def _assert_no_active_document_html(found: set[str]) -> None:
+              """Reject actions that can replace the document without changing its text."""
+              assert "executable-script" not in found, "executable script HTML is not allowed in governed documents"
+              assert "meta-refresh" not in found, "meta-refresh HTML is not allowed in governed documents"''',
+              '''def _assert_no_active_document_html(found: set[str]) -> None:
+              """Reject browser-active or non-rendering HTML before section slicing."""
+              assert "executable-script" not in found, "executable script HTML is not allowed in governed documents"
+              assert "meta-refresh" not in found, "meta-refresh HTML is not allowed in governed documents"
+              assert "conditional-raw-text" not in found, (
+                  "conditional/legacy raw-text HTML is not allowed in governed documents"
+              )
+              assert "executable-url" not in found, (
+                  "executable URL HTML is not allowed in governed documents"
+              )
+              assert "non-rendering-container" not in found, (
+                  "non-rendering datalist HTML is not allowed in governed documents"
+              )''',
+              "strengthen registry document-wide active HTML guard",
+          )
+
+          registry = replace_once(
+              registry,
+              '''    assert "conditional-raw-text" not in forbidden_html, (
+          ''',
+              '''    assert "executable-url" not in forbidden_html, (
+              f"{entry} contains an executable URL attribute; governed HTML must not "
+              "carry javascript:/vbscript: navigation"
+          )
+              assert "non-rendering-container" not in forbidden_html, (
+              f"{entry} contains a non-rendering datalist container; governed clauses "
+              "must remain ordinary reader-visible document prose"
+          )
+              assert "conditional-raw-text" not in forbidden_html, (
+          ''',
+              "strengthen per-entry active HTML guard",
+          )
+
+          registry_tests = r'''
+
+          @pytest.mark.parametrize(
+              ("replacement", "error"),
+              (
+                  (
+                      f"<noscript>{REDISTRIBUTION_INVARIANT}</noscript>",
+                      "conditional/legacy raw-text",
+                  ),
+                  (
+                      f'<a href="javascript:document.body.textContent=\'weakened guidance\'">{REDISTRIBUTION_INVARIANT}</a>',
+                      "executable URL",
+                  ),
+                  (
+                      f"<datalist>{REDISTRIBUTION_INVARIANT}</datalist>",
+                      "non-rendering datalist",
+                  ),
+              ),
+          )
+          def test_registry_status_rejects_document_wide_active_or_nonrendering_html(
+              replacement: str,
+              error: str,
+          ) -> None:
+              corpus = CORPUS.read_text(encoding="utf-8")
+              assert REDISTRIBUTION_INVARIANT in corpus
+              mutation = corpus.replace(REDISTRIBUTION_INVARIANT, replacement, 1)
+              with pytest.raises(AssertionError, match=error):
+                  _validate_registry_corpus(mutation)
+          '''
+          marker = "def test_registry_status_rejects_document_wide_active_or_nonrendering_html("
+          if marker not in registry:
+              registry = registry.rstrip() + "\n" + registry_tests.lstrip("\n")
+          registry_path.write_text(registry, encoding="utf-8")
+          PY
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run focused governance tests
+        run: |
+          pytest -q tests/test_research_reference_registry.py tests/test_policing_context_roadmap.py tests/test_workstream_h_methodology.py tests/test_trans_tasman_methodology.py
+
+      - name: Run full verification
+        run: |
+          python -m australian_for_ais.cli validate data/starter/examples.jsonl
+          python -m australian_for_ais.cli validate-pilot data/pilot/items.jsonl
+          pytest -q --disable-warnings --maxfail=1
+          git diff --check
+
+      - name: Commit verified repair and self-delete
+        run: |
+          rm .github/workflows/repair-latest-codex.yml
+          git config user.name "EmergentMonk"
+          git config user.email "73952179+EmergentMonk@users.noreply.github.com"
+          git add tests/test_policing_context_roadmap.py tests/test_research_reference_registry.py .github/workflows/repair-latest-codex.yml
+          git commit -m "Close latest governed HTML integrity bypasses" -m "Reject executable URL schemes, corpus-wide conditional raw text, and non-rendering datalist containers before governed integrity hashing. Add focused regressions and preserve the existing research documents and integrity fixtures. Temporary repair workflow self-deleted after focused and full verification."
+          git push origin HEAD:research-corpus-governed-expansion
