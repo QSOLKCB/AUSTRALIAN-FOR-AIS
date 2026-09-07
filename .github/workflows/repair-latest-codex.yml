@@ -35,81 +35,67 @@ jobs:
                   raise SystemExit(f"{label}: expected one match, found {count}")
               return text.replace(old, new, 1)
 
+          def insert_before_once(text: str, marker: str, addition: str, label: str) -> str:
+              return replace_once(text, marker, addition + marker, label)
+
+          def insert_after_once(text: str, marker: str, addition: str, label: str) -> str:
+              return replace_once(text, marker, marker + addition, label)
+
           shared_path = Path("tests/test_policing_context_roadmap.py")
           shared = shared_path.read_text(encoding="utf-8")
 
-          shared = replace_once(
-              shared,
-              '''GOVERNED_CONDITIONAL_RAW_TEXT_TAGS = frozenset({
-              "noscript", "plaintext", "xmp", "listing", "noframes", "noembed",
-          })
-
-
-          class _GovernedSurfaceHTMLParser(HTMLParser):''',
-              '''GOVERNED_CONDITIONAL_RAW_TEXT_TAGS = frozenset({
-              "noscript", "plaintext", "xmp", "listing", "noframes", "noembed",
-          })
-          GOVERNED_EXECUTABLE_URL_ATTRIBUTES = frozenset({
-              "href", "src", "action", "formaction", "xlink:href",
-          })
-          GOVERNED_EXECUTABLE_URL_SCHEMES = frozenset({"javascript", "vbscript"})
-
-
-          def _has_executable_url_scheme(value: str) -> bool:
-              """Detect script-capable URL schemes after browser-style whitespace folding."""
-              if ":" not in value:
-                  return False
-              raw_scheme = value.split(":", 1)[0]
-              # HTMLParser has already decoded character references. Browsers ignore
-              # ASCII whitespace/control characters while tokenising URL schemes, so
-              # fold them before comparing rather than accepting java&#x0A;script:.
-              scheme = re.sub(r"[\\x00-\\x20\\x7f]+", "", raw_scheme).casefold()
-              return scheme in GOVERNED_EXECUTABLE_URL_SCHEMES
-
-
-          class _GovernedSurfaceHTMLParser(HTMLParser):''',
-              "insert shared executable URL policy",
+          class_marker = "class _GovernedSurfaceHTMLParser(HTMLParser):"
+          constants = (
+              'GOVERNED_EXECUTABLE_URL_ATTRIBUTES = frozenset({\n'
+              '    "href", "src", "action", "formaction", "xlink:href",\n'
+              '})\n'
+              'GOVERNED_EXECUTABLE_URL_SCHEMES = frozenset({"javascript", "vbscript"})\n\n\n'
+              'def _has_executable_url_scheme(value: str) -> bool:\n'
+              '    """Detect script-capable URL schemes after browser-style whitespace folding."""\n'
+              '    if ":" not in value:\n'
+              '        return False\n'
+              '    raw_scheme = value.split(":", 1)[0]\n'
+              '    # HTMLParser has already decoded character references. Fail closed\n'
+              '    # on ASCII whitespace/control characters embedded in a URL scheme.\n'
+              '    scheme = re.sub(r"[\\x00-\\x20\\x7f]+", "", raw_scheme).casefold()\n'
+              '    return scheme in GOVERNED_EXECUTABLE_URL_SCHEMES\n\n\n'
           )
+          if "GOVERNED_EXECUTABLE_URL_ATTRIBUTES" not in shared:
+              shared = insert_before_once(
+                  shared, class_marker, constants, "insert shared executable URL policy"
+              )
 
-          shared = replace_once(
-              shared,
-              '''        if tag == "meta" and values.get("http-equiv", "").strip().lower() == "refresh":
-              self.violations.add("meta-refresh")
-          if "style" in attribute_names:
-              self.violations.add("inline-style")''',
-              '''        if tag == "meta" and values.get("http-equiv", "").strip().lower() == "refresh":
-              self.violations.add("meta-refresh")
-          if any(
-              name in values and _has_executable_url_scheme(values[name])
-              for name in GOVERNED_EXECUTABLE_URL_ATTRIBUTES
-          ):
-              self.violations.add("executable-url")
-          if tag == "datalist":
-              self.violations.add("non-rendering-container")
-          if "style" in attribute_names:
-              self.violations.add("inline-style")''',
-              "detect executable URLs and datalist",
+          style_marker = '        if "style" in attribute_names:\n'
+          detections = (
+              '        if any(\n'
+              '            name in values and _has_executable_url_scheme(values[name])\n'
+              '            for name in GOVERNED_EXECUTABLE_URL_ATTRIBUTES\n'
+              '        ):\n'
+              '            self.violations.add("executable-url")\n'
+              '        if tag == "datalist":\n'
+              '            self.violations.add("non-rendering-container")\n'
           )
+          if 'self.violations.add("executable-url")' not in shared:
+              shared = insert_before_once(
+                  shared, style_marker, detections, "detect executable URLs and datalist"
+              )
 
-          shared = replace_once(
-              shared,
-              '''        "meta-refresh": "meta-refresh HTML",
-              "executable-script": "executable script HTML",
-          }''',
-              '''        "meta-refresh": "meta-refresh HTML",
-              "executable-script": "executable script HTML",
-              "executable-url": "executable URL HTML",
-              "non-rendering-container": "non-rendering datalist HTML",
-          }''',
-              "reject new shared violation kinds",
+          description_marker = '        "executable-script": "executable script HTML",\n'
+          descriptions = (
+              '        "executable-url": "executable URL HTML",\n'
+              '        "non-rendering-container": "non-rendering datalist HTML",\n'
           )
+          if '"executable-url": "executable URL HTML"' not in shared:
+              shared = insert_after_once(
+                  shared, description_marker, descriptions, "reject new shared violation kinds"
+              )
 
           shared_tests = r'''
 
           @pytest.mark.parametrize(
               ("markup", "kind"),
               (
-                  ('<a href="javascript:document.body.textContent=\'weakened\'">governed clause</a>', "executable-url"),
+                  ('<a href="javascript:alert(1)">governed clause</a>', "executable-url"),
                   ('<a href="java&#x0A;script:alert(1)">governed clause</a>', "executable-url"),
                   ('<form action="vbscript:msgbox(1)">governed clause</form>', "executable-url"),
                   ('<datalist><option>governed clause</option></datalist>', "non-rendering-container"),
@@ -124,65 +110,64 @@ jobs:
               with pytest.raises(AssertionError):
                   _assert_supported_governed_html(violations)
           '''
-          marker = "def test_governed_surface_preflight_rejects_executable_urls_and_datalist("
-          if marker not in shared:
+          shared_test_marker = "def test_governed_surface_preflight_rejects_executable_urls_and_datalist("
+          if shared_test_marker not in shared:
               shared = shared.rstrip() + "\n" + shared_tests.lstrip("\n")
           shared_path.write_text(shared, encoding="utf-8")
 
           registry_path = Path("tests/test_research_reference_registry.py")
           registry = registry_path.read_text(encoding="utf-8")
 
-          registry = replace_once(
-              registry,
-              'ACTIVE_DOCUMENT_HTML_KINDS = frozenset({"executable-script", "meta-refresh"})',
-              '''ACTIVE_DOCUMENT_HTML_KINDS = frozenset({
-              "executable-script",
-              "meta-refresh",
-              "conditional-raw-text",
-              "executable-url",
-              "non-rendering-container",
-          })''',
-              "expand document-wide active HTML kinds",
+          old_active = 'ACTIVE_DOCUMENT_HTML_KINDS = frozenset({"executable-script", "meta-refresh"})'
+          new_active = (
+              'ACTIVE_DOCUMENT_HTML_KINDS = frozenset({\n'
+              '    "executable-script",\n'
+              '    "meta-refresh",\n'
+              '    "conditional-raw-text",\n'
+              '    "executable-url",\n'
+              '    "non-rendering-container",\n'
+              '})'
           )
-
-          registry = replace_once(
-              registry,
-              '''def _assert_no_active_document_html(found: set[str]) -> None:
-              """Reject actions that can replace the document without changing its text."""
-              assert "executable-script" not in found, "executable script HTML is not allowed in governed documents"
-              assert "meta-refresh" not in found, "meta-refresh HTML is not allowed in governed documents"''',
-              '''def _assert_no_active_document_html(found: set[str]) -> None:
-              """Reject browser-active or non-rendering HTML before section slicing."""
-              assert "executable-script" not in found, "executable script HTML is not allowed in governed documents"
-              assert "meta-refresh" not in found, "meta-refresh HTML is not allowed in governed documents"
-              assert "conditional-raw-text" not in found, (
-                  "conditional/legacy raw-text HTML is not allowed in governed documents"
+          if old_active in registry:
+              registry = replace_once(
+                  registry, old_active, new_active, "expand document-wide active HTML kinds"
               )
-              assert "executable-url" not in found, (
-                  "executable URL HTML is not allowed in governed documents"
-              )
-              assert "non-rendering-container" not in found, (
-                  "non-rendering datalist HTML is not allowed in governed documents"
-              )''',
-              "strengthen registry document-wide active HTML guard",
-          )
 
-          registry = replace_once(
-              registry,
-              '''    assert "conditional-raw-text" not in forbidden_html, (
-          ''',
-              '''    assert "executable-url" not in forbidden_html, (
-              f"{entry} contains an executable URL attribute; governed HTML must not "
-              "carry javascript:/vbscript: navigation"
+          meta_assert = (
+              '    assert "meta-refresh" not in found, '
+              '"meta-refresh HTML is not allowed in governed documents"\n'
           )
-              assert "non-rendering-container" not in forbidden_html, (
-              f"{entry} contains a non-rendering datalist container; governed clauses "
-              "must remain ordinary reader-visible document prose"
+          global_guards = (
+              '    assert "conditional-raw-text" not in found, (\n'
+              '        "conditional/legacy raw-text HTML is not allowed in governed documents"\n'
+              '    )\n'
+              '    assert "executable-url" not in found, (\n'
+              '        "executable URL HTML is not allowed in governed documents"\n'
+              '    )\n'
+              '    assert "non-rendering-container" not in found, (\n'
+              '        "non-rendering datalist HTML is not allowed in governed documents"\n'
+              '    )\n'
           )
-              assert "conditional-raw-text" not in forbidden_html, (
-          ''',
-              "strengthen per-entry active HTML guard",
+          if '"executable-url" not in found' not in registry:
+              registry = insert_after_once(
+                  registry, meta_assert, global_guards, "strengthen document-wide HTML guard"
+              )
+
+          conditional_marker = '    assert "conditional-raw-text" not in forbidden_html, (\n'
+          entry_guards = (
+              '    assert "executable-url" not in forbidden_html, (\n'
+              '        f"{entry} contains an executable URL attribute; governed HTML must not "\n'
+              '        "carry javascript:/vbscript: navigation"\n'
+              '    )\n'
+              '    assert "non-rendering-container" not in forbidden_html, (\n'
+              '        f"{entry} contains a non-rendering datalist container; governed clauses "\n'
+              '        "must remain ordinary reader-visible document prose"\n'
+              '    )\n'
           )
+          if '"executable-url" not in forbidden_html' not in registry:
+              registry = insert_before_once(
+                  registry, conditional_marker, entry_guards, "strengthen per-entry HTML guard"
+              )
 
           registry_tests = r'''
 
@@ -194,7 +179,7 @@ jobs:
                       "conditional/legacy raw-text",
                   ),
                   (
-                      f'<a href="javascript:document.body.textContent=\'weakened guidance\'">{REDISTRIBUTION_INVARIANT}</a>',
+                      f'<a href="javascript:alert(1)">{REDISTRIBUTION_INVARIANT}</a>',
                       "executable URL",
                   ),
                   (
@@ -213,8 +198,8 @@ jobs:
               with pytest.raises(AssertionError, match=error):
                   _validate_registry_corpus(mutation)
           '''
-          marker = "def test_registry_status_rejects_document_wide_active_or_nonrendering_html("
-          if marker not in registry:
+          registry_test_marker = "def test_registry_status_rejects_document_wide_active_or_nonrendering_html("
+          if registry_test_marker not in registry:
               registry = registry.rstrip() + "\n" + registry_tests.lstrip("\n")
           registry_path.write_text(registry, encoding="utf-8")
           PY
@@ -241,5 +226,5 @@ jobs:
           git config user.name "EmergentMonk"
           git config user.email "73952179+EmergentMonk@users.noreply.github.com"
           git add tests/test_policing_context_roadmap.py tests/test_research_reference_registry.py .github/workflows/repair-latest-codex.yml
-          git commit -m "Close latest governed HTML integrity bypasses" -m "Reject executable URL schemes, corpus-wide conditional raw text, and non-rendering datalist containers before governed integrity hashing. Add focused regressions and preserve the existing research documents and integrity fixtures. Temporary repair workflow self-deleted after focused and full verification."
+          git commit -m "Close latest governed HTML integrity bypasses" -m "Reject executable URL schemes, corpus-wide conditional raw text, and non-rendering datalist containers before governed integrity hashing. Add regressions and preserve the existing research documents and integrity fixtures. Temporary repair workflow self-deleted after focused and full verification."
           git push origin HEAD:research-corpus-governed-expansion
