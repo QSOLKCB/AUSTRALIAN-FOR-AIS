@@ -1,0 +1,36 @@
+name: Correct PR4 guarded repair diagnostic
+
+on:
+  push:
+    branches: ["research-corpus-governed-expansion"]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research-corpus-governed-expansion
+          fetch-depth: 0
+      - name: Preserve existing diagnostic contract
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/repair-pr4-accessibility-implied-html.yml')
+          text = path.read_text(encoding='utf-8')
+          old = '"interactive-form": "interactive form-control HTML",'
+          new = '"interactive-form": "interactive form control HTML",'
+          if old not in text:
+              raise SystemExit('diagnostic anchor not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          git rm .github/workflows/repair-pr4-fix-diagnostic.yml
+          git add .github/workflows/repair-pr4-accessibility-implied-html.yml
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Preserve interactive form diagnostic wording"
+          git push origin HEAD:research-corpus-governed-expansion
