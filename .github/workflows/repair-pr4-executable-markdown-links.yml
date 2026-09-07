@@ -19,7 +19,7 @@ jobs:
       - name: Verify guarded parent
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = "5af321ea5851a8c33f11aa331cb8d5c29339026e"
+          test "$(git rev-parse HEAD^)" = "5e3d379c9c3a07fdaaf3a7f35edb0a7c1f8d9550"
 
       - name: Set up Python
         uses: actions/setup-python@v5
