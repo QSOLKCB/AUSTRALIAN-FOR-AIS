@@ -72,7 +72,7 @@ jobs:
           rep(
               phase2,
               'FREE_TEXT_IAA_BOUNDARY = (\n    "Free-text pragmatic interpretations remain qualitative evidence and are not "\n    "assigned a misleading exact-string IAA score."\n)\n',
-              'FREE_TEXT_IAA_BOUNDARY = (\n    "Free-text pragmatic interpretations remain qualitative evidence and are not "\n    "assigned a misleading exact-string IAA score."\n)\nEXPECTED_VISIBLE_PHASE2_NOTES = (\n    "### Notes - The Phase 2 pilot is an unannotated research fixture. "\n    "No human annotation results, ethical approvals, or empirical agreement statistics "\n    "are claimed until real pilot collection occurs. - "\n    "Free-text pragmatic interpretations remain qualitative evidence and are not "\n    "assigned a misleading exact-string IAA score."\n)\n',
+              'FREE_TEXT_IAA_BOUNDARY = (\n    "Free-text pragmatic interpretations remain qualitative evidence and are not "\n    "assigned a misleading exact-string IAA score."\n)\nEXPECTED_VISIBLE_PHASE2_NOTES = (\n    "### Notes - The Phase 2 pilot is an unannotated research fixture. "\n    "No human annotation results, ethical approvals, or empirical agreement statistics "\n    "are claimed until real pilot collection occurs. - "\n    "Free-text pragmatic interpretations remain qualitative evidence and are not "\n    "assigned a misleading exact-string IAA score. ---"\n)\n',
           )
           rep(
               phase2,
