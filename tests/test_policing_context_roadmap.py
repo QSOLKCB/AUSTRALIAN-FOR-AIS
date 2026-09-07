@@ -946,6 +946,61 @@ def _inline_link_destination(inner: str) -> str | None:
     return destination
 
 
+def _decode_markdown_destination_for_scheme(destination: str) -> str:
+    """Decode only CommonMark character references and punctuation escapes."""
+    reference = re.compile(
+        r"&(?:#[0-9]{1,7}|#[xX][0-9A-Fa-f]{1,6}|[A-Za-z][A-Za-z0-9]{1,31});"
+    )
+    value = reference.sub(lambda match: html.unescape(match.group(0)), destination)
+    decoded: list[str] = []
+    cursor = 0
+    while cursor < len(value):
+        if (
+            value[cursor] == "\\"
+            and cursor + 1 < len(value)
+            and value[cursor + 1] in string.punctuation
+        ):
+            decoded.append(value[cursor + 1])
+            cursor += 2
+            continue
+        decoded.append(value[cursor])
+        cursor += 1
+    return "".join(decoded)
+
+
+def _iter_inline_markdown_destinations(text: str):
+    """Yield rendered inline-link destinations while ignoring image destinations."""
+    cursor = 0
+    while cursor < len(text):
+        bracket = text.find("[", cursor)
+        if bracket < 0:
+            return
+        if _is_escaped_markdown_character(text, bracket):
+            cursor = bracket + 1
+            continue
+        label_end = _balanced_markdown_label_end(text, bracket)
+        if label_end is None or label_end + 1 >= len(text) or text[label_end + 1] != "(":
+            cursor = bracket + 1
+            continue
+        paren_start = label_end + 1
+        paren_end = _inline_link_closing_paren(text, paren_start)
+        if paren_end is None:
+            cursor = bracket + 1
+            continue
+        destination = _inline_link_destination(text[paren_start + 1:paren_end])
+        if destination is None:
+            cursor = bracket + 1
+            continue
+        image = (
+            bracket > 0
+            and text[bracket - 1] == "!"
+            and not _is_escaped_markdown_character(text, bracket - 1)
+        )
+        if not image:
+            yield destination
+        cursor = paren_end + 1
+
+
 def _replace_inline_markdown_links_for_visibility(text: str) -> str:
     parts: list[str] = []
     cursor = 0
@@ -1154,7 +1209,28 @@ def _governed_surface_html_violations(markdown: str) -> set[str]:
         end = run_end + closer.end()
         characters[cursor:end] = " " * (end - cursor)
         cursor = end
-    parser.feed("".join(characters))
+    live_markup = "".join(characters)
+
+    # Markdown links become anchors only after Markdown rendering, so the raw-HTML
+    # parser cannot enforce executable-scheme policy on them. Inspect the rendered
+    # Markdown structure before link labels are reduced to visible text. Raw HTML
+    # blocks/tags remain excluded so attribute text is not mistaken for Markdown.
+    markdown_characters = list(live_markup)
+    for start, end in html_spans:
+        markdown_characters[start:end] = " " * (end - start)
+    markdown_without_blocks = "".join(markdown_characters)
+    for match in reversed(list(PREFLIGHT_HTML_TAG.finditer(markdown_without_blocks))):
+        markdown_characters[match.start():match.end()] = " " * (match.end() - match.start())
+    markdown_source = "".join(markdown_characters)
+    if any(
+        _has_executable_url_scheme(_decode_markdown_destination_for_scheme(destination))
+        for destination in _iter_inline_markdown_destinations(markdown_source)
+    ):
+        # Reuse the existing executable-url policy kind so the registry's
+        # corpus-wide active-document gate consumes this shared finding too.
+        parser.violations.add("executable-url")
+
+    parser.feed(live_markup)
     parser.close()
     return parser.violations
 
