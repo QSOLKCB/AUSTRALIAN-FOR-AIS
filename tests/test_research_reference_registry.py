@@ -574,6 +574,11 @@ BARE_HTTPS_LINE_PATTERN = re.compile(
     r"(?P<url>https?://\S+)[ \t]*$"
 )
 AUTOLINK_PATTERN = re.compile(r"<(?P<url>https?://[^>\s]+)>")
+EMAIL_AUTOLINK_PATTERN = re.compile(
+    r"<(?P<email>[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
+    r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+"
+    r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)>"
+)
 LINK_REFERENCE_DEFINITION_PATTERN = re.compile(
     r"(?m)^ {0,3}\[(?P<label>[^\]\r\n]+)\]:[ \t]*"
     r"(?:\r?\n {1,3})?"
@@ -1901,6 +1906,127 @@ def _render_inline_code_spans(text: str) -> str:
 
 
 
+UNMATCHED_MARKDOWN_ASTERISK = "\uE101"
+UNMATCHED_MARKDOWN_UNDERSCORE = "\uE102"
+
+
+def _protect_unmatched_markdown_emphasis_delimiters(text: str) -> str:
+    """Protect literal emphasis characters, including surplus characters in matched runs."""
+    assert UNMATCHED_MARKDOWN_ASTERISK not in text
+    assert UNMATCHED_MARKDOWN_UNDERSCORE not in text
+
+    runs: list[dict[str, object]] = []
+    position = 0
+    while position < len(text):
+        marker = text[position]
+        if marker not in {"*", "_"}:
+            position += 1
+            continue
+        end = position + 1
+        while end < len(text) and text[end] == marker:
+            end += 1
+        previous = text[position - 1] if position else None
+        following = text[end] if end < len(text) else None
+        previous_whitespace = previous is None or previous.isspace()
+        following_whitespace = following is None or following.isspace()
+        previous_punctuation = previous is not None and previous in string.punctuation
+        following_punctuation = following is not None and following in string.punctuation
+        left_flanking = (
+            not following_whitespace
+            and (not following_punctuation or previous_whitespace or previous_punctuation)
+        )
+        right_flanking = (
+            not previous_whitespace
+            and (not previous_punctuation or following_whitespace or following_punctuation)
+        )
+        if marker == "_":
+            can_open = left_flanking and (not right_flanking or previous_punctuation)
+            can_close = right_flanking and (not left_flanking or following_punctuation)
+        else:
+            can_open = left_flanking
+            can_close = right_flanking
+        runs.append({
+            "start": position,
+            "end": end,
+            "marker": marker,
+            "can_open": can_open,
+            "can_close": can_close,
+            "open_consumed": 0,
+            "close_consumed": 0,
+        })
+        position = end
+
+    openers: dict[str, list[int]] = {"*": [], "_": []}
+    for index, run in enumerate(runs):
+        marker = str(run["marker"])
+        if bool(run["can_close"]):
+            while openers[marker]:
+                opener_index = openers[marker][-1]
+                opener = runs[opener_index]
+                opener_length = int(opener["end"]) - int(opener["start"])
+                closer_length = int(run["end"]) - int(run["start"])
+                opener_remaining = (
+                    opener_length
+                    - int(opener["open_consumed"])
+                    - int(opener["close_consumed"])
+                )
+                closer_remaining = (
+                    closer_length
+                    - int(run["open_consumed"])
+                    - int(run["close_consumed"])
+                )
+                if opener_remaining <= 0:
+                    openers[marker].pop()
+                    continue
+                if closer_remaining <= 0:
+                    break
+                consumed = min(opener_remaining, closer_remaining)
+                opener["open_consumed"] = int(opener["open_consumed"]) + consumed
+                run["close_consumed"] = int(run["close_consumed"]) + consumed
+                if consumed == opener_remaining:
+                    openers[marker].pop()
+                if consumed == closer_remaining:
+                    break
+        run_length = int(run["end"]) - int(run["start"])
+        remaining = (
+            run_length
+            - int(run["open_consumed"])
+            - int(run["close_consumed"])
+        )
+        if bool(run["can_open"]) and remaining > 0:
+            openers[marker].append(index)
+
+    if not runs:
+        return text
+    characters = list(text)
+    for run in runs:
+        start = int(run["start"]) + int(run["close_consumed"])
+        end = int(run["end"]) - int(run["open_consumed"])
+        if start >= end:
+            continue
+        if not (
+            bool(run["can_open"])
+            or bool(run["can_close"])
+            or int(run["open_consumed"])
+            or int(run["close_consumed"])
+        ):
+            continue
+        sentinel = (
+            UNMATCHED_MARKDOWN_ASTERISK
+            if run["marker"] == "*"
+            else UNMATCHED_MARKDOWN_UNDERSCORE
+        )
+        for character_index in range(start, end):
+            characters[character_index] = sentinel
+    return "".join(characters)
+
+
+def _restore_unmatched_markdown_emphasis_delimiters(text: str) -> str:
+    return text.replace(UNMATCHED_MARKDOWN_ASTERISK, "*").replace(
+        UNMATCHED_MARKDOWN_UNDERSCORE, "_"
+    )
+
+
 OBFUSCATED_INTRAW_WORD_PATTERN = re.compile(
     r"(?<![A-Za-z0-9])(?:[A-Za-z]_){2,}[A-Za-z]_?(?![A-Za-z0-9])"
 )
@@ -1959,6 +2085,7 @@ def _visible_inline_text(text: str) -> str:
     visible = _render_inline_code_spans(visible)
     visible = _replace_inline_markdown_links_with_labels(visible)
     visible = AUTOLINK_PATTERN.sub(lambda match: match.group("url"), visible)
+    visible = EMAIL_AUTOLINK_PATTERN.sub(lambda match: match.group("email"), visible)
     # CommonMark decides emphasis delimiters before character references become
     # literal rendered punctuation. Protect entity-derived '*'/'_' so they are
     # not later mistaken for source Markdown delimiters.
@@ -1969,8 +2096,10 @@ def _visible_inline_text(text: str) -> str:
         visible,
         protect_raw_html_literal_asterisks=True,
     )
+    visible = _protect_unmatched_markdown_emphasis_delimiters(visible)
     visible = _strip_emphasis_preserving_intraword_underscores(visible)
     visible = _restore_entity_decoded_emphasis_punctuation(visible)
+    visible = _restore_unmatched_markdown_emphasis_delimiters(visible)
     visible = visible.replace(RAW_HTML_LITERAL_ASTERISK, "*")
     return " ".join(visible.split())
 
@@ -2311,6 +2440,11 @@ def _usable_https_source_bindings(
 ) -> tuple[tuple[str, str], ...]:
     """Extract visible label/destination pairs through every supported link path."""
     structure = _mask_hidden_html_regions(_structural_registry_text(text))
+    email_autolinks = tuple(EMAIL_AUTOLINK_PATTERN.finditer(structure))
+    assert not email_autolinks, (
+        "registered-source email autolinks are not usable HTTPS provenance: "
+        + ", ".join(match.group("email") for match in email_autolinks)
+    )
     definition_source = text if reference_scope is None else reference_scope
     reference_structure = _mask_hidden_html_regions(
         _structural_registry_text(definition_source)

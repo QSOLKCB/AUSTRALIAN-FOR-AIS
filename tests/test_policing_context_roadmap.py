@@ -85,6 +85,11 @@ MARKDOWN_LINK_PATTERN = re.compile(
 AUTOLINK_PATTERN = re.compile(
     r"<(?P<url>[A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\x00-\x20]*)>"
 )
+EMAIL_AUTOLINK_PATTERN = re.compile(
+    r"<(?P<email>[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
+    r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+"
+    r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)>"
+)
 LINK_REFERENCE_DEFINITION_PATTERN = re.compile(
     r"(?m)^ {0,3}\[(?P<label>[^\]\r\n]+)\]:[ \t]*"
     r"(?:\r?\n {1,3})?"
@@ -262,7 +267,7 @@ UNMATCHED_MARKDOWN_UNDERSCORE = "\uE115"
 
 
 def _protect_unmatched_markdown_emphasis_delimiters(text: str) -> str:
-    """Protect unmatched emphasis-candidate runs that CommonMark renders literally."""
+    """Protect literal emphasis characters, including surplus characters in matched runs."""
     assert UNMATCHED_MARKDOWN_ASTERISK not in text
     assert UNMATCHED_MARKDOWN_UNDERSCORE not in text
 
@@ -302,40 +307,76 @@ def _protect_unmatched_markdown_emphasis_delimiters(text: str) -> str:
             "marker": marker,
             "can_open": can_open,
             "can_close": can_close,
-            "paired": False,
+            "open_consumed": 0,
+            "close_consumed": 0,
         })
         position = end
 
     openers: dict[str, list[int]] = {"*": [], "_": []}
     for index, run in enumerate(runs):
         marker = str(run["marker"])
-        if bool(run["can_close"]) and openers[marker]:
-            opener_index = openers[marker].pop()
-            runs[opener_index]["paired"] = True
-            run["paired"] = True
-        if bool(run["can_open"]) and not bool(run["paired"]):
+        if bool(run["can_close"]):
+            while openers[marker]:
+                opener_index = openers[marker][-1]
+                opener = runs[opener_index]
+                opener_length = int(opener["end"]) - int(opener["start"])
+                closer_length = int(run["end"]) - int(run["start"])
+                opener_remaining = (
+                    opener_length
+                    - int(opener["open_consumed"])
+                    - int(opener["close_consumed"])
+                )
+                closer_remaining = (
+                    closer_length
+                    - int(run["open_consumed"])
+                    - int(run["close_consumed"])
+                )
+                if opener_remaining <= 0:
+                    openers[marker].pop()
+                    continue
+                if closer_remaining <= 0:
+                    break
+                consumed = min(opener_remaining, closer_remaining)
+                opener["open_consumed"] = int(opener["open_consumed"]) + consumed
+                run["close_consumed"] = int(run["close_consumed"]) + consumed
+                if consumed == opener_remaining:
+                    openers[marker].pop()
+                if consumed == closer_remaining:
+                    break
+        run_length = int(run["end"]) - int(run["start"])
+        remaining = (
+            run_length
+            - int(run["open_consumed"])
+            - int(run["close_consumed"])
+        )
+        if bool(run["can_open"]) and remaining > 0:
             openers[marker].append(index)
 
     if not runs:
         return text
     characters = list(text)
     for run in runs:
-        if bool(run["paired"]):
+        start = int(run["start"]) + int(run["close_consumed"])
+        end = int(run["end"]) - int(run["open_consumed"])
+        if start >= end:
             continue
-        # Keep the legacy treatment of intraword/non-delimiter punctuation, but
-        # preserve delimiter runs that CommonMark considered candidates and then
-        # rendered literally because no matching partner existed.
-        if not (bool(run["can_open"]) or bool(run["can_close"])):
+        # Preserve an unmatched candidate run, or the literal surplus left
+        # after CommonMark consumes only part of a matched delimiter run.
+        if not (
+            bool(run["can_open"])
+            or bool(run["can_close"])
+            or int(run["open_consumed"])
+            or int(run["close_consumed"])
+        ):
             continue
         sentinel = (
             UNMATCHED_MARKDOWN_ASTERISK
             if run["marker"] == "*"
             else UNMATCHED_MARKDOWN_UNDERSCORE
         )
-        for index in range(int(run["start"]), int(run["end"])):
-            characters[index] = sentinel
+        for character_index in range(start, end):
+            characters[character_index] = sentinel
     return "".join(characters)
-
 
 def _restore_unmatched_markdown_emphasis_delimiters(text: str) -> str:
     return text.replace(UNMATCHED_MARKDOWN_ASTERISK, "*").replace(
@@ -1509,6 +1550,7 @@ def _visible_text(markdown: str) -> str:
     visible = _mask_link_reference_definitions_for_visibility(markdown)
     visible = _replace_inline_markdown_links_for_visibility(visible)
     visible = AUTOLINK_PATTERN.sub(lambda match: match.group("url"), visible)
+    visible = EMAIL_AUTOLINK_PATTERN.sub(lambda match: match.group("email"), visible)
     # HTMLParser(convert_charrefs=True) already performs the browser's one
     # character-reference decoding pass. A second html.unescape() would turn
     # literal entity-looking text into content the browser never displays.
