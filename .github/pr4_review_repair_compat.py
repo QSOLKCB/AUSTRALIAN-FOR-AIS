@@ -11,9 +11,53 @@ policing_path = Path("tests/test_policing_context_roadmap.py")
 policing = policing_path.read_text(encoding="utf-8")
 policing = replace_once(
     policing,
+    '''        # Raw block-level containers can likewise terminate or reframe the
+        # surrounding paragraph while a text-only receipt reconstructs the
+        # canonical characters. Do not approximate those layout semantics on
+        # governed prose.
+        if tag in {
+            "address", "article", "aside", "div", "dl", "fieldset",
+            "figcaption", "figure", "footer", "header", "main", "nav",
+            "p", "section", "summary",
+        }:
+            self.violations.add("raw-block")
+''',
+    '',
+    "remove blanket raw-block parser classification",
+)
+policing = replace_once(
+    policing,
     '        "raw-block": "raw block-container HTML",\n',
     '',
     "keep raw-block out of shared global rejection precedence",
+)
+policing = replace_once(
+    policing,
+    '''    live_markup = "".join(characters)
+
+    # Markdown links become anchors only after Markdown rendering, so the raw-HTML
+''',
+    '''    live_markup = "".join(characters)
+
+    # Block containers are dangerous specifically when they carry/reframe
+    # governed prose on the same rendered source line. Do not classify a bare
+    # flow-HTML opener/closer as a violation here: CommonMark can legitimately
+    # terminate that block at a blank line and resume Markdown afterwards.
+    raw_block_tag = re.compile(
+        r"</?(?:address|article|aside|div|dl|fieldset|figcaption|figure|footer|header|main|nav|p|section|summary)\\b[^>]*>",
+        flags=re.IGNORECASE,
+    )
+    for raw_line in live_markup.splitlines():
+        if raw_block_tag.search(raw_line) is None:
+            continue
+        residual = raw_block_tag.sub("", raw_line)
+        if residual.strip():
+            parser.violations.add("raw-block")
+            break
+
+    # Markdown links become anchors only after Markdown rendering, so the raw-HTML
+''',
+    "classify prose-bearing raw block containers",
 )
 policing_path.write_text(policing, encoding="utf-8")
 
@@ -84,13 +128,12 @@ registry = replace_once(
         f"{entry} contains interactive HTML that is not permitted in governed entries"
     )
     # Keep this late in entry validation so established, more-specific diagnostics
-    # (closed disclosures, duplicate metadata, type-6 structure, styling, etc.)
-    # retain precedence. A raw block that otherwise flattens back to canonical
-    # scalar prose still fails before the complete-entry hash is accepted.
+    # retain precedence. Prose-bearing raw block containers can otherwise alter
+    # browser paragraph structure while flattening back to the same receipt text.
     raw_block_html = _SHARED_HTML_PREFLIGHT(section) & {"raw-block"}
     assert not raw_block_html, (
-        f"{entry} contains raw block-container HTML; governed scalar prose must not "
-        "be structurally detached or reframed by browser block elements"
+        f"{entry} contains raw block-container HTML around governed prose; scalar "
+        "content must not be structurally detached or reframed by browser block elements"
     )
     value = _normalise_complete_entry_integrity(section)
 ''',
