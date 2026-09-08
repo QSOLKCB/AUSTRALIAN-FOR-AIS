@@ -1352,6 +1352,17 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         # Parsed names cover duplicate, boolean, and multiline attributes.
         # The reducer cannot establish readability for arbitrary inline CSS.
         attribute_names = {key.lower() for key, _ in attrs}
+        # `hidden=until-found` is conditionally revealed by find-in-page or
+        # fragment navigation. Treat it as active conditional content rather
+        # than omitting text that can later become reader-visible. Reuse the
+        # existing corpus-wide conditional-content policy kind so the registry
+        # and shared methodology validators fail closed together.
+        if any(
+            key.lower() == "hidden"
+            and (value or "").strip().casefold() == "until-found"
+            for key, value in attrs
+        ):
+            self.violations.add("conditional-raw-text")
         # Hyperlink auditing can send an additional network request that is not
         # represented by the sealed href binding. Fail closed on it.
         if tag == "a" and "ping" in attribute_names:
@@ -1364,10 +1375,12 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             self.violations.add("accessible-name")
         if "aria-hidden" in attribute_names:
             self.violations.add("accessibility-hidden")
-        # Raw Markdown is embedded into an existing HTML document. A live
-        # duplicate root tag can merge attributes onto that document root, so
-        # reject html/body rather than approximating tree-builder semantics.
-        if tag in {"html", "body"}:
+        # Raw Markdown is embedded into an existing HTML document. Live
+        # html/body tags can merge attributes onto the document root, while
+        # <base> mutates document-wide URL/target behavior for otherwise sealed
+        # links. Reject all three under the active document-global HTML policy
+        # rather than approximating tree-builder/navigation semantics.
+        if tag in {"html", "body", "base"}:
             self.violations.add("document-root")
         if tag in {"head", "caption", "col", "colgroup", "tbody", "td", "tfoot", "th", "thead", "tr"}:
             self.violations.add("in-body-structure")

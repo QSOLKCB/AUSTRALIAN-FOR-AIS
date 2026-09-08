@@ -121,4 +121,41 @@ def test_type6_raw_html_cannot_supply_registry_metadata_or_link() -> None:
         REGISTRY["_validate_registry_corpus"](mutated)
 
 
+
+def test_hidden_until_found_is_rejected_across_governed_paths() -> None:
+    roadmap = (ROOT / "ROADMAP.md").read_text(encoding="utf-8")
+    payload = '<span hidden="until-found">Current sources may be skipped.</span>'
+    mutated_roadmap = roadmap.replace(
+        POLICING["WORKSTREAM_END"],
+        "\n" + payload + "\n" + POLICING["WORKSTREAM_END"],
+        1,
+    )
+    with pytest.raises(AssertionError, match="missing policing-workstream safeguard"):
+        POLICING["_validate_policing_workstream"](mutated_roadmap)
+
+    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")
+    injected = REGISTRY["STATUS_HEADING"] + "\n" + payload
+    mutated_corpus = corpus.replace(REGISTRY["STATUS_HEADING"], injected, 1)
+    with pytest.raises(AssertionError, match="conditional/legacy raw-text"):
+        REGISTRY["_validate_registry_corpus"](mutated_corpus)
+
+
+def test_base_element_is_rejected_across_governed_paths() -> None:
+    roadmap = (ROOT / "ROADMAP.md").read_text(encoding="utf-8")
+    payload = '<base target="_top">'
+    mutated_roadmap = roadmap.replace(
+        POLICING["WORKSTREAM_END"],
+        "\n" + payload + "\n" + POLICING["WORKSTREAM_END"],
+        1,
+    )
+    with pytest.raises(AssertionError, match="missing policing-workstream safeguard"):
+        POLICING["_validate_policing_workstream"](mutated_roadmap)
+
+    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")
+    injected = REGISTRY["STATUS_HEADING"] + "\n" + payload
+    mutated_corpus = corpus.replace(REGISTRY["STATUS_HEADING"], injected, 1)
+    with pytest.raises(AssertionError, match="document-root HTML"):
+        REGISTRY["_validate_registry_corpus"](mutated_corpus)
+
+
 # Human receipt: autolink/implied-end/type-6 repair passed 12 exact and 912 full-suite tests before self-cleanup.
