@@ -425,6 +425,17 @@ def _assert_workstream_h_integrity(text: str) -> str:
         f"{sorted(WORKSTREAM_H_CITATION_LINKS)!r}, got {sorted(actual_links)!r}"
     )
     section = _visible_markdown_text(raw_section)
+    policing = runpy.run_path(str(POLICING_TEST))
+    visible_records = policing["_normalised_visible_workstream_records"](raw_section)
+    unsupported_containers = [
+        (signature, line)
+        for signature, line in visible_records
+        if signature not in {"root", "list:2"}
+    ]
+    assert not unsupported_containers, (
+        "browser-visible Workstream H list/container hierarchy changed: "
+        f"{unsupported_containers!r}"
+    )
     value = " ".join(section.split())
     actual_hash = hashlib.sha256(value.encode("utf-8")).hexdigest()
     assert actual_hash == WORKSTREAM_H_VISIBLE_SHA256, (
@@ -432,6 +443,20 @@ def _assert_workstream_h_integrity(text: str) -> str:
         f"{WORKSTREAM_H_VISIBLE_SHA256!r}, got {actual_hash!r}"
     )
     return section
+
+
+def test_workstream_h_list_hierarchy_is_pinned():
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    _assert_workstream_h_integrity(roadmap)
+    bullet = (
+        "keep any military claims limited to what official or archival evidence "
+        "actually demonstrates."
+    )
+    canonical = f"- {bullet}"
+    assert canonical in roadmap
+    mutated = roadmap.replace(canonical, f"  - {bullet}", 1)
+    with pytest.raises(AssertionError, match="list/container hierarchy changed"):
+        _assert_workstream_h_integrity(mutated)
 
 
 def _trans_tasman_raw(text: str) -> str:
