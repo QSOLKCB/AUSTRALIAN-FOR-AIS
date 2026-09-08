@@ -238,14 +238,14 @@ def _assert_workstream_g_integrity(text: str) -> str:
     actual_visible_hash = hashlib.sha256(visible.encode("utf-8")).hexdigest()
     assert actual_visible_hash == WORKSTREAM_G_VISIBLE_SHA256, (
         "browser-visible Workstream G changed: expected hash "
-        f"{WORKSTREAM_G_VISIBLE_SHA256!r}, got {actual_visible_hash!r}"
+        f"{{WORKSTREAM_G_VISIBLE_SHA256!r}}, got {{actual_visible_hash!r}}"
     )
     records = POLICING["_normalised_visible_workstream_records"](raw)
-    receipt = "\n".join(f"{signature}\x1f{line}" for signature, line in records)
+    receipt = "\n".join(f"{{signature}}\x1f{{line}}" for signature, line in records)
     actual_records_hash = hashlib.sha256(receipt.encode("utf-8")).hexdigest()
     assert actual_records_hash == WORKSTREAM_G_RECORDS_SHA256, (
         "Workstream G record hierarchy changed: expected hash "
-        f"{WORKSTREAM_G_RECORDS_SHA256!r}, got {actual_records_hash!r}"
+        f"{{WORKSTREAM_G_RECORDS_SHA256!r}}, got {{actual_records_hash!r}}"
     )
     assert NONFACTUAL_BOUNDARY in visible
     assert SAFE_ABSTRACTION_BOUNDARY in visible
