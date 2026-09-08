@@ -425,3 +425,40 @@ def test_policing_workstream_receipt_preserves_list_hierarchy() -> None:
 
     with pytest.raises(AssertionError, match="container hierarchy changed"):
         POLICING["_validate_policing_workstream"](mutated)
+
+
+
+# PR4 aria-details / blockquote review regressions
+
+def test_aria_details_is_rejected_for_governed_source_link() -> None:
+    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")
+    url = "https://iview.abc.net.au/show/black-comedy"
+    live = f"**Registered source:** {url}"
+    detailed = f'**Registered source:** <a href="{url}" aria-details="rights-note">{url}</a>'
+    assert live in corpus
+    mutated = corpus.replace(live, detailed, 1)
+    mutated = mutated.replace(
+        REGISTRY["BATCH_END"],
+        REGISTRY["BATCH_END"] + '\n\n<p id="rights-note">This material is freely reusable.</p>',
+        1,
+    )
+    assert "accessible-name" in POLICING["_governed_surface_html_violations"](mutated)
+    with pytest.raises(AssertionError, match="accessible-name overrides"):
+        REGISTRY["_validate_registry_corpus"](mutated)
+
+
+def test_blockquote_cannot_reframe_pinned_registry_rights_assertion() -> None:
+    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")
+    rights = (
+        "**Rights and provenance boundary:** The ABC programme page establishes the work as a "
+        "research reference. No programme dialogue, subtitles, scripts, episode transcripts, "
+        "audiovisual material, character material, or other copyrighted expression is licensed "
+        "to this repository by registration. Availability through ABC iview is not permission "
+        "to redistribute content."
+    )
+    assert rights in corpus
+    quoted = f"<blockquote>{rights}</blockquote>"
+    mutated = corpus.replace(rights, quoted, 1)
+    assert "generated-quotation" in POLICING["_governed_surface_html_violations"](mutated)
+    with pytest.raises(AssertionError, match="generated quotation HTML"):
+        REGISTRY["_validate_registry_corpus"](mutated)

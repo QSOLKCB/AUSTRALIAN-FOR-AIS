@@ -1412,7 +1412,7 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             self.violations.add("conditional-raw-text")
         if tag in {"del", "s", "strike"}:
             self.violations.add("semantic-deletion")
-        if tag == "q":
+        if tag in {"q", "blockquote"}:
             self.violations.add("generated-quotation")
         # Parsed names cover duplicate, boolean, and multiline attributes.
         # The reducer cannot establish readability for arbitrary inline CSS.
@@ -1442,7 +1442,7 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             self.violations.add("event-handler")
         if "title" in attribute_names:
             self.violations.add("tooltip-title")
-        if {"aria-label", "aria-labelledby", "aria-description", "aria-describedby"}.intersection(attribute_names):
+        if {"aria-label", "aria-labelledby", "aria-description", "aria-describedby", "aria-details"}.intersection(attribute_names):
             self.violations.add("accessible-name")
         if "aria-hidden" in attribute_names:
             self.violations.add("accessibility-hidden")
