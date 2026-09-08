@@ -39,6 +39,8 @@ ACTIVE_DOCUMENT_HTML_KINDS = frozenset({
     "raw-table",
     "raw-list",
     "named-details",
+    "interactive-details",
+    "editable-content",
     "tooltip-title",
     "presentational-font",
     "accessible-name",
@@ -3253,6 +3255,12 @@ def _assert_no_active_document_html(found: set[str]) -> None:
     assert "named-details" not in found, (
         "named details-group HTML is not allowed in governed documents"
     )
+    assert "interactive-details" not in found, (
+        "interactive details disclosure HTML is not allowed in governed documents"
+    )
+    assert "editable-content" not in found, (
+        "contenteditable HTML is not allowed in governed documents"
+    )
     assert "tooltip-title" not in found, (
         "tooltip title-attribute HTML is not allowed in governed documents"
     )
@@ -3275,7 +3283,7 @@ def _assert_no_active_document_html(found: set[str]) -> None:
         "negative tabindex keyboard-navigation suppression is not allowed in governed documents"
     )
     assert "semantic-role" not in found, (
-        "semantic role overrides on governed source anchors are not allowed in governed documents"
+        "semantic role overrides are not allowed on governed content"
     )
     assert "semantic-heading" not in found, (
         "raw or ARIA heading semantics are not allowed in governed documents"
@@ -4772,7 +4780,7 @@ def test_closed_details_cannot_hide_complete_governed_batch():
         _validate_registry_corpus(mutated)
 
 
-def test_open_details_keep_governed_batch_visible():
+def test_open_details_are_rejected_as_collapsible_governance():
     corpus = CORPUS.read_text(encoding="utf-8")
     start = corpus.index(BATCH_HEADING) + len(BATCH_HEADING)
     end = corpus.index(BATCH_END, start)
@@ -4783,7 +4791,8 @@ def test_open_details_keep_governed_batch_visible():
         + "\n</details>\n\n"
         + corpus[end:]
     )
-    _validate_registry_corpus(mutated)
+    with pytest.raises(AssertionError, match="interactive details disclosure"):
+        _validate_registry_corpus(mutated)
 
 
 def test_reference_style_source_destination_is_included_in_pinned_set():

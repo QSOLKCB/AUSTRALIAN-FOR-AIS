@@ -520,3 +520,40 @@ def test_machine_readable_rights_metadata_is_rejected_from_governed_registry(
     assert "machine-metadata" in POLICING["_governed_surface_html_violations"](mutated)
     with pytest.raises(AssertionError, match="machine-readable Microdata/RDFa metadata"):
         REGISTRY["_validate_registry_corpus"](mutated)
+
+
+
+def test_open_details_contenteditable_and_role_overrides_are_rejected() -> None:
+    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")
+    canonical = "Availability through ABC iview is not permission to redistribute content."
+    assert canonical in corpus
+    variants = (
+        (
+            "Availability through ABC iview is <details open>not</details> permission to redistribute content.",
+            "interactive details disclosure",
+        ),
+        (
+            "Availability through ABC iview is <span contenteditable>not</span> permission to redistribute content.",
+            "contenteditable",
+        ),
+        (
+            'Availability through ABC iview is <span role="img">not</span> permission to redistribute content.',
+            "semantic role overrides",
+        ),
+    )
+    for replacement, diagnostic in variants:
+        mutated = corpus.replace(canonical, replacement, 1)
+        assert mutated != corpus
+        with pytest.raises(AssertionError, match=diagnostic):
+            REGISTRY["_validate_registry_corpus"](mutated)
+
+
+def test_shared_preflight_reports_governed_interaction_semantics() -> None:
+    violations = POLICING["_governed_surface_html_violations"]
+    assert "interactive-details" in violations("<details open>not</details>")
+    assert "closed-details" in violations("<details>not</details>")
+    assert "interactive-details" not in violations("<details>not</details>")
+    assert "editable-content" in violations("<span contenteditable>not</span>")
+    assert "semantic-role" in violations('<span role="img">not</span>')
+    assert "semantic-heading" in violations('<span role="heading">not</span>')
+    assert "semantic-role" not in violations('<span role="heading">not</span>')

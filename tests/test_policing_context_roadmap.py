@@ -1427,6 +1427,10 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         # Parsed names cover duplicate, boolean, and multiline attributes.
         # The reducer cannot establish readability for arbitrary inline CSS.
         attribute_names = {key.lower() for key, _ in attrs}
+        # contenteditable changes committed governance prose into an
+        # ordinary browser editing surface without changing its receipt.
+        if "contenteditable" in attribute_names:
+            self.violations.add("editable-content")
         # ARIA can manufacture heading semantics without an h1-h6 element.
         # Reject that equivalent reframing on every governed surface.
         if any(
@@ -1472,10 +1476,10 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         # download changes activation without changing the sealed label/href binding.
         if tag == "a" and {"download", "ping", "target"}.intersection(attribute_names):
             self.violations.add("executable-url")
-        # A role override can make an otherwise canonical provenance anchor
-        # cease to be exposed as a link to assistive technology. Keep the
-        # anchor's native semantic role inside the governed link contract.
-        if tag == "a" and "role" in attribute_names:
+        # Any role override can change the accessibility-tree semantics of
+        # governed prose or links without changing the sealed characters.
+        # Keep the more-specific semantic-heading diagnostic when applicable.
+        if "role" in attribute_names and "semantic-heading" not in self.violations:
             self.violations.add("semantic-role")
         if any(name.startswith("on") for name in attribute_names):
             self.violations.add("event-handler")
@@ -1547,6 +1551,10 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
                 self.violations.add("named-details")
             if "open" not in attribute_names:
                 self.violations.add("closed-details")
+            else:
+                # An initially open disclosure remains user-collapsible, so a
+                # mandatory qualifier can be hidden without changing the source.
+                self.violations.add("interactive-details")
 
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
@@ -1652,7 +1660,6 @@ def _assert_supported_governed_html(violations: set[str]) -> None:
         "replacement-content": "replacement-content HTML",
         "rendered-break": "rendered break HTML",
         "preformatted-content": "preformatted content HTML",
-        "semantic-role": "semantic role override HTML",
         "semantic-heading": "raw/ARIA heading semantics HTML",
         "machine-metadata": "machine-readable metadata HTML",
         "raw-svg": "raw SVG HTML",
@@ -1670,11 +1677,14 @@ def _assert_supported_governed_html(violations: set[str]) -> None:
         "document-root": "document-root HTML",
         "raw-table": "raw table HTML",
         "named-details": "named details-group HTML",
+        "interactive-details": "interactive details disclosure HTML",
+        "editable-content": "contenteditable governed HTML",
         "tooltip-title": "tooltip title-attribute HTML",
         "presentational-font": "presentational font-size HTML",
         "language-override": "language override HTML",
         "accessible-name": "accessible-name override HTML",
         "accessibility-hidden": "aria-hidden accessibility suppression HTML",
+        "semantic-role": "semantic role override HTML",
         "accessibility-inert": "native inert accessibility suppression HTML",
         "accessibility-disabled": "aria-disabled source-link suppression HTML",
         "nested-anchor": "nested anchor HTML",
