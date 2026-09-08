@@ -124,10 +124,45 @@ PREFLIGHT_HTML_BLOCK_TAGS = frozenset({
     "search", "section", "summary", "table", "tbody", "td", "tfoot", "th",
     "thead", "title", "tr", "track", "ul",
 })
-PREFLIGHT_HTML_TAG = re.compile(
-    r"</?[A-Za-z][A-Za-z0-9-]*(?=[ \t\r\n\f/>])"
-    r"(?:[^>\"']|\"[^\"]*\"|'[^']*')*>", re.DOTALL,
+COMMONMARK_RAW_HTML_TAG_SENTINEL = "\ue03f"
+COMMONMARK_HTML_ATTRIBUTE = (
+    r"[ \t\r\n\f]+[A-Za-z_:][A-Za-z0-9_.:-]*"
+    r"(?:[ \t\r\n\f]*=[ \t\r\n\f]*"
+    r"(?:[^ \t\r\n\f\"'=<>`]+|\"[^\"]*\"|'[^']*'))?"
 )
+PREFLIGHT_HTML_TAG = re.compile(
+    rf"(?:<[A-Za-z][A-Za-z0-9-]*(?:{COMMONMARK_HTML_ATTRIBUTE})*[ \t\r\n\f]*/?>"
+    rf"|</[A-Za-z][A-Za-z0-9-]*[ \t\r\n\f]*>)",
+    re.DOTALL,
+)
+
+
+def _protect_non_commonmark_raw_tag_openers(text: str) -> str:
+    """Keep malformed tag-looking Markdown literal when HTMLParser is used.
+
+    CommonMark only passes syntactically valid raw HTML tags through to the
+    renderer. Python's HTMLParser is deliberately more forgiving, so protect
+    an invalid `<tag...` opener before feeding Markdown source into it.
+    """
+    assert COMMONMARK_RAW_HTML_TAG_SENTINEL not in text, (
+        "reserved malformed-raw-tag marker in governed source"
+    )
+    characters = list(text)
+    position = 0
+    while True:
+        position = text.find("<", position)
+        if position < 0:
+            break
+        if re.match(r"/?[A-Za-z]", text[position + 1:]) is None:
+            position += 1
+            continue
+        match = PREFLIGHT_HTML_TAG.match(text, position)
+        if match is not None:
+            position = match.end()
+            continue
+        characters[position] = COMMONMARK_RAW_HTML_TAG_SENTINEL
+        position += 1
+    return "".join(characters)
 INTERACTIVE_FORM_CONTROL_PATTERN = re.compile(
     r"<\s*(?:form|input|button|select|textarea|option|optgroup)\b",
     flags=re.IGNORECASE,
@@ -316,8 +351,9 @@ def _protect_unmatched_markdown_emphasis_delimiters(text: str) -> str:
     for index, run in enumerate(runs):
         marker = str(run["marker"])
         if bool(run["can_close"]):
-            while openers[marker]:
-                opener_index = openers[marker][-1]
+            opener_position = len(openers[marker]) - 1
+            while opener_position >= 0:
+                opener_index = openers[marker][opener_position]
                 opener = runs[opener_index]
                 opener_length = int(opener["end"]) - int(opener["start"])
                 closer_length = int(run["end"]) - int(run["start"])
@@ -332,17 +368,33 @@ def _protect_unmatched_markdown_emphasis_delimiters(text: str) -> str:
                     - int(run["close_consumed"])
                 )
                 if opener_remaining <= 0:
-                    openers[marker].pop()
+                    del openers[marker][opener_position]
+                    opener_position -= 1
                     continue
                 if closer_remaining <= 0:
                     break
+                # CommonMark's rule of three blocks an opener/closer pair when
+                # one run can serve both roles, their lengths sum to a multiple
+                # of three, and the two lengths are not themselves both
+                # multiples of three. Skip that candidate but keep searching
+                # older openers: n*o**t* therefore matches the outer singles
+                # and preserves the inner ** as reader-visible literal text.
+                violates_rule_of_three = (
+                    (bool(opener["can_close"]) or bool(run["can_open"]))
+                    and (opener_length + closer_length) % 3 == 0
+                    and (opener_length % 3 != 0 or closer_length % 3 != 0)
+                )
+                if violates_rule_of_three:
+                    opener_position -= 1
+                    continue
                 consumed = min(opener_remaining, closer_remaining)
                 opener["open_consumed"] = int(opener["open_consumed"]) + consumed
                 run["close_consumed"] = int(run["close_consumed"]) + consumed
                 if consumed == opener_remaining:
-                    openers[marker].pop()
+                    del openers[marker][opener_position]
                 if consumed == closer_remaining:
                     break
+                opener_position -= 1
         run_length = int(run["end"]) - int(run["start"])
         remaining = (
             run_length
@@ -453,13 +505,14 @@ class _VisibleHTMLTextParser(HTMLParser):
 
 
 def _visible_html_text(text: str, *, protect_raw_punctuation: bool = False) -> str:
+    protected = _protect_non_commonmark_raw_tag_openers(text)
     parser = _VisibleHTMLTextParser(protect_raw_punctuation=protect_raw_punctuation)
     try:
-        parser.feed(text)
+        parser.feed(protected)
         parser.close()
     except Exception:
         return ""
-    return "".join(parser.parts)
+    return "".join(parser.parts).replace(COMMONMARK_RAW_HTML_TAG_SENTINEL, "<")
 
 
 HTML_VOID_TAGS = {
@@ -595,9 +648,10 @@ class _HiddenHTMLRegionParser(HTMLParser):
 
 def _mask_hidden_html_regions(text: str) -> str:
     """Mask hidden containers globally so visibility state survives slicing."""
-    parser = _HiddenHTMLRegionParser(text)
+    protected = _protect_non_commonmark_raw_tag_openers(text)
+    parser = _HiddenHTMLRegionParser(protected)
     try:
-        parser.feed(text)
+        parser.feed(protected)
         parser.close()
         parser.finish()
     except Exception:
@@ -1364,8 +1418,9 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         ):
             self.violations.add("conditional-raw-text")
         # Hyperlink auditing can send an additional network request that is not
-        # represented by the sealed href binding. Fail closed on it.
-        if tag == "a" and "ping" in attribute_names:
+        # represented by the sealed href binding. Per-anchor targets likewise
+        # change framed navigation behavior without changing that binding.
+        if tag == "a" and {"ping", "target"}.intersection(attribute_names):
             self.violations.add("executable-url")
         if any(name.startswith("on") for name in attribute_names):
             self.violations.add("event-handler")
@@ -1505,7 +1560,7 @@ def _governed_surface_html_violations(markdown: str) -> set[str]:
     if _contains_live_markdown_image_syntax(markdown_source):
         parser.violations.add("markdown-image")
 
-    parser.feed(live_markup)
+    parser.feed(_protect_non_commonmark_raw_tag_openers(live_markup))
     parser.close()
     return parser.violations
 

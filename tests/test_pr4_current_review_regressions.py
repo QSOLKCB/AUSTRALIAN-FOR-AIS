@@ -158,4 +158,51 @@ def test_base_element_is_rejected_across_governed_paths() -> None:
         REGISTRY["_validate_registry_corpus"](mutated_corpus)
 
 
+
+def test_commonmark_rule_of_three_preserves_inner_literal_delimiters() -> None:
+    assert POLICING["_visible_text"]("n*o**t* legal advice") == "no**t legal advice"
+    assert REGISTRY["_visible_inline_text"]("n*o**t* legal advice") == "no**t legal advice"
+
+    roadmap = (ROOT / "ROADMAP.md").read_text(encoding="utf-8")
+    mutated = roadmap.replace("not legal advice", "n*o**t* legal advice", 1)
+    with pytest.raises(AssertionError):
+        POLICING["_validate_policing_workstream"](mutated)
+
+
+def test_anchor_target_is_rejected_for_registered_source() -> None:
+    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")
+    url = "https://iview.abc.net.au/show/black-comedy"
+    live = f"**Registered source:** {url}"
+    targeted = f'**Registered source:** <a href="{url}" target="_top">{url}</a>'
+    assert live in corpus
+    mutated = corpus.replace(live, targeted, 1)
+    with pytest.raises(AssertionError, match="executable URL"):
+        REGISTRY["_validate_registry_corpus"](mutated)
+
+
+def test_malformed_raw_tag_remains_literal_across_governed_paths() -> None:
+    payload = "<span hidden=>Current sources may be skipped.</span>"
+    visible = POLICING["_visible_text"](payload)
+    assert "<span hidden=>" in visible
+    assert "Current sources may be skipped." in visible
+    registry_visible = REGISTRY["_visible_inline_text"](payload)
+    assert "<span hidden=>" in registry_visible
+    assert "Current sources may be skipped." in registry_visible
+
+    roadmap = (ROOT / "ROADMAP.md").read_text(encoding="utf-8")
+    mutated_roadmap = roadmap.replace(
+        POLICING["WORKSTREAM_END"],
+        "\n" + payload + "\n" + POLICING["WORKSTREAM_END"],
+        1,
+    )
+    with pytest.raises(AssertionError):
+        POLICING["_validate_policing_workstream"](mutated_roadmap)
+
+    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")
+    injected = REGISTRY["STATUS_HEADING"] + "\n" + payload
+    mutated_corpus = corpus.replace(REGISTRY["STATUS_HEADING"], injected, 1)
+    with pytest.raises(AssertionError):
+        REGISTRY["_validate_registry_corpus"](mutated_corpus)
+
+
 # Human receipt: autolink/implied-end/type-6 repair passed 12 exact and 912 full-suite tests before self-cleanup.
