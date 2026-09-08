@@ -462,3 +462,61 @@ def test_blockquote_cannot_reframe_pinned_registry_rights_assertion() -> None:
     assert "generated-quotation" in POLICING["_governed_surface_html_violations"](mutated)
     with pytest.raises(AssertionError, match="generated quotation HTML"):
         REGISTRY["_validate_registry_corpus"](mutated)
+# PR4 raw-heading / non-collapsible-spacing / machine-metadata regressions
+
+@pytest.mark.parametrize(
+    "wrapper",
+    (
+        "<h1>{}</h1>",
+        "<h6>{}</h6>",
+        '<span role="heading" aria-level="2">{}</span>',
+    ),
+)
+def test_raw_or_aria_heading_semantics_cannot_reframe_governed_registry_text(
+    wrapper: str,
+) -> None:
+    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")
+    live = "The article is a scholarly research reference."
+    assert live in corpus
+    mutated = corpus.replace(live, wrapper.format(live), 1)
+    assert "semantic-heading" in POLICING["_governed_surface_html_violations"](mutated)
+    with pytest.raises(AssertionError, match="heading semantics"):
+        REGISTRY["_validate_registry_corpus"](mutated)
+
+
+@pytest.mark.parametrize("separator", ("\u00a0", "\u2007", "\u202f"))
+def test_noncollapsible_unicode_separators_remain_in_registry_integrity_text(
+    separator: str,
+) -> None:
+    sample = f"The{separator}article"
+    assert REGISTRY["_visible_inline_text"](sample) == sample
+
+
+def test_nbsp_entity_cannot_collapse_back_to_canonical_registry_receipt() -> None:
+    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")
+    live = "The article is a scholarly research reference."
+    encoded = live.replace(" ", "&nbsp;")
+    assert live in corpus
+    assert REGISTRY["_visible_inline_text"](encoded) == live.replace(" ", "\u00a0")
+    mutated = corpus.replace(live, encoded, 1)
+    with pytest.raises(AssertionError):
+        REGISTRY["_validate_registry_corpus"](mutated)
+
+
+@pytest.mark.parametrize(
+    "wrapper",
+    (
+        '<span itemscope><meta itemprop="license" content="CC0">{}</span>',
+        '<span property="license" content="CC0">{}</span>',
+    ),
+)
+def test_machine_readable_rights_metadata_is_rejected_from_governed_registry(
+    wrapper: str,
+) -> None:
+    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")
+    live = "The article is a scholarly research reference."
+    assert live in corpus
+    mutated = corpus.replace(live, wrapper.format(live), 1)
+    assert "machine-metadata" in POLICING["_governed_surface_html_violations"](mutated)
+    with pytest.raises(AssertionError, match="machine-readable Microdata/RDFa metadata"):
+        REGISTRY["_validate_registry_corpus"](mutated)

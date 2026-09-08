@@ -2120,7 +2120,10 @@ def _visible_inline_text(text: str) -> str:
     visible = _restore_entity_decoded_emphasis_punctuation(visible)
     visible = _restore_unmatched_markdown_emphasis_delimiters(visible)
     visible = visible.replace(RAW_HTML_LITERAL_ASTERISK, "*")
-    return " ".join(visible.split())
+    # HTML collapses only ASCII space, tab, LF, FF, and CR in ordinary
+    # flow. Preserve NBSP and other Unicode separators so non-wrapping
+    # spacing changes remain part of the sealed reader-facing value.
+    return re.sub(r"[ \t\n\f\r]+", " ", visible).strip(" ")
 
 MARKDOWN_BACKSLASH_ESCAPE_PATTERN = re.compile(
     rf"\\([{re.escape(string.punctuation)}])"
@@ -2940,7 +2943,10 @@ def _has_non_heading_content(block: str) -> bool:
             if _is_fence_closer(raw_line, fence):
                 fence = None
                 continue
-            if _visible_inline_text(_fence_logical_line(raw_line, fence).strip()):
+            # Unicode non-collapsible spacing is integrity-significant, but a
+            # mapping block made only of whitespace still has no substantive
+            # mapping content. Keep those two contracts distinct.
+            if _visible_inline_text(_fence_logical_line(raw_line, fence).strip()).strip():
                 return True
             continue
 
@@ -2967,7 +2973,7 @@ def _has_non_heading_content(block: str) -> bool:
             continue
         if LINK_REFERENCE_DEFINITION_PATTERN.fullmatch(line):
             continue
-        if _visible_inline_text(line):
+        if _visible_inline_text(line).strip():
             return True
 
     return False
@@ -3244,6 +3250,12 @@ def _assert_no_active_document_html(found: set[str]) -> None:
     assert "semantic-role" not in found, (
         "semantic role overrides on governed source anchors are not allowed in governed documents"
     )
+    assert "semantic-heading" not in found, (
+        "raw or ARIA heading semantics are not allowed in governed documents"
+    )
+    assert "machine-metadata" not in found, (
+        "machine-readable Microdata/RDFa metadata is not allowed in governed documents"
+    )
     assert "preformatted-content" not in found, (
         "preformatted HTML is not allowed in governed registry documents"
     )
@@ -3290,7 +3302,13 @@ def _require_complete_entry_integrity(entry: str, section: str) -> None:
     rendered_section = _rendered_registry_text(section)
     structural_section = _structural_registry_text(section)
     forbidden_html = _forbidden_governed_html_constructs(section)
-    _assert_no_active_document_html(forbidden_html)
+    # Raw/ARIA headings and machine-readable metadata are entry semantics,
+    # not corpus-boundary semantics: reject them inside each governed entry
+    # without short-circuiting rendered-entry discovery diagnostics.
+    entry_semantic_html = _SHARED_HTML_PREFLIGHT(section) & {
+        "semantic-heading", "machine-metadata"
+    }
+    _assert_no_active_document_html(forbidden_html | entry_semantic_html)
     unsupported = forbidden_html & {"shadow-root", "hidden-table-descendant", "nested-anchor"}
     assert not unsupported, (
         f"{entry} contains unsupported governed HTML: {sorted(unsupported)}; "

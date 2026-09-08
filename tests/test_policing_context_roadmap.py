@@ -1414,9 +1414,36 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             self.violations.add("semantic-deletion")
         if tag in {"q", "blockquote"}:
             self.violations.add("generated-quotation")
+        # Heading elements reframe governed prose structurally even when
+        # their character data is unchanged. Keep that semantic boundary
+        # inside the governed receipt rather than flattening it to text.
+        if tag in {"h1", "h2", "h3", "h4", "h5", "h6"}:
+            self.violations.add("semantic-heading")
         # Parsed names cover duplicate, boolean, and multiline attributes.
         # The reducer cannot establish readability for arbitrary inline CSS.
         attribute_names = {key.lower() for key, _ in attrs}
+        # ARIA can manufacture heading semantics without an h1-h6 element.
+        # Reject that equivalent reframing on every governed surface.
+        if any(
+            key.lower() == "role"
+            and "heading" in (value or "").strip().casefold().split()
+            for key, value in attrs
+        ):
+            self.violations.add("semantic-heading")
+        # Microdata/RDFa can publish machine-readable provenance or licence
+        # semantics absent from the sealed human-readable text. Preserve
+        # harmless metadata such as charset/content-type, but reject live
+        # semantic vocabularies and relationships on governed surfaces.
+        machine_metadata_attributes = {
+            "itemscope", "itemprop", "itemtype", "itemid", "itemref",
+            "about", "datatype", "inlist", "prefix", "property",
+            "resource", "rev", "typeof", "vocab",
+        }
+        if (
+            machine_metadata_attributes.intersection(attribute_names)
+            or ("rel" in attribute_names and tag not in {"a", "area", "link"})
+        ):
+            self.violations.add("machine-metadata")
         # `hidden=until-found` is conditionally revealed by find-in-page or
         # fragment navigation. Treat it as active conditional content rather
         # than omitting text that can later become reader-visible. Reuse the
@@ -1612,6 +1639,8 @@ def _assert_supported_governed_html(violations: set[str]) -> None:
         "rendered-break": "rendered break HTML",
         "preformatted-content": "preformatted content HTML",
         "semantic-role": "semantic role override HTML",
+        "semantic-heading": "raw/ARIA heading semantics HTML",
+        "machine-metadata": "machine-readable metadata HTML",
         "raw-svg": "raw SVG HTML",
         "inline-style": "inline style HTML",
         "semantic-deletion": "semantic deletion HTML",
@@ -1686,7 +1715,12 @@ def _visible_markdown_heading_span(structure: str, heading: str) -> tuple[int, i
     """Return the unique browser-visible Markdown heading span with preserved offsets."""
     # Inspect before slicing or hidden-region masking can erase a wrapper
     # that starts before the heading or encloses otherwise canonical text.
-    _assert_supported_governed_html(_governed_surface_html_violations(structure))
+    # This helper is also used to *discover* legitimate raw-HTML peer
+    # headings in changelog structure. Semantic heading policy belongs to
+    # the governed section validator that calls this helper, not to heading
+    # discovery itself; otherwise a real <h2> cannot delimit Phase 2 Notes.
+    heading_violations = _governed_surface_html_violations(structure)
+    _assert_supported_governed_html(heading_violations - {"semantic-heading"})
     visible_structure = _mask_hidden_html_regions(structure)
     matches: list[tuple[int, int]] = []
     offset = 0
