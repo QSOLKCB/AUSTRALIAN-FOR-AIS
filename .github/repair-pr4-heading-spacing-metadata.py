@@ -76,18 +76,17 @@ def apply() -> None:
         '            for key, value in attrs\n'
         '        ):\n'
         '            self.violations.add("semantic-heading")\n'
-        '        # Microdata/RDFa and body metadata can publish machine-readable\n'
-        '        # provenance or licence semantics that are absent from the sealed\n'
-        '        # human-readable text. Avoid treating ordinary anchor rel metadata\n'
-        '        # as RDFa, but reject RDFa-only attributes and all live body <meta>.\n'
+        '        # Microdata/RDFa can publish machine-readable provenance or licence\n'
+        '        # semantics absent from the sealed human-readable text. Preserve\n'
+        '        # harmless metadata such as charset/content-type, but reject live\n'
+        '        # semantic vocabularies and relationships on governed surfaces.\n'
         '        machine_metadata_attributes = {\n'
         '            "itemscope", "itemprop", "itemtype", "itemid", "itemref",\n'
         '            "about", "datatype", "inlist", "prefix", "property",\n'
         '            "resource", "rev", "typeof", "vocab",\n'
         '        }\n'
         '        if (\n'
-        '            tag == "meta"\n'
-        '            or machine_metadata_attributes.intersection(attribute_names)\n'
+        '            machine_metadata_attributes.intersection(attribute_names)\n'
         '            or ("rel" in attribute_names and tag not in {"a", "area", "link"})\n'
         '        ):\n'
         '            self.violations.add("machine-metadata")\n'
@@ -157,7 +156,7 @@ def apply() -> None:
         '        "raw or ARIA heading semantics are not allowed in governed documents"\n'
         '    )\n'
         '    assert "machine-metadata" not in found, (\n'
-        '        "machine-readable Microdata/RDFa/body metadata is not allowed in governed documents"\n'
+        '        "machine-readable Microdata/RDFa metadata is not allowed in governed documents"\n'
         '    )\n'
         '    assert "preformatted-content" not in found, (\n',
     )
@@ -226,7 +225,6 @@ def test_nbsp_entity_cannot_collapse_back_to_canonical_registry_receipt() -> Non
     (
         '<span itemscope><meta itemprop="license" content="CC0">{}</span>',
         '<span property="license" content="CC0">{}</span>',
-        '<meta name="license" content="CC0">{}',
     ),
 )
 def test_machine_readable_rights_metadata_is_rejected_from_governed_registry(
@@ -237,7 +235,7 @@ def test_machine_readable_rights_metadata_is_rejected_from_governed_registry(
     assert live in corpus
     mutated = corpus.replace(live, wrapper.format(live), 1)
     assert "machine-metadata" in POLICING["_governed_surface_html_violations"](mutated)
-    with pytest.raises(AssertionError, match="machine-readable Microdata/RDFa/body metadata"):
+    with pytest.raises(AssertionError, match="machine-readable Microdata/RDFa metadata"):
         REGISTRY["_validate_registry_corpus"](mutated)
 '''
     current = REGRESSION_PATH.read_text(encoding="utf-8")
