@@ -27,12 +27,17 @@ replace_once(
 )
 
 # 2) Language metadata changes assistive pronunciation without changing the
-# character-data seal. Make it a first-class shared violation and ensure the
-# registry's corpus-wide gate consumes it.
+# character-data seal. Make it a first-class shared violation and ensure both
+# registry violation collection and its explicit assertion table consume it.
 replace_once(
     REGISTRY,
     '''    "accessible-name",\n    "accessibility-hidden",\n''',
     '''    "accessible-name",\n    "language-override",\n    "accessibility-hidden",\n''',
+)
+replace_once(
+    REGISTRY,
+    '''    assert "accessible-name" not in found, (\n        "accessible-name overrides are not allowed in governed documents"\n    )\n    assert "accessibility-hidden" not in found, (\n''',
+    '''    assert "accessible-name" not in found, (\n        "accessible-name overrides are not allowed in governed documents"\n    )\n    assert "language-override" not in found, (\n        "language overrides are not allowed on governed content"\n    )\n    assert "accessibility-hidden" not in found, (\n''',
 )
 
 # 3) Nested/single <small> presentation can recursively shrink mandatory prose.
@@ -55,6 +60,6 @@ replace_once(
 )
 
 REGRESSION.write_text(
-    '''"""Exact regressions for the latest Codex findings on PR #4."""\n\nfrom __future__ import annotations\n\nfrom pathlib import Path\nimport runpy\n\nimport pytest\n\n\nROOT = Path(__file__).resolve().parent.parent\nREGISTRY = runpy.run_path(str(ROOT / "tests" / "test_research_reference_registry.py"))\nCORPUS = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")\n\nBLACK_COMEDY_RIGHTS = (\n    "Availability through ABC iview is not permission to redistribute content."\n)\n\n\ndef test_registry_receipt_rejects_space_markdown_hard_line_break() -> None:\n    mutated = CORPUS.replace(\n        BLACK_COMEDY_RIGHTS,\n        "Availability through ABC iview is  \\nnot permission to redistribute content.",\n        1,\n    )\n    assert mutated != CORPUS\n    with pytest.raises(AssertionError, match="hard line breaks"):\n        REGISTRY["_validate_registry_corpus"](mutated)\n\n\ndef test_registry_backslash_hard_break_already_changes_receipt() -> None:\n    mutated = CORPUS.replace(\n        BLACK_COMEDY_RIGHTS,\n        "Availability through ABC iview is\\\\\\nnot permission to redistribute content.",\n        1,\n    )\n    assert mutated != CORPUS\n    with pytest.raises(AssertionError):\n        REGISTRY["_validate_registry_corpus"](mutated)\n\n\ndef test_registry_rejects_nested_small_presentation() -> None:\n    wrapped = "<small>" * 12 + BLACK_COMEDY_RIGHTS + "</small>" * 12\n    mutated = CORPUS.replace(BLACK_COMEDY_RIGHTS, wrapped, 1)\n    assert mutated != CORPUS\n    with pytest.raises(AssertionError):\n        REGISTRY["_validate_registry_corpus"](mutated)\n\n\n@pytest.mark.parametrize("attribute", ['lang="ja"', 'xml:lang="ja"'])\ndef test_registry_rejects_language_overrides(attribute: str) -> None:\n    wrapped = f"<span {attribute}>{BLACK_COMEDY_RIGHTS}</span>"\n    mutated = CORPUS.replace(BLACK_COMEDY_RIGHTS, wrapped, 1)\n    assert mutated != CORPUS\n    with pytest.raises(AssertionError):\n        REGISTRY["_validate_registry_corpus"](mutated)\n''',
+    '''"""Exact regressions for the latest Codex findings on PR #4."""\n\nfrom __future__ import annotations\n\nfrom pathlib import Path\nimport runpy\n\nimport pytest\n\n\nROOT = Path(__file__).resolve().parent.parent\nREGISTRY = runpy.run_path(str(ROOT / "tests" / "test_research_reference_registry.py"))\nCORPUS = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")\n\nBLACK_COMEDY_RIGHTS = (\n    "Availability through ABC iview is not permission to redistribute content."\n)\n\n\ndef test_registry_receipt_rejects_space_markdown_hard_line_break() -> None:\n    mutated = CORPUS.replace(\n        BLACK_COMEDY_RIGHTS,\n        "Availability through ABC iview is  \\nnot permission to redistribute content.",\n        1,\n    )\n    assert mutated != CORPUS\n    with pytest.raises(AssertionError, match="hard line breaks"):\n        REGISTRY["_validate_registry_corpus"](mutated)\n\n\ndef test_registry_backslash_hard_break_already_changes_receipt() -> None:\n    mutated = CORPUS.replace(\n        BLACK_COMEDY_RIGHTS,\n        "Availability through ABC iview is\\\\\\nnot permission to redistribute content.",\n        1,\n    )\n    assert mutated != CORPUS\n    with pytest.raises(AssertionError):\n        REGISTRY["_validate_registry_corpus"](mutated)\n\n\ndef test_registry_rejects_nested_small_presentation() -> None:\n    wrapped = "<small>" * 12 + BLACK_COMEDY_RIGHTS + "</small>" * 12\n    mutated = CORPUS.replace(BLACK_COMEDY_RIGHTS, wrapped, 1)\n    assert mutated != CORPUS\n    with pytest.raises(AssertionError):\n        REGISTRY["_validate_registry_corpus"](mutated)\n\n\n@pytest.mark.parametrize("attribute", ['lang="ja"', 'xml:lang="ja"'])\ndef test_registry_rejects_language_overrides(attribute: str) -> None:\n    wrapped = f"<span {attribute}>{BLACK_COMEDY_RIGHTS}</span>"\n    mutated = CORPUS.replace(BLACK_COMEDY_RIGHTS, wrapped, 1)\n    assert mutated != CORPUS\n    with pytest.raises(AssertionError, match="language overrides"):\n        REGISTRY["_validate_registry_corpus"](mutated)\n''',
     encoding="utf-8",
 )
