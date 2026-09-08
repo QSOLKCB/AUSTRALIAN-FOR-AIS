@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import hashlib
 from pathlib import Path
+import re
 import runpy
 
 import pytest
@@ -106,7 +107,28 @@ def _normalised_visible_policing_methodology(methodology: str) -> str:
     return " ".join(_visible_policing_methodology(methodology).split())
 
 
+def _assert_policing_methodology_link_free(methodology: str) -> None:
+    """Keep the canonical policing methodology link-free until links are governed."""
+    namespace = runpy.run_path(str(POLICING_TEST))
+    section = _policing_methodology_section(methodology)
+    structure = namespace["_rendered_structure"](section)
+    assert not tuple(namespace["_iter_inline_markdown_destinations"](structure)), (
+        "unexpected Markdown hyperlink in canonical policing methodology"
+    )
+    assert namespace["AUTOLINK_PATTERN"].search(structure) is None, (
+        "unexpected autolink in canonical policing methodology"
+    )
+    assert re.search(r"<\s*a\b", structure, flags=re.IGNORECASE) is None, (
+        "unexpected raw HTML hyperlink in canonical policing methodology"
+    )
+    assert re.search(
+        r"(?<!!)\[[^\]\r\n]+\]\s*\[[^\]\r\n]*\]",
+        structure,
+    ) is None, "unexpected reference-style hyperlink in canonical policing methodology"
+
+
 def _assert_canonical_policing_integrity(methodology: str) -> None:
+    _assert_policing_methodology_link_free(methodology)
     value = _normalised_visible_policing_methodology(methodology)
     actual_hash = hashlib.sha256(value.encode("utf-8")).hexdigest()
     assert actual_hash == POLICING_METHODOLOGY_VISIBLE_SHA256, (
@@ -257,3 +279,23 @@ def test_canonical_policing_methodology_rejects_companion_high_stakes_reversal()
     mutated = methodology.replace(section, mutated_section, 1)
     with pytest.raises(AssertionError, match="browser-visible canonical policing methodology changed"):
         _assert_canonical_high_stakes_gate(mutated)
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    (
+        "Legal and procedural review is mandatory for high-stakes use.",
+        "Current official legislation",
+    ),
+)
+def test_canonical_policing_methodology_rejects_unregistered_links(phrase: str):
+    methodology = METHODOLOGY.read_text(encoding="utf-8")
+    section = _policing_methodology_section(methodology)
+    assert phrase in section
+    mutated = methodology.replace(
+        phrase,
+        f"[{phrase}](https://example.com/unregistered)",
+        1,
+    )
+    with pytest.raises(AssertionError, match="unexpected Markdown hyperlink"):
+        _assert_canonical_policing_integrity(mutated)

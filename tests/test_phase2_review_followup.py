@@ -169,10 +169,13 @@ def _next_notes_peer_heading(structure: str, namespace: dict) -> int:
 
 
 def _phase2_namespace(changelog: str) -> dict:
-    """Reject document-wide stylesheet effects before rendered Phase 2 slicing."""
+    """Reject document-wide active/rendering HTML before rendered Phase 2 slicing."""
     namespace = runpy.run_path(str(POLICING_TEST))
     violations = namespace["_governed_surface_html_violations"](changelog)
-    namespace["_assert_supported_governed_html"](violations & {"stylesheet"})
+    # Raw h1-h3 elements are intentionally supported as peer heading boundaries
+    # by the Notes slicer. Reject every other active/rendering violation on the
+    # original changelog before any structural masking can erase its effect.
+    namespace["_assert_supported_governed_html"](violations - {"semantic-heading"})
     return namespace
 
 
@@ -335,9 +338,16 @@ def test_phase2_section_seal_catches_sibling_empirical_claims():
         assert _visible_phase2_notes(mutated) == EXPECTED_VISIBLE_PHASE2_NOTES
         assert _phase2_section_sha256(mutated) != EXPECTED_VISIBLE_PHASE2_SECTION_SHA256
 
-def test_phase2_receipts_reject_document_wide_styles_before_slicing():
+@pytest.mark.parametrize(
+    "prefix",
+    (
+        "<style>body { display:none }</style>",
+        "<script>document.body.replaceChildren()</script>",
+    ),
+)
+def test_phase2_receipts_reject_document_wide_active_html_before_slicing(prefix: str):
     changelog = CHANGELOG.read_text(encoding="utf-8")
-    mutated = "<style>body { display:none }</style>\n\n" + changelog
+    mutated = prefix + "\n\n" + changelog
     for receipt in (
         _visible_phase2_notes,
         _phase2_section_sha256,

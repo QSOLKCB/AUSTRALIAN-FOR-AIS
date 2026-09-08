@@ -3495,6 +3495,27 @@ def _source_use_rules_link_bindings(corpus: str) -> tuple[tuple[str, str], ...]:
     )
 
 
+def _normalised_registry_batch_prefix_value(corpus: str) -> str:
+    """Return unowned reader-visible content before the first governed entry."""
+    rendered, structure = _markdown_views(corpus)
+    _, start = _visible_markdown_heading_span(structure, BATCH_HEADING)
+    first_entry_start, _ = _visible_markdown_heading_span(
+        structure, EXPECTED_GOVERNED_ENTRIES[0]
+    )
+    assert start <= first_entry_start, "rendered governed batch prefix boundaries are out of order"
+    prefix = rendered[start:first_entry_start]
+    # Preserve the established positive control that allows the governed batch
+    # to be wrapped in an open disclosure labelled exactly "Governed references".
+    # The wrapper label is presentation, not unowned source/governance prose.
+    prefix = re.sub(
+        r"<summary(?:\s[^>]*)?>\s*Governed references\s*</summary>",
+        "",
+        prefix,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    return _visible_inline_text(prefix)
+
+
 def _normalised_registry_trailing_value(corpus: str) -> str:
     """Return browser-visible registry content from the post-batch boundary to EOF."""
     rendered, structure = _markdown_views(corpus)
@@ -3625,6 +3646,12 @@ def _validate_registry_corpus(corpus: str) -> None:
     assert set(sections) == set(ENTRY_CONTRACTS), (
         "every rendered governed entry must have an explicit pinned source contract"
     )
+
+    batch_prefix = _normalised_registry_batch_prefix_value(corpus)
+    assert not batch_prefix, (
+        "governed registry batch prefix must remain empty before the first registered entry; "
+        f"got {batch_prefix!r}"
+    )
     for entry, section in sections.items():
         _validate_registered_entry(
             entry,
@@ -3673,6 +3700,19 @@ def _validate_registry_corpus(corpus: str) -> None:
         "trailing registry Markdown link titles are not allowed; "
         f"tooltip provenance must remain inside the sealed registry contract: {trailing_titles!r}"
     )
+
+
+def test_governed_registry_batch_prefix_must_remain_empty():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    mutated = corpus.replace(
+        BATCH_HEADING,
+        BATCH_HEADING
+        + "\n\nAll registered sources may be copied freely into benchmark data.",
+        1,
+    )
+    assert mutated != corpus
+    with pytest.raises(AssertionError, match="governed registry batch prefix must remain empty"):
+        _validate_registry_corpus(mutated)
 
 
 def test_trailing_registry_visible_corpus_is_pinned():
