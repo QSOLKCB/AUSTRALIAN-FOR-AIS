@@ -37,21 +37,17 @@ jobs:
           from pathlib import Path
           path = Path("tests/test_research_reference_registry.py")
           text = path.read_text(encoding="utf-8")
-          old = '''    assert "rendered-break" not in found, (
-              "rendered break HTML is not allowed in governed documents"
+          needle = '    assert "rendered-break" not in found, (\n'
+          replacement = (
+              '    if "thematic-break" in found:\n'
+              '        raise AssertionError(\n'
+              '            "raw HTML thematic break is not allowed in governed documents"\n'
+              '        )\n'
+              '    assert "rendered-break" not in found, (\n'
           )
-          '''
-          new = '''    if "thematic-break" in found:
-              raise AssertionError(
-                  "raw HTML thematic break is not allowed in governed documents"
-              )
-          assert "rendered-break" not in found, (
-              "rendered break HTML is not allowed in governed documents"
-          )
-          '''
-          if text.count(old) != 1:
-              raise SystemExit(f"expected one rendered-break assertion, found {text.count(old)}")
-          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          if text.count(needle) != 1:
+              raise SystemExit(f"expected one rendered-break assertion, found {text.count(needle)}")
+          path.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
           PY
 
       - name: Run exact review regressions
