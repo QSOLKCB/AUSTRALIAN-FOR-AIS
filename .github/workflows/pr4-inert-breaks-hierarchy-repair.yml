@@ -1,0 +1,97 @@
+name: PR4 Inert Break Hierarchy Repair
+
+on:
+  push:
+    branches:
+      - research-corpus-governed-expansion
+    paths:
+      - .github/repair-pr4-inert-breaks-hierarchy.py
+      - .github/workflows/pr4-inert-breaks-hierarchy-repair.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    if: github.repository == 'QSOLKCB/AUSTRALIAN-FOR-AIS'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research-corpus-governed-expansion
+          fetch-depth: 0
+
+      - name: Guard exact reviewed scaffold chain
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "92c63c3b7244495c20562f54981dcf5043343153"
+          test "$(git rev-parse HEAD^^)" = "0c1dcf63376b85d0cd9d0d7fcb45343ec14a53c9"
+          test -f .github/repair-pr4-inert-breaks-hierarchy.py
+          test -f .github/workflows/pr4-inert-breaks-hierarchy-repair.yml
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install development dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+
+      - name: Apply guarded repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python .github/repair-pr4-inert-breaks-hierarchy.py
+          git diff --check
+
+      - name: Run exact current-review regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          pytest -q tests/test_pr4_current_review_regressions.py
+
+      - name: Run focused governance suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          pytest -q \
+            tests/test_policing_context_roadmap.py \
+            tests/test_workstream_h_methodology.py \
+            tests/test_research_reference_registry.py \
+            tests/test_phase2_review_followup.py \
+            tests/test_pr4_current_review_regressions.py
+
+      - name: Validate governed datasets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m australian_for_ais.cli validate data/starter/examples.jsonl
+          python -m australian_for_ais.cli validate-pilot data/pilot/items.jsonl
+
+      - name: Run full suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          pytest -q --disable-warnings --maxfail=1
+
+      - name: Self-clean, commit, and push tested repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/repair-pr4-inert-breaks-hierarchy.py
+          rm .github/workflows/pr4-inert-breaks-hierarchy-repair.yml
+          git add \
+            tests/test_policing_context_roadmap.py \
+            tests/test_pr4_current_review_regressions.py \
+            .github/repair-pr4-inert-breaks-hierarchy.py \
+            .github/workflows/pr4-inert-breaks-hierarchy-repair.yml
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Fix governed accessibility break and list semantics'
+          git push origin HEAD:research-corpus-governed-expansion
