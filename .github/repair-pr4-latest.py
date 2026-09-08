@@ -68,7 +68,7 @@ def test_hidden_until_found_is_rejected_across_governed_paths() -> None:
         "\n" + payload + "\n" + POLICING["WORKSTREAM_END"],
         1,
     )
-    with pytest.raises(AssertionError, match="conditional/legacy raw-text"):
+    with pytest.raises(AssertionError, match="missing policing-workstream safeguard"):
         POLICING["_validate_policing_workstream"](mutated_roadmap)
 
     corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")
@@ -86,7 +86,7 @@ def test_base_element_is_rejected_across_governed_paths() -> None:
         "\n" + payload + "\n" + POLICING["WORKSTREAM_END"],
         1,
     )
-    with pytest.raises(AssertionError, match="document-root HTML"):
+    with pytest.raises(AssertionError, match="missing policing-workstream safeguard"):
         POLICING["_validate_policing_workstream"](mutated_roadmap)
 
     corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")
