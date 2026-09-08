@@ -1,0 +1,286 @@
+from pathlib import Path
+import hashlib
+import runpy
+
+
+def replace_once(text: str, old: str, new: str, label: str) -> str:
+    count = text.count(old)
+    assert count == 1, f"{label}: expected one match, found {count}"
+    return text.replace(old, new, 1)
+
+
+policing_path = Path("tests/test_policing_context_roadmap.py")
+policing = policing_path.read_text(encoding="utf-8")
+policing = replace_once(
+    policing,
+    '''        # Raw list containers can terminate surrounding paragraphs in the
+        # browser while flattened text still matches a sealed prose receipt.
+        if tag in {"ol", "ul"}:
+            self.violations.add("raw-list")
+''',
+    '''        # Raw list containers can terminate surrounding paragraphs in the
+        # browser while flattened text still matches a sealed prose receipt.
+        if tag in {"ol", "ul"}:
+            self.violations.add("raw-list")
+        # Raw block-level containers can likewise terminate or reframe the
+        # surrounding paragraph while a text-only receipt reconstructs the
+        # canonical characters. Do not approximate those layout semantics on
+        # governed prose.
+        if tag in {
+            "address", "article", "aside", "div", "dl", "fieldset",
+            "figcaption", "figure", "footer", "header", "main", "nav",
+            "p", "section", "summary",
+        }:
+            self.violations.add("raw-block")
+''',
+    "shared raw-block policy",
+)
+policing = replace_once(
+    policing,
+    '''        "raw-table": "raw table HTML",
+        "named-details": "named details-group HTML",
+''',
+    '''        "raw-table": "raw table HTML",
+        "raw-block": "raw block-container HTML",
+        "named-details": "named details-group HTML",
+''',
+    "shared raw-block rejection",
+)
+policing_path.write_text(policing, encoding="utf-8")
+
+
+registry_path = Path("tests/test_research_reference_registry.py")
+registry = registry_path.read_text(encoding="utf-8")
+registry = replace_once(
+    registry,
+    '''    "raw-table",
+    "raw-list",
+    "named-details",
+''',
+    '''    "raw-table",
+    "raw-list",
+    "raw-block",
+    "named-details",
+''',
+    "registry raw-block active kind",
+)
+registry = replace_once(
+    registry,
+    '''    "raw-mathml",
+    "nested-nobr",
+    "in-body-structure",
+''',
+    '''    "raw-mathml",
+    "nobr",
+    "nested-nobr",
+    "in-body-structure",
+''',
+    "registry single nobr active kind",
+)
+registry = replace_once(
+    registry,
+    '''STATUS_HEADING = "## Status"
+SOURCE_USE_HEADING = "## Source-use rules"
+''',
+    '''REGISTRY_TITLE_HEADING = "# Research Reference Corpus"
+STATUS_HEADING = "## Status"
+SOURCE_USE_HEADING = "## Source-use rules"
+''',
+    "registry title heading constant",
+)
+registry = replace_once(
+    registry,
+    '''def _normalised_status_value(corpus: str) -> str:
+    """Return the complete browser-visible Status section."""
+''',
+    '''def _assert_registry_document_prefix(corpus: str) -> None:
+    """Require the registry prefix to contain only the canonical level-one title."""
+    _, structure = _markdown_views(corpus)
+    title_start, _ = _visible_markdown_heading_span(structure, REGISTRY_TITLE_HEADING)
+    status_start, _ = _visible_markdown_heading_span(structure, STATUS_HEADING)
+    assert title_start == 0, (
+        "registry must begin with the canonical level-one title; "
+        "reader-visible content before the title is not governed"
+    )
+    assert title_start < status_start, "rendered registry title/Status boundaries are out of order"
+    expected_prefix = REGISTRY_TITLE_HEADING + "\\n\\n"
+    actual_prefix = corpus[:status_start]
+    assert actual_prefix == expected_prefix, (
+        "registry content before Status must contain only the canonical title: "
+        f"expected {expected_prefix!r}, got {actual_prefix!r}"
+    )
+
+
+def _normalised_status_value(corpus: str) -> str:
+    """Return the complete browser-visible Status section."""
+''',
+    "registry prefix assertion helper",
+)
+registry = replace_once(
+    registry,
+    '''    rendered, structure = _markdown_views(corpus)
+    try:
+        contract_start, _ = _visible_markdown_heading_span(structure, CONTRACT_HEADING)
+''',
+    '''    rendered, structure = _markdown_views(corpus)
+    _assert_registry_document_prefix(corpus)
+    try:
+        contract_start, _ = _visible_markdown_heading_span(structure, CONTRACT_HEADING)
+''',
+    "registry prefix validation call",
+)
+registry_path.write_text(registry, encoding="utf-8")
+
+
+receipt_path = Path("tests/test_policing_contract_receipt.py")
+receipt = receipt_path.read_text(encoding="utf-8")
+receipt = replace_once(
+    receipt,
+    '''POLICING_METHODOLOGY_VISIBLE_SHA256 = "07227f9c687d0632cc24eb5e73415a406048733a5718713faeb108f04cc4346b"
+POLICING_METADATA_INTRO = (
+''',
+    '''POLICING_METHODOLOGY_VISIBLE_SHA256 = "07227f9c687d0632cc24eb5e73415a406048733a5718713faeb108f04cc4346b"
+POLICING_METHODOLOGY_RECORDS_SHA256 = "__POLICING_METHODOLOGY_RECORDS_SHA256__"
+POLICING_METADATA_INTRO = (
+''',
+    "policing methodology record hash constant",
+)
+receipt = replace_once(
+    receipt,
+    '''def _assert_policing_methodology_link_free(methodology: str) -> None:
+''',
+    '''def _leading_indent_columns(raw_line: str) -> int:
+    """Measure source indentation in CommonMark display columns."""
+    columns = 0
+    for character in raw_line:
+        if character == " ":
+            columns += 1
+        elif character == "\\t":
+            columns += 4 - (columns % 4)
+        else:
+            break
+    return columns
+
+
+def _policing_methodology_record_receipt(methodology: str) -> str:
+    """Seal visible methodology records with container and indentation structure."""
+    namespace = runpy.run_path(str(POLICING_TEST))
+    section = _policing_methodology_section(methodology)
+    records: list[str] = []
+    for raw_line in section.splitlines():
+        line = namespace["_visible_text"](raw_line).strip()
+        line = re.sub(r"^(?:[-+*]|\\d{1,9}[.)])\\s+", "", line)
+        if not line:
+            continue
+        signature = namespace["_workstream_container_signature"](raw_line)
+        indent = _leading_indent_columns(raw_line)
+        records.append(f"{signature}\\x1findent:{indent}\\x1f{line}")
+    return "\\n".join(records)
+
+
+def _assert_policing_methodology_link_free(methodology: str) -> None:
+''',
+    "policing methodology record helper",
+)
+receipt = replace_once(
+    receipt,
+    '''    assert actual_hash == POLICING_METHODOLOGY_VISIBLE_SHA256, (
+        "browser-visible canonical policing methodology changed: expected hash "
+        f"{POLICING_METHODOLOGY_VISIBLE_SHA256!r}, got {actual_hash!r}"
+    )
+''',
+    '''    assert actual_hash == POLICING_METHODOLOGY_VISIBLE_SHA256, (
+        "browser-visible canonical policing methodology changed: expected hash "
+        f"{POLICING_METHODOLOGY_VISIBLE_SHA256!r}, got {actual_hash!r}"
+    )
+    records_value = _policing_methodology_record_receipt(methodology)
+    actual_records_hash = hashlib.sha256(records_value.encode("utf-8")).hexdigest()
+    assert actual_records_hash == POLICING_METHODOLOGY_RECORDS_SHA256, (
+        "canonical policing methodology hierarchy changed: expected hash "
+        f"{POLICING_METHODOLOGY_RECORDS_SHA256!r}, got {actual_records_hash!r}"
+    )
+''',
+    "policing methodology structural assertion",
+)
+receipt_path.write_text(receipt, encoding="utf-8")
+
+
+regression_path = Path("tests/test_pr4_block_and_receipt_regressions.py")
+regression_path.write_text(r'''"""Exact regressions for the latest PR #4 governance review findings."""
+
+from __future__ import annotations
+
+from pathlib import Path
+import runpy
+
+import pytest
+
+
+ROOT = Path(__file__).parent.parent
+CORPUS = ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md"
+METHODOLOGY = ROOT / "docs" / "METHODOLOGY.md"
+REGISTRY_NS = runpy.run_path(str(Path(__file__).with_name("test_research_reference_registry.py")))
+RECEIPT_NS = runpy.run_path(str(Path(__file__).with_name("test_policing_contract_receipt.py")))
+
+
+@pytest.mark.parametrize("tag", ["div", "p", "section", "summary"])
+def test_raw_block_container_cannot_detach_registry_qualifier(tag: str) -> None:
+    corpus = CORPUS.read_text(encoding="utf-8")
+    canonical = "Availability through ABC iview is not permission to redistribute content."
+    mutated = (
+        "Availability through ABC iview is "
+        f"<{tag}>not</{tag}> permission to redistribute content."
+    )
+    assert canonical in corpus
+    with pytest.raises(AssertionError):
+        REGISTRY_NS["_validate_registry_corpus"](corpus.replace(canonical, mutated, 1))
+
+
+@pytest.mark.parametrize("position", ["before-title", "after-title"])
+def test_registry_prefix_allows_only_canonical_title(position: str) -> None:
+    corpus = CORPUS.read_text(encoding="utf-8")
+    claim = "All registered sources may be copied freely into benchmark data."
+    if position == "before-title":
+        mutated = claim + "\n\n" + corpus
+    else:
+        mutated = corpus.replace(
+            "# Research Reference Corpus\n\n",
+            "# Research Reference Corpus\n\n" + claim + "\n\n",
+            1,
+        )
+    with pytest.raises(AssertionError):
+        REGISTRY_NS["_validate_registry_corpus"](mutated)
+
+
+def test_single_nobr_cannot_wrap_registry_rights_boundary() -> None:
+    corpus = CORPUS.read_text(encoding="utf-8")
+    canonical = "Availability through ABC iview is not permission to redistribute content."
+    assert canonical in corpus
+    mutated = corpus.replace(canonical, f"<nobr>{canonical}</nobr>", 1)
+    with pytest.raises(AssertionError):
+        REGISTRY_NS["_validate_registry_corpus"](mutated)
+
+
+def test_policing_methodology_receipt_preserves_root_paragraph_hierarchy() -> None:
+    methodology = METHODOLOGY.read_text(encoding="utf-8")
+    canonical = "Legal and procedural review is mandatory for high-stakes use."
+    assert "\n" + canonical in methodology
+    mutated = methodology.replace("\n" + canonical, "\n  " + canonical, 1)
+    with pytest.raises(AssertionError):
+        RECEIPT_NS["_assert_canonical_policing_integrity"](mutated)
+''', encoding="utf-8")
+
+
+namespace = runpy.run_path(str(receipt_path))
+methodology = Path("docs/METHODOLOGY.md").read_text(encoding="utf-8")
+records_value = namespace["_policing_methodology_record_receipt"](methodology)
+records_hash = hashlib.sha256(records_value.encode("utf-8")).hexdigest()
+receipt = receipt_path.read_text(encoding="utf-8")
+receipt = replace_once(
+    receipt,
+    'POLICING_METHODOLOGY_RECORDS_SHA256 = "__POLICING_METHODOLOGY_RECORDS_SHA256__"',
+    f'POLICING_METHODOLOGY_RECORDS_SHA256 = "{records_hash}"',
+    "policing methodology computed record hash",
+)
+receipt_path.write_text(receipt, encoding="utf-8")
+print("POLICING_METHODOLOGY_RECORDS_SHA256", records_hash)
