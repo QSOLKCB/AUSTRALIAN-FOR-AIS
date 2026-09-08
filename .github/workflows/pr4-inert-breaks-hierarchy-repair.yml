@@ -25,8 +25,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = "92c63c3b7244495c20562f54981dcf5043343153"
-          test "$(git rev-parse HEAD^^)" = "0c1dcf63376b85d0cd9d0d7fcb45343ec14a53c9"
+          test "$(git rev-parse HEAD^)" = "77d270271207dce9b8d8ee106e710500d6768821"
+          test "$(git rev-parse HEAD^^)" = "c199e6b45c2689b9fb960afec287e906e762ff19"
           test -f .github/repair-pr4-inert-breaks-hierarchy.py
           test -f .github/workflows/pr4-inert-breaks-hierarchy-repair.yml
 
