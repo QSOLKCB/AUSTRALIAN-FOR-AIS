@@ -1393,6 +1393,10 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             self.violations.add("raw-mathml")
         if tag in {"style", "link"}:
             self.violations.add("stylesheet")
+        # The registry receipts normalize whitespace, so they cannot faithfully
+        # seal layout-significant whitespace inside raw preformatted HTML.
+        if tag == "pre":
+            self.violations.add("preformatted-content")
         # Non-rendering character data does not make an element harmless:
         # scripts can rewrite the document, and conditional text can vanish.
         if tag == "script":
@@ -1422,6 +1426,11 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         # change framed navigation behavior without changing that binding.
         if tag == "a" and {"ping", "target"}.intersection(attribute_names):
             self.violations.add("executable-url")
+        # A role override can make an otherwise canonical provenance anchor
+        # cease to be exposed as a link to assistive technology. Keep the
+        # anchor's native semantic role inside the governed link contract.
+        if tag == "a" and "role" in attribute_names:
+            self.violations.add("semantic-role")
         if any(name.startswith("on") for name in attribute_names):
             self.violations.add("event-handler")
         if "title" in attribute_names:

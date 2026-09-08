@@ -44,6 +44,8 @@ ACTIVE_DOCUMENT_HTML_KINDS = frozenset({
     "accessibility-hidden",
     "accessibility-disabled",
     "keyboard-navigation",
+    "semantic-role",
+    "preformatted-content",
     "nested-anchor",
     "interactive-form",
     "non-rendering-container",
@@ -3238,6 +3240,12 @@ def _assert_no_active_document_html(found: set[str]) -> None:
     )
     assert "keyboard-navigation" not in found, (
         "negative tabindex keyboard-navigation suppression is not allowed in governed documents"
+    )
+    assert "semantic-role" not in found, (
+        "semantic role overrides on governed source anchors are not allowed in governed documents"
+    )
+    assert "preformatted-content" not in found, (
+        "preformatted HTML is not allowed in governed registry documents"
     )
     assert "nested-anchor" not in found, (
         "nested anchor HTML is not allowed in governed documents"

@@ -394,6 +394,15 @@ def _rendered_inline_citation_links(text: str) -> tuple[tuple[str, str], ...]:
         "Workstream H citations must not depend on inert, non-navigable HTML"
     )
     structure = registry["_mask_raw_html_tags_for_markdown_link_discovery"](structure)
+    titled_links = [
+        link
+        for link in registry["_markdown_inline_links"](structure)
+        if not link.image and link.title is not None
+    ]
+    assert not titled_links, (
+        "Workstream H citation Markdown link titles are not allowed; "
+        "tooltip provenance must remain inside the sealed citation contract"
+    )
     return _inline_markdown_links(structure)
 
 

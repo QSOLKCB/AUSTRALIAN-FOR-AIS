@@ -7,6 +7,7 @@ import pytest
 ROOT = Path(__file__).parent.parent
 POLICING = runpy.run_path(str(Path(__file__).with_name("test_policing_context_roadmap.py")))
 REGISTRY = runpy.run_path(str(Path(__file__).with_name("test_research_reference_registry.py")))
+WORKSTREAM_H = runpy.run_path(str(Path(__file__).with_name("test_workstream_h_methodology.py")))
 
 
 def test_unmatched_markdown_emphasis_delimiters_remain_visible() -> None:
@@ -274,6 +275,39 @@ def test_raw_html_thematic_break_cannot_split_pinned_rights_clause() -> None:
     assert live in corpus
     mutated = corpus.replace(live, split, 1)
     with pytest.raises(AssertionError, match="raw HTML thematic break"):
+        REGISTRY["_validate_registry_corpus"](mutated)
+
+
+def test_workstream_h_citation_markdown_title_is_rejected() -> None:
+    roadmap = (ROOT / "ROADMAP.md").read_text(encoding="utf-8")
+    label, destination = sorted(WORKSTREAM_H["WORKSTREAM_H_CITATION_LINKS"])[0]
+    live = f"[{label}]({destination})"
+    titled = f'[{label}]({destination} "This source may be copied freely")'
+    assert live in roadmap
+    mutated = roadmap.replace(live, titled, 1)
+    with pytest.raises(AssertionError, match="citation Markdown link titles"):
+        WORKSTREAM_H["_assert_workstream_h_integrity"](mutated)
+
+
+def test_registered_source_anchor_role_override_is_rejected() -> None:
+    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")
+    url = "https://iview.abc.net.au/show/black-comedy"
+    live = f"**Registered source:** {url}"
+    overridden = f'**Registered source:** <a href="{url}" role="button">{url}</a>'
+    assert live in corpus
+    mutated = corpus.replace(live, overridden, 1)
+    with pytest.raises(AssertionError, match="semantic role overrides"):
+        REGISTRY["_validate_registry_corpus"](mutated)
+
+
+def test_preformatted_whitespace_cannot_bypass_registry_receipt() -> None:
+    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")
+    live = "The article is a scholarly research reference."
+    preformatted = "<pre>The article is a scholarly\n                    research reference.</pre>"
+    assert live in corpus
+    mutated = corpus.replace(live, preformatted, 1)
+    assert "preformatted-content" in REGISTRY["_forbidden_governed_html_constructs"](mutated)
+    with pytest.raises(AssertionError, match="preformatted HTML"):
         REGISTRY["_validate_registry_corpus"](mutated)
 
 
