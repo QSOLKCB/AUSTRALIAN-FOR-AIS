@@ -32,15 +32,12 @@ def reproduce() -> None:
     if live not in corpus:
         raise SystemExit("canonical registry sentence missing")
 
-    # 1. Raw heading semantics currently disappear into character-data integrity.
     headed = corpus.replace(live, f"<h1>{live}</h1>", 1)
     registry["_validate_registry_corpus"](headed)
 
-    # 2. NBSP currently collapses back to ordinary spaces via str.split().
     nbsp = corpus.replace(live, live.replace(" ", "&nbsp;"), 1)
     registry["_validate_registry_corpus"](nbsp)
 
-    # 3. Microdata/body metadata currently remains outside the sealed text value.
     metadata = corpus.replace(
         live,
         f'<span itemscope><meta itemprop="license" content="CC0">{live}</span>',
@@ -48,7 +45,6 @@ def reproduce() -> None:
     )
     registry["_validate_registry_corpus"](metadata)
 
-    # Also demonstrate the equivalent ARIA heading form is presently accepted.
     role_heading = corpus.replace(live, f'<span role="heading">{live}</span>', 1)
     registry["_validate_registry_corpus"](role_heading)
 
@@ -72,34 +68,30 @@ def apply() -> None:
         '        attribute_names = {key.lower() for key, _ in attrs}\n'
         '        # `hidden=until-found` is conditionally revealed by find-in-page or\n',
         '        attribute_names = {key.lower() for key, _ in attrs}\n'
-        '        # ARIA can also manufacture heading semantics without using an h1-h6\n'
-        '        # element. Reject that equivalent reframing on every governed surface.\n'
+        '        # ARIA can manufacture heading semantics without an h1-h6 element.\n'
+        '        # Reject that equivalent reframing on every governed surface.\n'
         '        if any(\n'
         '            key.lower() == "role"\n'
-        '            and "heading" in {(value or "").strip().casefold().split()}\n'
+        '            and "heading" in (value or "").strip().casefold().split()\n'
         '            for key, value in attrs\n'
         '        ):\n'
         '            self.violations.add("semantic-heading")\n'
         '        # Microdata/RDFa and body metadata can publish machine-readable\n'
         '        # provenance or licence semantics that are absent from the sealed\n'
-        '        # human-readable text. Fail closed rather than maintaining a second\n'
-        '        # semantic contract for indexers and assistive consumers.\n'
+        '        # human-readable text. Avoid treating ordinary anchor rel metadata\n'
+        '        # as RDFa, but reject RDFa-only attributes and all live body <meta>.\n'
         '        machine_metadata_attributes = {\n'
         '            "itemscope", "itemprop", "itemtype", "itemid", "itemref",\n'
-        '            "about", "content", "datatype", "inlist", "prefix",\n'
-        '            "property", "rel", "resource", "rev", "typeof", "vocab",\n'
+        '            "about", "datatype", "inlist", "prefix", "property",\n'
+        '            "resource", "rev", "typeof", "vocab",\n'
         '        }\n'
-        '        if tag == "meta" or machine_metadata_attributes.intersection(attribute_names):\n'
+        '        if (\n'
+        '            tag == "meta"\n'
+        '            or machine_metadata_attributes.intersection(attribute_names)\n'
+        '            or ("rel" in attribute_names and tag not in {"a", "area", "link"})\n'
+        '        ):\n'
         '            self.violations.add("machine-metadata")\n'
         '        # `hidden=until-found` is conditionally revealed by find-in-page or\n',
-    )
-
-    # Fix a small set-construction typo in the generated role check above while keeping
-    # the patch anchored to the exact reviewed text.
-    _replace_once(
-        POLICING_PATH,
-        '            and "heading" in {(value or "").strip().casefold().split()}\n',
-        '            and "heading" in (value or "").strip().casefold().split()\n',
     )
 
     _replace_once(
@@ -114,23 +106,29 @@ def apply() -> None:
 
     _replace_once(
         REGISTRY_PATH,
-        '    "semantic-role",\n'
-        '    "preformatted-content",\n',
-        '    "semantic-role",\n'
-        '    "semantic-heading",\n'
-        '    "machine-metadata",\n'
-        '    "preformatted-content",\n',
-    )
-
-    _replace_once(
-        REGISTRY_PATH,
         '    visible = visible.replace(RAW_HTML_LITERAL_ASTERISK, "*")\n'
         '    return " ".join(visible.split())\n',
         '    visible = visible.replace(RAW_HTML_LITERAL_ASTERISK, "*")\n'
         '    # HTML collapses only ASCII space, tab, LF, FF, and CR in ordinary\n'
-        '    # flow. Preserve NBSP and every other Unicode separator so layout-\n'
-        '    # significant/non-wrapping spacing changes the sealed receipt.\n'
+        '    # flow. Preserve NBSP and other Unicode separators so non-wrapping\n'
+        '    # spacing changes remain part of the sealed reader-facing value.\n'
         '    return re.sub(r"[ \\t\\n\\f\\r]+", " ", visible).strip(" ")\n',
+    )
+
+    _replace_once(
+        REGISTRY_PATH,
+        '            if _visible_inline_text(_fence_logical_line(raw_line, fence).strip()):\n'
+        '                return True\n',
+        '            # Unicode non-collapsible spacing is integrity-significant, but a\n'
+        '            # mapping block made only of whitespace still has no substantive\n'
+        '            # mapping content. Keep those two contracts distinct.\n'
+        '            if _visible_inline_text(_fence_logical_line(raw_line, fence).strip()).strip():\n'
+        '                return True\n',
+    )
+    _replace_once(
+        REGISTRY_PATH,
+        '        if _visible_inline_text(line):\n            return True\n',
+        '        if _visible_inline_text(line).strip():\n            return True\n',
     )
 
     _replace_once(
@@ -149,6 +147,22 @@ def apply() -> None:
         '        "machine-readable Microdata/RDFa/body metadata is not allowed in governed documents"\n'
         '    )\n'
         '    assert "preformatted-content" not in found, (\n',
+    )
+
+    _replace_once(
+        REGISTRY_PATH,
+        '    forbidden_html = _forbidden_governed_html_constructs(section)\n'
+        '    _assert_no_active_document_html(forbidden_html)\n'
+        '    unsupported = forbidden_html & {"shadow-root", "hidden-table-descendant", "nested-anchor"}\n',
+        '    forbidden_html = _forbidden_governed_html_constructs(section)\n'
+        '    # Raw/ARIA headings and machine-readable metadata are entry semantics,\n'
+        '    # not corpus-boundary semantics: reject them inside each governed entry\n'
+        '    # without short-circuiting rendered-entry discovery diagnostics.\n'
+        '    entry_semantic_html = _SHARED_HTML_PREFLIGHT(section) & {\n'
+        '        "semantic-heading", "machine-metadata"\n'
+        '    }\n'
+        '    _assert_no_active_document_html(forbidden_html | entry_semantic_html)\n'
+        '    unsupported = forbidden_html & {"shadow-root", "hidden-table-descendant", "nested-anchor"}\n',
     )
 
     addition = r'''
