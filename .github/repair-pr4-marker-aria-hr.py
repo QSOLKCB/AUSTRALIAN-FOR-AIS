@@ -1,9 +1,12 @@
 from pathlib import Path
+import hashlib
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICING = ROOT / "tests" / "test_policing_context_roadmap.py"
 REGISTRY = ROOT / "tests" / "test_research_reference_registry.py"
 REGRESSIONS = ROOT / "tests" / "test_pr4_current_review_regressions.py"
+CORPUS = ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md"
 
 
 def replace_once(text: str, old: str, new: str, label: str) -> str:
@@ -60,6 +63,40 @@ registry = replace_once(
     "registry raw thematic break rejection",
 )
 REGISTRY.write_text(registry, encoding="utf-8")
+
+# The delimiter correction changes the rendered normalization of existing
+# snake_case-like identifiers because CommonMark renders those intraword
+# underscores literally. Rebaseline only parser-sensitive fixtures against the
+# unchanged canonical corpus; the guarded base SHA ensures no document bytes
+# have moved under this migration.
+ns = runpy.run_path(str(REGISTRY))
+corpus = CORPUS.read_text(encoding="utf-8")
+sections = ns["_registered_sections"](corpus)
+fixture_source = REGISTRY.read_text(encoding="utf-8")
+changed_fixtures: list[tuple[str, str, str]] = []
+for entry, section in sections.items():
+    research_value, project_value = ns["_require_mapping_block"](entry, section)
+    complete_value = ns["_normalise_complete_entry_integrity"](section)
+    values = (
+        ("RESEARCH_MAPPING_VALUE_HASHES", research_value),
+        ("PROJECT_MAPPING_VALUE_HASHES", project_value),
+        ("ENTRY_RENDERED_VALUE_HASHES", complete_value),
+    )
+    for mapping_name, value in values:
+        old_hash = ns[mapping_name][entry]
+        new_hash = hashlib.sha256(value.encode("utf-8")).hexdigest()
+        if old_hash == new_hash:
+            continue
+        count = fixture_source.count(old_hash)
+        if count != 1:
+            raise SystemExit(
+                f"{mapping_name} {entry}: expected unique old hash {old_hash}, found {count}"
+            )
+        fixture_source = fixture_source.replace(old_hash, new_hash, 1)
+        changed_fixtures.append((mapping_name, entry, new_hash))
+REGISTRY.write_text(fixture_source, encoding="utf-8")
+for mapping_name, entry, new_hash in changed_fixtures:
+    print(f"rebaselined {mapping_name} {entry}: {new_hash}")
 
 regressions = REGRESSIONS.read_text(encoding="utf-8")
 marker = "\n\n# Human receipt: autolink/implied-end/type-6 repair passed 12 exact and 912 full-suite tests before self-cleanup.\n"
