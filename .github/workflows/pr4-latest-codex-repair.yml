@@ -51,7 +51,7 @@ jobs:
 
       - name: Commit verified repair
         run: |
-          # Fourth gate: detect hard-break syntax from source, not masking artifacts.
+          # Fifth gate: all three findings are wired through their final validation paths.
           if git diff --quiet -- tests/test_research_reference_registry.py tests/test_policing_context_roadmap.py tests/test_pr4_latest_codex_regressions.py; then
             echo "No repair diff produced"
             exit 1
