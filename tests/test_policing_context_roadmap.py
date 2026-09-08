@@ -1367,6 +1367,7 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
                 self.violations.add("nested-anchor")
             self._anchor_open = True
         if tag == "nobr":
+            self.violations.add("nobr")
             if self._nobr_open:
                 self.violations.add("nested-nobr")
             self._nobr_open = True
@@ -1439,9 +1440,16 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             "about", "datatype", "inlist", "prefix", "property",
             "resource", "rev", "typeof", "vocab",
         }
+        rel_tokens = {
+            token.casefold()
+            for key, value in attrs
+            if key.lower() == "rel"
+            for token in (value or "").split()
+        }
         if (
             machine_metadata_attributes.intersection(attribute_names)
             or ("rel" in attribute_names and tag not in {"a", "area", "link"})
+            or "license" in rel_tokens
         ):
             self.violations.add("machine-metadata")
         # `hidden=until-found` is conditionally revealed by find-in-page or
@@ -1663,6 +1671,7 @@ def _assert_supported_governed_html(violations: set[str]) -> None:
         "accessibility-inert": "native inert accessibility suppression HTML",
         "accessibility-disabled": "aria-disabled source-link suppression HTML",
         "nested-anchor": "nested anchor HTML",
+        "nobr": "nobr HTML",
         "nested-nobr": "nested nobr HTML",
         "in-body-structure": "discarded in-body structural HTML",
         "non-commonmark-character-reference": "semicolonless HTML-only character reference",
@@ -2252,3 +2261,23 @@ def test_policing_workstream_rejects_duplicate_document_root_tags(tag: str):
     mutated = roadmap + f"\n<{tag} hidden></{tag}>\n"
     with pytest.raises(AssertionError):
         _validate_policing_workstream(mutated)
+
+
+
+def test_governed_surface_rejects_single_nobr_container():
+    violations = _governed_surface_html_violations(
+        "<nobr>sealed provenance and rights boundary</nobr>"
+    )
+    assert "nobr" in violations
+    with pytest.raises(AssertionError, match="nobr HTML"):
+        _assert_supported_governed_html(violations)
+
+
+def test_governed_surface_rejects_license_rel_on_anchor():
+    violations = _governed_surface_html_violations(
+        '<a href="https://creativecommons.org/publicdomain/zero/1.0/" '
+        'rel="noopener LICENSE"></a>'
+    )
+    assert "machine-metadata" in violations
+    with pytest.raises(AssertionError, match="machine-readable metadata HTML"):
+        _assert_supported_governed_html(violations)

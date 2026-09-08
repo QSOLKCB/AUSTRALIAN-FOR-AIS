@@ -382,7 +382,9 @@ def _normalised_workstream_h_visible_value(text: str) -> str:
     return " ".join(_workstream_h(text).split())
 
 
-def _rendered_inline_citation_links(text: str) -> tuple[tuple[str, str], ...]:
+def _rendered_inline_citation_links(
+    text: str, *, reject_titles: bool = True
+) -> tuple[tuple[str, str], ...]:
     """Use the registry's structural view, not hidden Markdown source text."""
     registry = runpy.run_path(str(POLICING_TEST.with_name("test_research_reference_registry.py")))
     assert not registry["_contains_markdown_structure_in_type6_raw_html"](text), (
@@ -399,10 +401,11 @@ def _rendered_inline_citation_links(text: str) -> tuple[tuple[str, str], ...]:
         for link in registry["_markdown_inline_links"](structure)
         if not link.image and link.title is not None
     ]
-    assert not titled_links, (
-        "Workstream H citation Markdown link titles are not allowed; "
-        "tooltip provenance must remain inside the sealed citation contract"
-    )
+    if reject_titles:
+        assert not titled_links, (
+            "Workstream H citation Markdown link titles are not allowed; "
+            "tooltip provenance must remain inside the sealed citation contract"
+        )
     return _inline_markdown_links(structure)
 
 
@@ -431,11 +434,15 @@ def _assert_workstream_h_integrity(text: str) -> str:
     return section
 
 
-def _trans_tasman_methodology(text: str) -> str:
+def _trans_tasman_raw(text: str) -> str:
     start, _ = _rendered_heading_span(text, TRANS_TASMAN_METHODOLOGY_HEADING)
     end, _ = _rendered_heading_span(text, POLICING_METHODOLOGY_HEADING)
     assert start < end, "rendered Trans-Tasman methodology boundary is invalid"
-    return _visible_markdown_text(text[start:end])
+    return text[start:end]
+
+
+def _trans_tasman_methodology(text: str) -> str:
+    return _visible_markdown_text(_trans_tasman_raw(text))
 
 
 def _normalised_trans_tasman_visible_value(text: str) -> str:
@@ -443,7 +450,15 @@ def _normalised_trans_tasman_visible_value(text: str) -> str:
 
 
 def _assert_trans_tasman_integrity(text: str) -> str:
-    section = _trans_tasman_methodology(text)
+    raw_section = _trans_tasman_raw(text)
+    rendered_links = _rendered_inline_citation_links(
+        raw_section, reject_titles=False
+    )
+    assert not rendered_links, (
+        "Trans-Tasman methodology citation links are not allowed; "
+        f"got {sorted(set(rendered_links))!r}"
+    )
+    section = _visible_markdown_text(raw_section)
     value = " ".join(section.split())
     actual_hash = hashlib.sha256(value.encode("utf-8")).hexdigest()
     assert actual_hash == TRANS_TASMAN_VISIBLE_SHA256, (
@@ -651,3 +666,21 @@ def test_fresh_review_workstream_h_binds_citation_labels_to_destinations():
     )
     with pytest.raises(AssertionError, match="citation label/destination bindings changed"):
         _assert_workstream_h_integrity(mutated)
+
+
+
+def test_trans_tasman_methodology_rejects_unregistered_link_binding():
+    methodology = METHODOLOGY.read_text(encoding="utf-8")
+    _assert_trans_tasman_integrity(methodology)
+    raw_section = _trans_tasman_raw(methodology)
+    assert "relational licence" in raw_section
+    mutated_section = raw_section.replace(
+        "relational licence",
+        "[relational licence](https://example.com/unregistered)",
+        1,
+    )
+    mutated = methodology.replace(raw_section, mutated_section, 1)
+    with pytest.raises(
+        AssertionError, match="Trans-Tasman methodology citation links are not allowed"
+    ):
+        _assert_trans_tasman_integrity(mutated)
