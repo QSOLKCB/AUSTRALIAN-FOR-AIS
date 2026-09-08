@@ -22,8 +22,10 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD~2)" = "e89df4ba00b11c2c609989c4a1e24ee240f76f6e"
-          test "$(git rev-parse HEAD~1)" = "606c2be7e3c5d47ea4928f9268bb65abbe09fe53"
+          test "$(git rev-parse HEAD~4)" = "e89df4ba00b11c2c609989c4a1e24ee240f76f6e"
+          test "$(git rev-parse HEAD~3)" = "606c2be7e3c5d47ea4928f9268bb65abbe09fe53"
+          test "$(git rev-parse HEAD~2)" = "f1409f5cf0eb77198053284c69e22c8c53bc9888"
+          test "$(git rev-parse HEAD~1)" = "3f2313297ec0a03c0a80bccd844fb072880f1ea9"
 
       - uses: actions/setup-python@v5
         with:
