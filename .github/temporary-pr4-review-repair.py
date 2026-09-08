@@ -47,7 +47,7 @@ if "def test_ascft_mandatory_boundaries_preserve_canonical_emphasis" not in ascf
 phase2 = Path("tests/test_phase2_review_followup.py")
 phase2_text = phase2.read_text(encoding="utf-8")
 helper_anchor = '''def _visible_phase2_notes(changelog: str) -> str:\n    namespace = runpy.run_path(str(POLICING_TEST))\n'''
-helper_replacement = '''def _phase2_namespace(changelog: str) -> dict:\n    """Preflight the original changelog before any rendered slicing/masking."""\n    namespace = runpy.run_path(str(POLICING_TEST))\n    namespace["_assert_supported_governed_html"](\n        namespace["_governed_surface_html_violations"](changelog)\n    )\n    return namespace\n\n\ndef _visible_phase2_notes(changelog: str) -> str:\n    namespace = _phase2_namespace(changelog)\n'''
+helper_replacement = '''def _phase2_namespace(changelog: str) -> dict:\n    """Reject document-wide stylesheet effects before rendered Phase 2 slicing."""\n    namespace = runpy.run_path(str(POLICING_TEST))\n    violations = namespace["_governed_surface_html_violations"](changelog)\n    namespace["_assert_supported_governed_html"](violations & {"stylesheet"})\n    return namespace\n\n\ndef _visible_phase2_notes(changelog: str) -> str:\n    namespace = _phase2_namespace(changelog)\n'''
 if helper_anchor not in phase2_text:
     raise RuntimeError("Phase 2 visible-notes anchor not found")
 phase2_text = phase2_text.replace(helper_anchor, helper_replacement, 1)
