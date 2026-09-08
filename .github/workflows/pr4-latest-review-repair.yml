@@ -31,6 +31,29 @@ jobs:
       - name: Apply review repair
         run: python scripts/pr4_latest_review_repair.py
 
+      - name: Preserve thematic-break diagnostic precedence
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("tests/test_research_reference_registry.py")
+          text = path.read_text(encoding="utf-8")
+          old = '''    assert "rendered-break" not in found, (
+              "rendered break HTML is not allowed in governed documents"
+          )
+          '''
+          new = '''    if "thematic-break" in found:
+              raise AssertionError(
+                  "raw HTML thematic break is not allowed in governed documents"
+              )
+          assert "rendered-break" not in found, (
+              "rendered break HTML is not allowed in governed documents"
+          )
+          '''
+          if text.count(old) != 1:
+              raise SystemExit(f"expected one rendered-break assertion, found {text.count(old)}")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+
       - name: Run exact review regressions
         run: pytest -q tests/test_pr4_latest_review_regressions.py
 
