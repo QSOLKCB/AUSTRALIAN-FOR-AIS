@@ -158,6 +158,21 @@ jobs:
           ''',
               "activation diagnostic",
           )
+          registry = replace_once(
+              registry,
+              '''    assert _normalised_source_use_rules_value(mutated) == _normalised_source_use_rules_value(corpus)
+              assert _source_use_rules_record_receipt(mutated) == _source_use_rules_record_receipt(corpus)
+              with pytest.raises(AssertionError, match="no usable HTTPS destination"):
+                  _source_use_rules_link_bindings(mutated)
+          ''',
+              '''    assert _normalised_source_use_rules_value(mutated) == _normalised_source_use_rules_value(corpus)
+              with pytest.raises(AssertionError, match="executable URL"):
+                  _source_use_rules_record_receipt(mutated)
+              with pytest.raises(AssertionError, match="no usable HTTPS destination"):
+                  _source_use_rules_link_bindings(mutated)
+          ''',
+              "legacy empty-href download regression",
+          )
           registry_path.write_text(registry, encoding="utf-8")
 
           regression_path = Path("tests/test_pr4_review_20260909_regressions.py")
