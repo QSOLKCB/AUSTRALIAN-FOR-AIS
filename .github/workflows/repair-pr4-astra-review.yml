@@ -1,0 +1,143 @@
+name: Repair PR4 Astra review findings
+
+on:
+  push:
+    branches:
+      - research-corpus-governed-expansion
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-pr4-astra-review
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research-corpus-governed-expansion
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Apply guarded validator repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_parent='74a66de0f43dd280adb4175b9005f46dd45b238d'
+          actual_parent="$(git rev-parse HEAD^)"
+          test "$actual_parent" = "$expected_parent" || {
+            echo "Refusing repair: workflow commit parent is $actual_parent, expected $expected_parent" >&2
+            exit 1
+          }
+
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: Path, old: str, new: str) -> None:
+              text = path.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(
+                      f"{path}: expected exactly one replacement target, found {count}"
+                  )
+              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          policing = Path("tests/test_policing_context_roadmap.py")
+
+          replace_once(
+              policing,
+              '''        # Preserve an unmatched candidate run, or the literal surplus left\n        # after CommonMark consumes only part of a matched delimiter run.\n        if not (\n            bool(run["can_open"])\n            or bool(run["can_close"])\n            or int(run["open_consumed"])\n            or int(run["close_consumed"])\n        ):\n            continue\n        sentinel = (\n''',
+              '''        # Any unconsumed delimiter character is browser-visible literal text.\n        # That includes a run surrounded by whitespace, which can neither open\n        # nor close emphasis and therefore must not disappear from the receipt.\n        sentinel = (\n''',
+          )
+
+          replace_once(
+              policing,
+              '''        if tag in {"iframe", "object", "embed", "audio", "video", "meter", "progress"}:\n            self.violations.add("replacement-content")\n''',
+              '''        if tag in {\n            "iframe", "object", "embed", "audio", "video", "meter", "progress",\n            "marquee",\n        }:\n            self.violations.add("replacement-content")\n''',
+          )
+
+          replace_once(
+              policing,
+              '''        attribute_names = {key.lower() for key, _ in attrs}\n        if any(name.startswith("on") for name in attribute_names):\n''',
+              '''        attribute_names = {key.lower() for key, _ in attrs}\n        # Hyperlink auditing can send an additional network request that is not\n        # represented by the sealed href binding. Fail closed on it.\n        if tag == "a" and "ping" in attribute_names:\n            self.violations.add("executable-url")\n        if any(name.startswith("on") for name in attribute_names):\n''',
+          )
+
+          replace_once(
+              policing,
+              '''        structure = _rendered_structure(roadmap)\n        start, _ = _visible_markdown_heading_span(structure, WORKSTREAM_HEADING)\n''',
+              '''        # Heading discovery must ignore raw HTML block payloads so a\n        # heading-looking line inside <pre> cannot become a section boundary.\n        heading_structure = _rendered_structure(roadmap)\n        start, _ = _visible_markdown_heading_span(\n            heading_structure, WORKSTREAM_HEADING\n        )\n''',
+          )
+          replace_once(
+              policing,
+              '''    end, _ = _visible_markdown_heading_span(structure, WORKSTREAM_END_HEADING)\n''',
+              '''    end, _ = _visible_markdown_heading_span(\n        heading_structure, WORKSTREAM_END_HEADING\n    )\n''',
+          )
+          replace_once(
+              policing,
+              '''    visible_structure = _mask_hidden_html_regions(structure)\n    return visible_structure[start:end]\n''',
+              '''    # Integrity uses a distinct same-length view that preserves raw HTML\n    # blocks. Visible <pre>/<textarea> character data therefore contributes to\n    # the receipt even though those blocks remain inert for heading discovery.\n    integrity_structure = _rendered_structure(roadmap, html_spans=[])\n    assert len(integrity_structure) == len(heading_structure), (\n        "heading and integrity rendering views lost source-offset alignment"\n    )\n    visible_structure = _mask_hidden_html_regions(integrity_structure)\n    return visible_structure[start:end]\n''',
+          )
+
+          replace_once(
+              policing,
+              '''\n\n    integrity_value = "\\n".join(visible_lines)\n''',
+              '''\n\n    # Workstream I currently has no approved hyperlinks. Keep destinations out\n    # of the prose-only receipt only by rejecting link-bearing syntax entirely;\n    # future links must be explicitly registered and added to this contract.\n    assert not tuple(_iter_inline_markdown_destinations(rendered)), (\n        "unexpected Markdown hyperlink in governed policing workstream"\n    )\n    assert AUTOLINK_PATTERN.search(rendered) is None, (\n        "unexpected autolink in governed policing workstream"\n    )\n    assert re.search(\n        r"<\\s*a\\b(?:[^>\\\"']|\\\"[^\\\"]*\\\"|'[^']*')*\\bhref\\s*=",\n        rendered,\n        flags=re.IGNORECASE,\n    ) is None, "unexpected raw HTML hyperlink in governed policing workstream"\n    assert re.search(\n        r"(?<!!)\\[[^\\]\\r\\n]+\\]\\s*\\[[^\\]\\r\\n]*\\]",\n        rendered,\n    ) is None, "unexpected reference-style hyperlink in governed policing workstream"\n\n    integrity_value = "\\n".join(visible_lines)\n''',
+          )
+
+          registry = Path("tests/test_research_reference_registry.py")
+          replace_once(
+              registry,
+              '''_SHARED_HTML_PREFLIGHT = runpy.run_path(\n    str(Path(__file__).with_name("test_policing_context_roadmap.py"))\n)["_governed_surface_html_violations"]\n''',
+              '''_SHARED_POLICING = runpy.run_path(\n    str(Path(__file__).with_name("test_policing_context_roadmap.py"))\n)\n_SHARED_HTML_PREFLIGHT = _SHARED_POLICING["_governed_surface_html_violations"]\n''',
+          )
+          replace_once(
+              registry,
+              '''HTML_P_IMPLIED_END_START_TAGS = frozenset({\n    "address", "article", "aside", "blockquote", "div", "dl", "fieldset",\n    "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6", "header",\n    "hgroup", "hr", "main", "menu", "nav", "ol", "p", "pre", "search",\n    "section", "table", "ul",\n})\n''',
+              '''# Keep paragraph-closing browser semantics identical to the shared\n# governed-surface parser instead of maintaining a drifting registry copy.\nHTML_P_IMPLIED_END_START_TAGS = _SHARED_POLICING[\n    "HTML_P_IMPLIED_END_START_TAGS"\n]\n''',
+          )
+
+          regression = Path("tests/test_pr4_astra_review_regressions.py")
+          regression.write_text('''"""Regressions for the September 8 Astra review of PR #4."""\n\nfrom pathlib import Path\nimport runpy\n\nimport pytest\n\n\nTESTS = Path(__file__).parent\nROOT = TESTS.parent\nPOLICING = runpy.run_path(str(TESTS / "test_policing_context_roadmap.py"))\nREGISTRY = runpy.run_path(str(TESTS / "test_research_reference_registry.py"))\n\n\ndef test_visible_pre_content_changes_policing_integrity() -> None:\n    roadmap = (ROOT / "ROADMAP.md").read_text(encoding="utf-8")\n    validate = POLICING["_validate_policing_workstream"]\n    validate(roadmap)\n\n    boundary = POLICING["WORKSTREAM_END"]\n    assert boundary in roadmap\n    changed = roadmap.replace(\n        boundary,\n        "\\n<pre>\\nCurrent sources may be skipped.\\n</pre>\\n" + boundary,\n        1,\n    )\n    with pytest.raises(AssertionError):\n        validate(changed)\n\n\n@pytest.mark.parametrize("marker", ["*", "_"])\ndef test_whitespace_delimited_literal_marker_changes_policing_integrity(\n    marker: str,\n) -> None:\n    roadmap = (ROOT / "ROADMAP.md").read_text(encoding="utf-8")\n    changed = roadmap.replace(\n        "not legal advice",\n        f"not {marker} legal advice",\n        1,\n    )\n    with pytest.raises(AssertionError):\n        POLICING["_validate_policing_workstream"](changed)\n\n\ndef test_zero_sized_marquee_cannot_satisfy_policing_safeguard() -> None:\n    roadmap = (ROOT / "ROADMAP.md").read_text(encoding="utf-8")\n    phrase = "source-gated research proposal"\n    changed = roadmap.replace(\n        phrase,\n        f'<marquee width="0" height="0">{phrase}</marquee>',\n        1,\n    )\n    with pytest.raises(AssertionError):\n        POLICING["_validate_policing_workstream"](changed)\n\n\ndef test_unregistered_https_link_cannot_wrap_policing_safeguard() -> None:\n    roadmap = (ROOT / "ROADMAP.md").read_text(encoding="utf-8")\n    phrase = "source-gated research proposal"\n    changed = roadmap.replace(\n        phrase,\n        f'[{phrase}](https://example.com/not-legal-advice)',\n        1,\n    )\n    with pytest.raises(AssertionError, match="hyperlink"):\n        POLICING["_validate_policing_workstream"](changed)\n\n\ndef test_anchor_ping_is_rejected_on_registered_source() -> None:\n    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(\n        encoding="utf-8"\n    )\n    source = "https://iview.abc.net.au/show/black-comedy"\n    changed = corpus.replace(\n        source,\n        f'<a href="{source}" ping="https://example.com/track">{source}</a>',\n        1,\n    )\n    with pytest.raises(AssertionError):\n        REGISTRY["_validate_registry_corpus"](changed)\n\n\ndef test_registry_uses_browser_paragraph_end_for_center() -> None:\n    rendered = REGISTRY["_visible_html_text"](\n        '<p hidden>masked<center>Current sources may be skipped.</center></p>'\n    )\n    assert rendered == "Current sources may be skipped."\n\n\ndef test_visible_center_after_hidden_paragraph_changes_entry_integrity() -> None:\n    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(\n        encoding="utf-8"\n    )\n    marker = "Candidate research mappings:"\n    assert marker in corpus\n    changed = corpus.replace(\n        marker,\n        '<p hidden>masked<center>Current sources may be skipped.</center></p>\\n\\n'\n        + marker,\n        1,\n    )\n    with pytest.raises(AssertionError):\n        REGISTRY["_validate_registry_corpus"](changed)\n''', encoding="utf-8")
+          PY
+
+          git diff --check
+
+      - name: Run focused governance regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q \
+            tests/test_policing_context_roadmap.py \
+            tests/test_research_reference_registry.py \
+            tests/test_policing_contract_receipt.py \
+            tests/test_pr4_astra_review_regressions.py
+
+      - name: Run full suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q
+
+      - name: Commit verified repair and self-delete
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          rm .github/workflows/repair-pr4-astra-review.yml
+          git add \
+            tests/test_policing_context_roadmap.py \
+            tests/test_research_reference_registry.py \
+            tests/test_pr4_astra_review_regressions.py \
+            .github/workflows/repair-pr4-astra-review.yml
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Harden PR4 rendered governance receipts"
+          git push origin HEAD:research-corpus-governed-expansion
