@@ -1390,6 +1390,10 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             self.violations.add("rendered-break")
         if tag == "table":
             self.violations.add("raw-table")
+        # Raw list containers can terminate surrounding paragraphs in the
+        # browser while flattened text still matches a sealed prose receipt.
+        if tag in {"ol", "ul"}:
+            self.violations.add("raw-list")
         # Legacy font presentation can make sealed prose unreadable without
         # changing its character data. Do not approximate that rendering.
         if tag in {"font", "basefont", "small"}:
@@ -1464,9 +1468,9 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         ):
             self.violations.add("conditional-raw-text")
         # Hyperlink auditing can send an additional network request that is not
-        # represented by the sealed href binding. Per-anchor targets likewise
-        # change framed navigation behavior without changing that binding.
-        if tag == "a" and {"ping", "target"}.intersection(attribute_names):
+        # represented by the sealed href binding. Targets change framing, while
+        # download changes activation without changing the sealed label/href binding.
+        if tag == "a" and {"download", "ping", "target"}.intersection(attribute_names):
             self.violations.add("executable-url")
         # A role override can make an otherwise canonical provenance anchor
         # cease to be exposed as a link to assistive technology. Keep the

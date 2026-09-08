@@ -37,6 +37,7 @@ ACTIVE_DOCUMENT_HTML_KINDS = frozenset({
     "document-root",
     "replacement-content",
     "raw-table",
+    "raw-list",
     "named-details",
     "tooltip-title",
     "presentational-font",
@@ -3231,7 +3232,7 @@ def _assert_no_active_document_html(found: set[str]) -> None:
         "conditional/legacy raw-text HTML is not allowed in governed documents"
     )
     assert "executable-url" not in found, (
-        "executable URL HTML is not allowed in governed documents"
+        "executable URL or activation-changing anchor HTML is not allowed in governed documents"
     )
     assert "event-handler" not in found, (
         "inline event-handler HTML is not allowed in governed documents"
@@ -3244,6 +3245,10 @@ def _assert_no_active_document_html(found: set[str]) -> None:
     )
     assert "raw-table" not in found, (
         "raw table HTML, including visually hidden raw HTML table semantics, is not allowed in governed documents"
+    )
+    assert "raw-list" not in found, (
+        "raw list HTML is not allowed in governed documents because list containers can "
+        "detach sealed scalar prose during browser tree construction"
     )
     assert "named-details" not in found, (
         "named details-group HTML is not allowed in governed documents"
@@ -3460,6 +3465,20 @@ def _normalised_status_value(corpus: str) -> str:
     return _visible_inline_text(rendered[start:end])
 
 
+def _status_link_bindings(corpus: str) -> tuple[tuple[str, str], ...]:
+    """Return every live HTTPS link binding inside the Status section."""
+    rendered, structure = _markdown_views(corpus)
+    start, _ = _visible_markdown_heading_span(structure, STATUS_HEADING)
+    end, _ = _visible_markdown_heading_span(structure, SOURCE_USE_HEADING)
+    assert start < end, "rendered Status/source-use boundaries are out of order"
+    return tuple(
+        _usable_https_source_bindings(
+            rendered[start:end],
+            reference_scope=corpus,
+        )
+    )
+
+
 def _normalised_source_use_rules_value(corpus: str) -> str:
     """Return the complete browser-visible Source-use rules section."""
     rendered, structure = _markdown_views(corpus)
@@ -3632,6 +3651,11 @@ def _validate_registry_corpus(corpus: str) -> None:
     assert actual_status_hash == STATUS_SECTION_HASH, (
         "browser-visible Status section changed or was weakened: "
         f"expected hash {STATUS_SECTION_HASH!r}, got {actual_status_hash!r}"
+    )
+    status_links = _status_link_bindings(corpus)
+    assert not status_links, (
+        "Status section must not contain hyperlinks unless an explicit link contract is added; "
+        f"got {status_links!r}"
     )
 
     visible_source_use = _normalised_source_use_rules_value(corpus)
@@ -5651,7 +5675,8 @@ def test_source_use_rules_reject_empty_raw_html_href():
         1,
     )
     assert _normalised_source_use_rules_value(mutated) == _normalised_source_use_rules_value(corpus)
-    assert _source_use_rules_record_receipt(mutated) == _source_use_rules_record_receipt(corpus)
+    with pytest.raises(AssertionError, match="executable URL"):
+        _source_use_rules_record_receipt(mutated)
     with pytest.raises(AssertionError, match="no usable HTTPS destination"):
         _source_use_rules_link_bindings(mutated)
     with pytest.raises(AssertionError):
