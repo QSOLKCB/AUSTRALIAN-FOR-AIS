@@ -24,6 +24,10 @@ _SHARED_POLICING = runpy.run_path(
     str(Path(__file__).with_name("test_policing_context_roadmap.py"))
 )
 _SHARED_HTML_PREFLIGHT = _SHARED_POLICING["_governed_surface_html_violations"]
+_SHARED_PROTECT_NON_COMMONMARK_RAW_TAG_OPENERS = _SHARED_POLICING[
+    "_protect_non_commonmark_raw_tag_openers"
+]
+_SHARED_RAW_TAG_SENTINEL = _SHARED_POLICING["COMMONMARK_RAW_HTML_TAG_SENTINEL"]
 ACTIVE_DOCUMENT_HTML_KINDS = frozenset({
     "executable-script",
     "meta-refresh",
@@ -1030,25 +1034,26 @@ def _visible_html_text(
     *,
     protect_raw_html_literal_asterisks: bool = False,
 ) -> str:
+    protected = _SHARED_PROTECT_NON_COMMONMARK_RAW_TAG_OPENERS(text)
     parser = _VisibleHTMLTextParser(
         protect_raw_html_literal_asterisks=protect_raw_html_literal_asterisks,
     )
     try:
-        parser.feed(text)
+        parser.feed(protected)
         parser.close()
     except Exception:
         return ""
     # HTML inline elements do not manufacture whitespace between adjacent text
     # nodes. Preserve the source/browser adjacency here; the final visible-text
     # normalizer collapses whitespace that was actually rendered by the source.
-    return "".join(parser.parts)
+    return "".join(parser.parts).replace(_SHARED_RAW_TAG_SENTINEL, "<")
 
 
 def _visible_html_links(text: str) -> tuple[str, ...]:
     """Return navigable href values from browser-visible raw HTML anchors."""
     parser = _VisibleHTMLTextParser()
     try:
-        parser.feed(text)
+        parser.feed(_SHARED_PROTECT_NON_COMMONMARK_RAW_TAG_OPENERS(text))
         parser.close()
     except Exception:
         return ()
@@ -1058,7 +1063,7 @@ def _visible_html_links(text: str) -> tuple[str, ...]:
 def _visible_html_link_bindings(text: str) -> tuple[tuple[str, str], ...]:
     """Keep linked character data attached to its already-decoded HTML href."""
     parser = _VisibleHTMLTextParser()
-    parser.feed(text)
+    parser.feed(_SHARED_PROTECT_NON_COMMONMARK_RAW_TAG_OPENERS(text))
     parser.close()
     return tuple(parser.link_bindings)
 
@@ -1278,9 +1283,10 @@ class _HiddenHTMLRegionParser(HTMLParser):
 
 def _mask_hidden_html_regions(text: str) -> str:
     """Mask hidden HTML containers globally so visibility state survives slicing."""
-    parser = _HiddenHTMLRegionParser(text)
+    protected = _SHARED_PROTECT_NON_COMMONMARK_RAW_TAG_OPENERS(text)
+    parser = _HiddenHTMLRegionParser(protected)
     try:
-        parser.feed(text)
+        parser.feed(protected)
         parser.close()
         parser.finish()
     except Exception:
@@ -1960,8 +1966,9 @@ def _protect_unmatched_markdown_emphasis_delimiters(text: str) -> str:
     for index, run in enumerate(runs):
         marker = str(run["marker"])
         if bool(run["can_close"]):
-            while openers[marker]:
-                opener_index = openers[marker][-1]
+            opener_position = len(openers[marker]) - 1
+            while opener_position >= 0:
+                opener_index = openers[marker][opener_position]
                 opener = runs[opener_index]
                 opener_length = int(opener["end"]) - int(opener["start"])
                 closer_length = int(run["end"]) - int(run["start"])
@@ -1976,17 +1983,27 @@ def _protect_unmatched_markdown_emphasis_delimiters(text: str) -> str:
                     - int(run["close_consumed"])
                 )
                 if opener_remaining <= 0:
-                    openers[marker].pop()
+                    del openers[marker][opener_position]
+                    opener_position -= 1
                     continue
                 if closer_remaining <= 0:
                     break
+                violates_rule_of_three = (
+                    (bool(opener["can_close"]) or bool(run["can_open"]))
+                    and (opener_length + closer_length) % 3 == 0
+                    and (opener_length % 3 != 0 or closer_length % 3 != 0)
+                )
+                if violates_rule_of_three:
+                    opener_position -= 1
+                    continue
                 consumed = min(opener_remaining, closer_remaining)
                 opener["open_consumed"] = int(opener["open_consumed"]) + consumed
                 run["close_consumed"] = int(run["close_consumed"]) + consumed
                 if consumed == opener_remaining:
-                    openers[marker].pop()
+                    del openers[marker][opener_position]
                 if consumed == closer_remaining:
                     break
+                opener_position -= 1
         run_length = int(run["end"]) - int(run["start"])
         remaining = (
             run_length
