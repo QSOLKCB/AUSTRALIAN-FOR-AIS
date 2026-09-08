@@ -27,7 +27,9 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Apply review hardening
-        run: python .github/pr4_review_repair.py
+        run: |
+          python .github/pr4_review_repair.py
+          python .github/pr4_review_repair_followup.py
 
       - name: Verify exact review regressions
         run: pytest -q tests/test_pr4_block_and_receipt_regressions.py
@@ -53,7 +55,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm .github/workflows/pr4-review-repair.yml .github/pr4_review_repair.py
+          git rm .github/workflows/pr4-review-repair.yml \
+                 .github/pr4_review_repair.py \
+                 .github/pr4_review_repair_followup.py
           git add tests/test_policing_context_roadmap.py \
                   tests/test_research_reference_registry.py \
                   tests/test_policing_contract_receipt.py \
