@@ -1,0 +1,59 @@
+name: PR4 trailing binding repair
+
+on:
+  push:
+    branches:
+      - research-corpus-governed-expansion
+    paths:
+      - .github/workflows/pr4-trailing-binding-repair.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: research-corpus-governed-expansion
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install project
+        run: python -m pip install -e '.[dev]'
+
+      - name: Apply trailing binding repair
+        run: python .github/pr4_trailing_binding_repair.py
+
+      - name: Run exact trailing regressions
+        run: pytest -q tests/test_research_reference_registry.py -k 'trailing_registry'
+
+      - name: Run focused governance suite
+        run: >-
+          pytest -q
+          tests/test_research_reference_registry.py
+          tests/test_workstream_h_methodology.py
+          tests/test_policing_context_roadmap.py
+          tests/test_policing_contract_receipt.py
+          tests/test_phase2_review_followup.py
+
+      - name: Run full suite
+        run: pytest -q
+
+      - name: Check whitespace
+        run: git diff --check
+
+      - name: Commit verified repair and self-clean
+        run: |
+          rm -f .github/pr4_trailing_binding_repair.py .github/workflows/pr4-trailing-binding-repair.yml
+          git add -A
+          git config user.name 'EmergentMonk'
+          git config user.email '73952179+EmergentMonk@users.noreply.github.com'
+          git commit -m 'Bind trailing registry link destinations'
+          git push origin HEAD:research-corpus-governed-expansion
