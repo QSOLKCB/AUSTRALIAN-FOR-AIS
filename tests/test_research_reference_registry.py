@@ -994,8 +994,12 @@ class _VisibleHTMLTextParser(HTMLParser):
         inert = inherited_inert or "inert" in values
         if tag == "a" and not hidden and not inert:
             for key, value in attrs:
-                if key.lower() == "href" and value:
-                    self.open_anchors.append((len(self.stack), value, len(self.parts)))
+                if key.lower() == "href":
+                    # Presence is semantic even when the parsed value is empty:
+                    # href="" / bare href still creates a current-document link.
+                    self.open_anchors.append(
+                        (len(self.stack), "" if value is None else value, len(self.parts))
+                    )
                     break
         if tag in HTML_VOID_TAGS:
             return
@@ -5562,4 +5566,20 @@ def test_registry_rejects_duplicate_document_root_tags_before_slicing(tag: str):
     corpus = CORPUS.read_text(encoding="utf-8")
     mutated = corpus + f"\n<{tag} hidden></{tag}>\n"
     with pytest.raises(AssertionError, match="document-root"):
+        _validate_registry_corpus(mutated)
+
+def test_source_use_rules_reject_empty_raw_html_href():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    phrase = "Record provenance and licence"
+    assert phrase in corpus
+    mutated = corpus.replace(
+        phrase,
+        f'<a href="" download>{phrase}</a>',
+        1,
+    )
+    assert _normalised_source_use_rules_value(mutated) == _normalised_source_use_rules_value(corpus)
+    assert _source_use_rules_record_receipt(mutated) == _source_use_rules_record_receipt(corpus)
+    with pytest.raises(AssertionError, match="no usable HTTPS destination"):
+        _source_use_rules_link_bindings(mutated)
+    with pytest.raises(AssertionError):
         _validate_registry_corpus(mutated)

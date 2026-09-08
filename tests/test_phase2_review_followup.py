@@ -168,8 +168,16 @@ def _next_notes_peer_heading(structure: str, namespace: dict) -> int:
     return len(structure)
 
 
-def _visible_phase2_notes(changelog: str) -> str:
+def _phase2_namespace(changelog: str) -> dict:
+    """Reject document-wide stylesheet effects before rendered Phase 2 slicing."""
     namespace = runpy.run_path(str(POLICING_TEST))
+    violations = namespace["_governed_surface_html_violations"](changelog)
+    namespace["_assert_supported_governed_html"](violations & {"stylesheet"})
+    return namespace
+
+
+def _visible_phase2_notes(changelog: str) -> str:
+    namespace = _phase2_namespace(changelog)
     structure = namespace["_rendered_structure"](changelog)
     phase2_start, _ = namespace["_visible_markdown_heading_span"](
         structure, PHASE2_HEADING
@@ -251,7 +259,7 @@ EXPECTED_PHASE2_RECORDS_SHA256 = "a5eb75600941b1599a25c7d2620c9d8a5bdfa591c9f6ee
 
 def _raw_phase2_section(changelog: str) -> str:
     """Return the source slice for the complete rendered Phase 2 section."""
-    namespace = runpy.run_path(str(POLICING_TEST))
+    namespace = _phase2_namespace(changelog)
     structure = namespace["_rendered_structure"](changelog)
     phase2_start, _ = namespace["_visible_markdown_heading_span"](
         structure, PHASE2_HEADING
@@ -326,3 +334,14 @@ def test_phase2_section_seal_catches_sibling_empirical_claims():
         # this complete-section seal is intended to close.
         assert _visible_phase2_notes(mutated) == EXPECTED_VISIBLE_PHASE2_NOTES
         assert _phase2_section_sha256(mutated) != EXPECTED_VISIBLE_PHASE2_SECTION_SHA256
+
+def test_phase2_receipts_reject_document_wide_styles_before_slicing():
+    changelog = CHANGELOG.read_text(encoding="utf-8")
+    mutated = "<style>body { display:none }</style>\n\n" + changelog
+    for receipt in (
+        _visible_phase2_notes,
+        _phase2_section_sha256,
+        _phase2_records_sha256,
+    ):
+        with pytest.raises(AssertionError):
+            receipt(mutated)

@@ -77,6 +77,23 @@ def _assert_ascft_has_no_links(text: str) -> None:
         rendered,
     ) is None, "unexpected reference-style hyperlink in governed ASCFT methodology"
 
+def _assert_ascft_boundary_markup(text: str) -> None:
+    """Require the canonical full-boundary emphasis, not only visible words."""
+    namespace = _namespace()
+    raw_section = _raw_ascft_section(text)
+    structure = namespace["_mask_hidden_html_regions"](
+        namespace["_rendered_structure"](raw_section)
+    )
+    lines = [line.strip() for line in structure.splitlines()]
+    for boundary in MANDATORY_EPISTEMIC_BOUNDARIES:
+        marker = f"- **{boundary}**"
+        count = sum(line == marker for line in lines)
+        assert count == 1, (
+            "mandatory ASCFT epistemic boundary must retain canonical full-boundary "
+            f"emphasis: {boundary}; found {count} canonical records"
+        )
+
+
 def _assert_ascft_integrity(text: str) -> str:
     _assert_ascft_has_no_links(text)
     value = _normalised_ascft_visible_value(text)
@@ -91,6 +108,9 @@ def _assert_ascft_integrity(text: str) -> str:
         "ASCFT methodology record hierarchy changed: "
         f"expected {ASCFT_RECORDS_SHA256!r}, got {actual_records_hash!r}"
     )
+    # Preserve established prose/hierarchy diagnostics for deletions/reversals;
+    # emphasis-only mutations reach this structural inline-markup gate.
+    _assert_ascft_boundary_markup(text)
     for boundary in MANDATORY_EPISTEMIC_BOUNDARIES:
         assert boundary in value, f"mandatory ASCFT epistemic boundary missing: {boundary}"
     return value
@@ -131,3 +151,19 @@ def test_ascft_methodology_rejects_unregistered_hyperlinks():
     assert _ascft_record_receipt(mutated) == _ascft_record_receipt(methodology)
     with pytest.raises(AssertionError, match="unexpected Markdown hyperlink"):
         _assert_ascft_integrity(mutated)
+
+@pytest.mark.parametrize("boundary", MANDATORY_EPISTEMIC_BOUNDARIES)
+def test_ascft_mandatory_boundaries_preserve_canonical_emphasis(boundary: str):
+    methodology = METHODOLOGY.read_text(encoding="utf-8")
+    marker = f"- **{boundary}**"
+    assert marker in methodology
+    left, right = boundary.split(" != ", 1)
+    shifted = methodology.replace(
+        marker,
+        f"- {left} != **{right}**",
+        1,
+    )
+    assert _normalised_ascft_visible_value(shifted) == _normalised_ascft_visible_value(methodology)
+    assert _ascft_record_receipt(shifted) == _ascft_record_receipt(methodology)
+    with pytest.raises(AssertionError, match="canonical full-boundary emphasis"):
+        _assert_ascft_integrity(shifted)
