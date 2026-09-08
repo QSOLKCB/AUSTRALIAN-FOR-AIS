@@ -38,8 +38,23 @@ jobs:
           workstream = Path("tests/test_workstream_h_methodology.py")
           replace_once(
               workstream,
+              '''def _rendered_inline_citation_links(text: str) -> tuple[tuple[str, str], ...]:\n    """Use the registry's structural view, not hidden Markdown source text."""\n''',
+              '''def _rendered_inline_citation_links(\n    text: str, *, reject_titles: bool = True\n) -> tuple[tuple[str, str], ...]:\n    """Use the registry's structural view, not hidden Markdown source text."""\n''',
+          )
+          replace_once(
+              workstream,
+              '''    assert not titled_links, (\n        "Workstream H citation Markdown link titles are not allowed; "\n        "tooltip provenance must remain inside the sealed citation contract"\n    )\n    return _inline_markdown_links(structure)\n''',
+              '''    if reject_titles:\n        assert not titled_links, (\n            "Workstream H citation Markdown link titles are not allowed; "\n            "tooltip provenance must remain inside the sealed citation contract"\n        )\n    return _inline_markdown_links(structure)\n''',
+          )
+          replace_once(
+              workstream,
               '''def _trans_tasman_methodology(text: str) -> str:\n    start, _ = _rendered_heading_span(text, TRANS_TASMAN_METHODOLOGY_HEADING)\n    end, _ = _rendered_heading_span(text, POLICING_METHODOLOGY_HEADING)\n    assert start < end, "rendered Trans-Tasman methodology boundary is invalid"\n    return _visible_markdown_text(text[start:end])\n''',
-              '''def _trans_tasman_methodology(text: str) -> str:\n    start, _ = _rendered_heading_span(text, TRANS_TASMAN_METHODOLOGY_HEADING)\n    end, _ = _rendered_heading_span(text, POLICING_METHODOLOGY_HEADING)\n    assert start < end, "rendered Trans-Tasman methodology boundary is invalid"\n    raw_section = text[start:end]\n    rendered_links = _rendered_inline_citation_links(raw_section)\n    assert not rendered_links, (\n        "Trans-Tasman methodology citation links are not allowed; "\n        f"got {sorted(set(rendered_links))!r}"\n    )\n    return _visible_markdown_text(raw_section)\n''',
+              '''def _trans_tasman_raw(text: str) -> str:\n    start, _ = _rendered_heading_span(text, TRANS_TASMAN_METHODOLOGY_HEADING)\n    end, _ = _rendered_heading_span(text, POLICING_METHODOLOGY_HEADING)\n    assert start < end, "rendered Trans-Tasman methodology boundary is invalid"\n    return text[start:end]\n\n\ndef _trans_tasman_methodology(text: str) -> str:\n    return _visible_markdown_text(_trans_tasman_raw(text))\n''',
+          )
+          replace_once(
+              workstream,
+              '''def _assert_trans_tasman_integrity(text: str) -> str:\n    section = _trans_tasman_methodology(text)\n    value = " ".join(section.split())\n''',
+              '''def _assert_trans_tasman_integrity(text: str) -> str:\n    raw_section = _trans_tasman_raw(text)\n    rendered_links = _rendered_inline_citation_links(\n        raw_section, reject_titles=False\n    )\n    assert not rendered_links, (\n        "Trans-Tasman methodology citation links are not allowed; "\n        f"got {sorted(set(rendered_links))!r}"\n    )\n    section = _visible_markdown_text(raw_section)\n    value = " ".join(section.split())\n''',
           )
 
           workstream_text = workstream.read_text(encoding="utf-8")
@@ -48,7 +63,7 @@ jobs:
               raise SystemExit("Trans-Tasman link regression already present")
           workstream.write_text(
               workstream_text
-              + '''\n\n\ndef test_trans_tasman_methodology_rejects_unregistered_link_binding():\n    methodology = METHODOLOGY.read_text(encoding="utf-8")\n    _assert_trans_tasman_integrity(methodology)\n    start, _ = _rendered_heading_span(methodology, TRANS_TASMAN_METHODOLOGY_HEADING)\n    end, _ = _rendered_heading_span(methodology, POLICING_METHODOLOGY_HEADING)\n    raw_section = methodology[start:end]\n    assert "relational licence" in raw_section\n    mutated_section = raw_section.replace(\n        "relational licence",\n        "[relational licence](https://example.com/unregistered)",\n        1,\n    )\n    mutated = methodology[:start] + mutated_section + methodology[end:]\n    with pytest.raises(\n        AssertionError, match="Trans-Tasman methodology citation links are not allowed"\n    ):\n        _assert_trans_tasman_integrity(mutated)\n''',
+              + '''\n\n\ndef test_trans_tasman_methodology_rejects_unregistered_link_binding():\n    methodology = METHODOLOGY.read_text(encoding="utf-8")\n    _assert_trans_tasman_integrity(methodology)\n    raw_section = _trans_tasman_raw(methodology)\n    assert "relational licence" in raw_section\n    mutated_section = raw_section.replace(\n        "relational licence",\n        "[relational licence](https://example.com/unregistered)",\n        1,\n    )\n    mutated = methodology.replace(raw_section, mutated_section, 1)\n    with pytest.raises(\n        AssertionError, match="Trans-Tasman methodology citation links are not allowed"\n    ):\n        _assert_trans_tasman_integrity(mutated)\n''',
               encoding="utf-8",
           )
 
