@@ -553,6 +553,7 @@ SOURCE_USE_SECTION_HASH = "ffd50e6c62ec28f45dc18e372c0feb4d04f044671e1fc8cfb3029
 SOURCE_USE_RECORDS_SHA256 = "eb497d46b98bbd546d02587ae314e7b003f34915ff21aa20e9f46fe14b4d44df"
 REGISTRY_TRAILING_VISIBLE_SHA256 = "84abf902b3ba863c88f140cc86d387b8f48a8c905574fbfe892bf207c452e3ba"
 REGISTRY_TRAILING_LINK_BINDINGS_SHA256 = "3dec1c09731ecbd0216911f33b3fdc2a9d1360bbf72ff07cc1b10f4941180b49"
+REGISTRY_TRAILING_RECORDS_SHA256 = "ef70ebb93e37ca17fb25d04a64ab30a7e5e7ebe37f9925f2436605d68dafe4a6"
 STATUS_SECTION_HASH = "4d99f6f7a4378dc14a85bc12b3e389a7d221e08abed84211fa5f881734f93580"
 CONSULTATION_BOUNDARY = (
     "appropriate consultation, provenance, permissions, and scope limitations"
@@ -3476,11 +3477,35 @@ def _source_use_rules_record_receipt(corpus: str) -> str:
     )
 
 
+def _source_use_rules_link_bindings(corpus: str) -> tuple[tuple[str, str], ...]:
+    """Return every live HTTPS link binding inside Source-use rules."""
+    rendered, structure = _markdown_views(corpus)
+    start, _ = _visible_markdown_heading_span(structure, SOURCE_USE_HEADING)
+    end, _ = _visible_markdown_heading_span(structure, CONTRACT_HEADING)
+    assert start < end, "rendered source-use/registration-contract boundaries are out of order"
+    return tuple(
+        _usable_https_source_bindings(
+            rendered[start:end],
+            reference_scope=corpus,
+        )
+    )
+
+
 def _normalised_registry_trailing_value(corpus: str) -> str:
     """Return browser-visible registry content from the post-batch boundary to EOF."""
     rendered, structure = _markdown_views(corpus)
     start, _ = _visible_markdown_heading_span(structure, BATCH_END)
     return _visible_inline_text(rendered[start:])
+
+
+def _registry_trailing_record_receipt(corpus: str) -> str:
+    """Seal trailing browser-visible records with their CommonMark hierarchy."""
+    _, structure = _markdown_views(corpus)
+    start, _ = _visible_markdown_heading_span(structure, BATCH_END)
+    records = _SHARED_POLICING["_normalised_visible_workstream_records"](corpus[start:])
+    return "\n".join(
+        f"{signature}\x1f{line}" for signature, line in records
+    )
 
 
 def _registry_trailing_link_binding_receipt(corpus: str) -> str:
@@ -3586,6 +3611,11 @@ def _validate_registry_corpus(corpus: str) -> None:
         f"expected hash {SOURCE_USE_RECORDS_SHA256!r}, "
         f"got {actual_source_use_records_hash!r}"
     )
+    source_use_links = _source_use_rules_link_bindings(corpus)
+    assert not source_use_links, (
+        "source-use rules must not contain hyperlinks unless an explicit link contract is added; "
+        f"got {source_use_links!r}"
+    )
 
     sections = _registered_sections(corpus)
     assert set(sections) == set(ENTRY_CONTRACTS), (
@@ -3613,6 +3643,16 @@ def _validate_registry_corpus(corpus: str) -> None:
     assert actual_trailing_hash == REGISTRY_TRAILING_VISIBLE_SHA256, (
         "browser-visible trailing registry content changed outside the governed receipts: "
         f"expected hash {REGISTRY_TRAILING_VISIBLE_SHA256!r}, got {actual_trailing_hash!r}"
+    )
+
+    trailing_records = _registry_trailing_record_receipt(corpus)
+    actual_trailing_records_hash = hashlib.sha256(
+        trailing_records.encode("utf-8")
+    ).hexdigest()
+    assert actual_trailing_records_hash == REGISTRY_TRAILING_RECORDS_SHA256, (
+        "trailing registry record hierarchy changed: "
+        f"expected hash {REGISTRY_TRAILING_RECORDS_SHA256!r}, "
+        f"got {actual_trailing_records_hash!r}"
     )
 
     trailing_binding_receipt = _registry_trailing_link_binding_receipt(corpus)
@@ -3670,6 +3710,17 @@ def test_trailing_registry_link_titles_are_rejected():
         _validate_registry_corpus(mutated)
 
 
+def test_trailing_registry_preserves_record_hierarchy():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    rule = "- do not treat availability on the web as permission to redistribute;"
+    assert rule in corpus
+    mutated = corpus.replace(rule, f"  {rule}", 1)
+    assert _normalised_registry_trailing_value(mutated) == _normalised_registry_trailing_value(corpus)
+    assert _registry_trailing_link_binding_receipt(mutated) == _registry_trailing_link_binding_receipt(corpus)
+    with pytest.raises(AssertionError, match="trailing registry record hierarchy changed"):
+        _validate_registry_corpus(mutated)
+
+
 def test_post_phase2_registry_batch_preserves_governance_contract():
     _validate_registry_corpus(CORPUS.read_text(encoding="utf-8"))
 
@@ -3697,6 +3748,21 @@ def test_source_use_rules_preserve_list_hierarchy():
     mutated = corpus.replace(rule, f"  {rule}", 1)
     assert _normalised_source_use_rules_value(mutated) == _normalised_source_use_rules_value(corpus)
     with pytest.raises(AssertionError, match="source-use rule record hierarchy changed"):
+        _validate_registry_corpus(mutated)
+
+
+def test_source_use_rules_reject_unregistered_links():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    phrase = "Record provenance and licence"
+    assert phrase in corpus
+    mutated = corpus.replace(
+        phrase,
+        f"[{phrase}](https://example.com/unregistered)",
+        1,
+    )
+    assert _normalised_source_use_rules_value(mutated) == _normalised_source_use_rules_value(corpus)
+    assert _source_use_rules_record_receipt(mutated) == _source_use_rules_record_receipt(corpus)
+    with pytest.raises(AssertionError, match="source-use rules must not contain hyperlinks"):
         _validate_registry_corpus(mutated)
 
 

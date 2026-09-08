@@ -3,6 +3,7 @@
 from pathlib import Path
 import hashlib
 import runpy
+import re
 
 import pytest
 
@@ -49,7 +50,35 @@ def _ascft_record_receipt(text: str) -> str:
     )
 
 
+
+def _assert_ascft_has_no_links(text: str) -> None:
+    """Reject live hyperlinks because ASCFT has no approved link contract."""
+    namespace = _namespace()
+    raw_section = _raw_ascft_section(text)
+    rendered = namespace["_mask_hidden_html_regions"](
+        namespace["_rendered_structure"](raw_section)
+    )
+    assert not tuple(namespace["_iter_inline_markdown_destinations"](rendered)), (
+        "unexpected Markdown hyperlink in governed ASCFT methodology"
+    )
+    assert namespace["AUTOLINK_PATTERN"].search(rendered) is None, (
+        "unexpected URI autolink in governed ASCFT methodology"
+    )
+    assert namespace["EMAIL_AUTOLINK_PATTERN"].search(rendered) is None, (
+        "unexpected email autolink in governed ASCFT methodology"
+    )
+    assert re.search(
+        r"<\s*a\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*\bhref\s*=",
+        rendered,
+        flags=re.IGNORECASE,
+    ) is None, "unexpected raw HTML hyperlink in governed ASCFT methodology"
+    assert re.search(
+        r"(?<!!)\[[^\]\r\n]+\]\s*\[[^\]\r\n]*\]",
+        rendered,
+    ) is None, "unexpected reference-style hyperlink in governed ASCFT methodology"
+
 def _assert_ascft_integrity(text: str) -> str:
+    _assert_ascft_has_no_links(text)
     value = _normalised_ascft_visible_value(text)
     actual_visible_hash = hashlib.sha256(value.encode("utf-8")).hexdigest()
     assert actual_visible_hash == ASCFT_VISIBLE_SHA256, (
@@ -88,3 +117,17 @@ def test_ascft_mandatory_epistemic_boundaries_cannot_be_removed_or_reversed(boun
     )
     with pytest.raises(AssertionError, match="ASCFT methodology changed or was weakened"):
         _assert_ascft_integrity(reversed_text)
+
+def test_ascft_methodology_rejects_unregistered_hyperlinks():
+    methodology = METHODOLOGY.read_text(encoding="utf-8")
+    phrase = "The epistemic boundary is mandatory:"
+    assert phrase in methodology
+    mutated = methodology.replace(
+        phrase,
+        f"[{phrase}](https://example.com/unregistered)",
+        1,
+    )
+    assert _normalised_ascft_visible_value(mutated) == _normalised_ascft_visible_value(methodology)
+    assert _ascft_record_receipt(mutated) == _ascft_record_receipt(methodology)
+    with pytest.raises(AssertionError, match="unexpected Markdown hyperlink"):
+        _assert_ascft_integrity(mutated)

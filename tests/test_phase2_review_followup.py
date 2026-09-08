@@ -1,5 +1,6 @@
 """Focused regressions for the latest Phase 2 review findings."""
 
+import hashlib
 import json
 import pathlib
 import runpy
@@ -245,10 +246,11 @@ def test_phase2_notes_stop_at_next_visible_peer_heading():
 
 
 EXPECTED_VISIBLE_PHASE2_SECTION_SHA256 = "87ab007dbc8c8bb27d812438d69e9708907da64c00d89394fdb7e399877978ac"
+EXPECTED_PHASE2_RECORDS_SHA256 = "a5eb75600941b1599a25c7d2620c9d8a5bdfa591c9f6eed105b07a48215aff9c"
 
 
-def _visible_phase2_section(changelog: str) -> str:
-    """Return the complete browser-visible Phase 2 changelog section."""
+def _raw_phase2_section(changelog: str) -> str:
+    """Return the source slice for the complete rendered Phase 2 section."""
     namespace = runpy.run_path(str(POLICING_TEST))
     structure = namespace["_rendered_structure"](changelog)
     phase2_start, _ = namespace["_visible_markdown_heading_span"](
@@ -258,7 +260,28 @@ def _visible_phase2_section(changelog: str) -> str:
         structure, PHASE1_HEADING
     )
     assert phase2_start < phase1_start, "Phase 2 changelog boundaries are out of order"
-    return namespace["_visible_text"](changelog[phase2_start:phase1_start])
+    return changelog[phase2_start:phase1_start]
+
+
+def _visible_phase2_section(changelog: str) -> str:
+    """Return the complete browser-visible Phase 2 changelog section."""
+    namespace = runpy.run_path(str(POLICING_TEST))
+    return namespace["_visible_text"](_raw_phase2_section(changelog))
+
+
+def _phase2_record_receipt(changelog: str) -> str:
+    """Seal Phase 2 browser-visible records with their CommonMark hierarchy."""
+    namespace = runpy.run_path(str(POLICING_TEST))
+    records = namespace["_normalised_visible_workstream_records"](
+        _raw_phase2_section(changelog)
+    )
+    return "\n".join(
+        f"{signature}\x1f{line}" for signature, line in records
+    )
+
+
+def _phase2_records_sha256(changelog: str) -> str:
+    return hashlib.sha256(_phase2_record_receipt(changelog).encode("utf-8")).hexdigest()
 
 
 def _phase2_section_sha256(changelog: str) -> str:
@@ -270,6 +293,17 @@ def _phase2_section_sha256(changelog: str) -> str:
 def test_complete_phase2_changelog_section_is_pinned():
     changelog = CHANGELOG.read_text(encoding="utf-8")
     assert _phase2_section_sha256(changelog) == EXPECTED_VISIBLE_PHASE2_SECTION_SHA256
+    assert _phase2_records_sha256(changelog) == EXPECTED_PHASE2_RECORDS_SHA256
+
+
+def test_phase2_section_receipt_preserves_list_hierarchy():
+    changelog = CHANGELOG.read_text(encoding="utf-8")
+    bullet = f"- {FREE_TEXT_IAA_BOUNDARY}\n"
+    assert bullet in changelog
+    mutated = changelog.replace(bullet, f"  {bullet}", 1)
+    assert _visible_phase2_notes(mutated) == EXPECTED_VISIBLE_PHASE2_NOTES
+    assert _phase2_section_sha256(mutated) == EXPECTED_VISIBLE_PHASE2_SECTION_SHA256
+    assert _phase2_records_sha256(mutated) != EXPECTED_PHASE2_RECORDS_SHA256
 
 
 def test_phase2_section_seal_catches_sibling_empirical_claims():
