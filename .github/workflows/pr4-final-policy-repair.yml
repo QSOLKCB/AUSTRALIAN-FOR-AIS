@@ -81,6 +81,20 @@ jobs:
               '        "interactive-details": "interactive details disclosure HTML",\n'
               '        "editable-content": "contenteditable governed HTML",\n',
           )
+          # Preserve existing specific diagnostics when markup violates more than one
+          # governed rule. Generic role overrides remain rejected, but accessibility
+          # suppression is reported first when both are present.
+          replace_once(
+              policing,
+              '        "semantic-role": "semantic role override HTML",\n',
+              '',
+          )
+          replace_once(
+              policing,
+              '        "accessibility-hidden": "aria-hidden accessibility suppression HTML",\n',
+              '        "accessibility-hidden": "aria-hidden accessibility suppression HTML",\n'
+              '        "semantic-role": "semantic role override HTML",\n',
+          )
 
           registry = Path("tests/test_research_reference_registry.py")
           replace_once(
