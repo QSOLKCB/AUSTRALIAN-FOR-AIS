@@ -1,0 +1,60 @@
+name: Temporary PR4 review repair
+
+on:
+  push:
+    branches:
+      - research-corpus-governed-expansion
+    paths:
+      - .github/temporary-pr4-review-repair-trigger.txt
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research-corpus-governed-expansion
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Apply review repair
+        run: python .github/temporary-pr4-review-repair.py
+
+      - name: Check whitespace
+        run: git diff --check
+
+      - name: Run focused governance tests
+        run: |
+          pytest -q \
+            tests/test_research_reference_registry.py \
+            tests/test_ascft_methodology_integrity.py \
+            tests/test_phase2_review_followup.py
+
+      - name: Run full suite
+        run: pytest -q --disable-warnings --maxfail=1
+
+      - name: Commit verified repair
+        run: |
+          git config user.name "EmergentMonk"
+          git config user.email "73952179+EmergentMonk@users.noreply.github.com"
+          git add \
+            tests/test_research_reference_registry.py \
+            tests/test_ascft_methodology_integrity.py \
+            tests/test_phase2_review_followup.py
+          git diff --cached --check
+          git commit -m "Seal remaining governance rendering gaps"
+          git push origin HEAD:research-corpus-governed-expansion
