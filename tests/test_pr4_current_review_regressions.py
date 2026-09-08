@@ -244,4 +244,37 @@ def test_negative_tabindex_is_rejected_for_registered_source_anchor() -> None:
         REGISTRY["_validate_registry_corpus"](mutated)
 
 
+def test_registry_whitespace_delimited_emphasis_marker_remains_visible() -> None:
+    sample = "registered * as scholarship"
+    assert REGISTRY["_visible_inline_text"](sample) == sample
+
+    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")
+    live = "The article is a scholarly research reference."
+    mutated = corpus.replace(live, "The article is a * scholarly research reference.", 1)
+    assert mutated != corpus
+    with pytest.raises(AssertionError):
+        REGISTRY["_validate_registry_corpus"](mutated)
+
+
+def test_aria_disabled_true_is_rejected_for_registered_source_anchor() -> None:
+    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")
+    url = "https://iview.abc.net.au/show/black-comedy"
+    live = f"**Registered source:** {url}"
+    disabled = f'**Registered source:** <a href="{url}" aria-disabled="true">{url}</a>'
+    assert live in corpus
+    mutated = corpus.replace(live, disabled, 1)
+    with pytest.raises(AssertionError, match="aria-disabled source-link suppression"):
+        REGISTRY["_validate_registry_corpus"](mutated)
+
+
+def test_raw_html_thematic_break_cannot_split_pinned_rights_clause() -> None:
+    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")
+    live = "The article is a scholarly research reference."
+    split = "The article is a scholarly <hr> research reference."
+    assert live in corpus
+    mutated = corpus.replace(live, split, 1)
+    with pytest.raises(AssertionError, match="raw HTML thematic break"):
+        REGISTRY["_validate_registry_corpus"](mutated)
+
+
 # Human receipt: autolink/implied-end/type-6 repair passed 12 exact and 912 full-suite tests before self-cleanup.

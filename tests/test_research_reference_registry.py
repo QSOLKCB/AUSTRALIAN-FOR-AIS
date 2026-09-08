@@ -42,6 +42,7 @@ ACTIVE_DOCUMENT_HTML_KINDS = frozenset({
     "presentational-font",
     "accessible-name",
     "accessibility-hidden",
+    "accessibility-disabled",
     "keyboard-navigation",
     "nested-anchor",
     "interactive-form",
@@ -78,7 +79,7 @@ SOURCES_KEY = "sources"
 RESEARCH_MAPPING_VALUE_HASHES: dict[str, str] = {'### *Acropolis Now*': '9fd209c6a8e7308e4332deebb70d6cff614362af84e959e85f3f2eb22651aa09',
  '### *Black Comedy* (ABC, 2014-2020)': '540200c12cf71e94c7ba788ed30dfb55775ef813fd3b5e77f01a42bc29e3919e',
  '### *Kath & Kim*': '5c0bc12a172cc7345bd113889e660b5ca134fe9ecb67a858d237582a732fe3f5',
- "### *Shaun Micallef's MAD AS HELL*": 'becf9683d9ed2b938d0ee74d618600e57f08daf776d6a0c857e4248599e640c1',
+ "### *Shaun Micallef's MAD AS HELL*": 'b808ae9166fe86b8db3d0194a034e50532ca8be1a715ea069126cc29e2d0a50d',
  '### *The Castle* (1997)': '43a85976158f505ee9387e478a105a3d7390b1cc5eadb31d1e4f32645aed01e2',
  '### ABC Language, *From rooting to bonking: a history of Australian sex terms*': 'e35c474ae820ec7812ba4f26ce43ad1f1c3bd258f3bf51dc1d07f794dea1e34a',
  '### Australian Defence multinational communication reports (2022 and 2026)': '232f46f4dc2085fdb9056efcea7d5ae8b0c3afdba2742d1cfc101e976610591e',
@@ -523,17 +524,17 @@ GOVERNANCE_RATIONALE_HASHES = {'### *Acropolis Now*': '00d3590178d2cc6d9a4e4285d
 ENTRY_RENDERED_VALUE_HASHES: dict[str, str] = {'### *Acropolis Now*': '15e573a6713440ff8baa46713969fc9a01bb5acd6cb8b6dd4edcabe7b092a810',
  '### *Black Comedy* (ABC, 2014-2020)': '0dac709f6d95dc21dbeff1755b26a67615edcf3d39bfd42b4535a95015d9347c',
  '### *Kath & Kim*': 'cfe92c95e7baf326c8dded4afec4dfb166ba2ce4cde4bd7ead0be283928a581e',
- "### *Shaun Micallef's MAD AS HELL*": '2f3f0e7f6672efebd72051c4ce9efba93b269f3dc24e44e0a07aa696664abe77',
+ "### *Shaun Micallef's MAD AS HELL*": '28b2899d69584cf1bf8dd8585093a2f80d688a00319829e10578b245195eaaea',
  '### *The Castle* (1997)': 'ddc6d44c8869b0b7ea67f0c54c080fb3607361375a4dcde96d967e644fe39520',
  '### ABC Language, *From rooting to bonking: a history of Australian sex terms*': 'f2cc04fd71cbed417964df8cea1e381726faa093f06ae1fbf1e8c88dca815ed8',
  '### Australian Defence multinational communication reports (2022 and 2026)': 'a80717006098087ad1034e7e0b3d32ee61db188d869a48569c8de53b4c332477',
  '### Chey (2021), *Overcoming awkwardness: some interpretations of Australian humour*': 'a036351dedea6da13911d5290afde4868a1be4045fe5c9e434dd44e9eb00410b',
  '### Hurley (2025), *Laughter with purpose: how First Nations Australian comedians use humour to engage, educate, and empower audiences*': 'ea79189c756a06dfac40c64638da834bfa366c7e4779a4de17c46d9dbf3b3c4b',
  '### Slade, *Australian Sketch Comedy Field Theory* (ASCFT)': 'd42810077e51cfaa5a9ac6949d2dacc99a440fb59ab712606a23bf936ebc524f',
- '### Trans-Tasman constitutional and federation context': '37411b2bcf88be37cb86851a609203825a32bf3b98cbaaeb61d7e204f119ae7e',
+ '### Trans-Tasman constitutional and federation context': 'c61bb85c09f1e4d7b6615fc206632b856adba2db6b8b52970d345e9b51cbfc37',
  '### Victoria University, *Australian slang dictionary*': '1a96e46e9d7e3ef4e89c33471fbd2a29a43d270d5fd085fe4e523ca14f5b968c',
  '### WWII American-serviceman Australia language guides': 'c66fad136a00e29f20e8c292be17dce027054682c2372bad3e73da9aa97da94c',
- '### r/australia, *Best Aussie slang* community thread': '042e0f1c2f3829320af417966684ea731050a1afac2cc1b24bcd61b4c83583bd'}
+ '### r/australia, *Best Aussie slang* community thread': '255bfdc29d88a7b2c6f92f9a48ef2bb3f878af9d685e6ea9d2b5b40c6311e859'}
 
 STATUS_HEADING = "## Status"
 SOURCE_USE_HEADING = "## Source-use rules"
@@ -810,6 +811,8 @@ class _GovernedHTMLSemanticsDetector(HTMLParser):
             self.found.add("styling")
         if tag == "img":
             self.found.add("replacement")
+        if tag == "hr":
+            self.found.add("thematic-break")
         if "shadowrootmode" in names or "shadowroot" in names:
             self.found.add("shadow-root")
         table_descendants = {"caption", "colgroup", "thead", "tbody", "tfoot", "tr", "td", "th"}
@@ -2022,13 +2025,9 @@ def _protect_unmatched_markdown_emphasis_delimiters(text: str) -> str:
         end = int(run["end"]) - int(run["open_consumed"])
         if start >= end:
             continue
-        if not (
-            bool(run["can_open"])
-            or bool(run["can_close"])
-            or int(run["open_consumed"])
-            or int(run["close_consumed"])
-        ):
-            continue
+        # Any unconsumed delimiter character is reader-visible literal text,
+        # including a run surrounded by whitespace that can neither open nor
+        # close emphasis. Preserve it before generic delimiter stripping.
         sentinel = (
             UNMATCHED_MARKDOWN_ASTERISK
             if run["marker"] == "*"
@@ -3234,6 +3233,9 @@ def _assert_no_active_document_html(found: set[str]) -> None:
     assert "accessibility-hidden" not in found, (
         "aria-hidden accessibility suppression is not allowed in governed documents"
     )
+    assert "accessibility-disabled" not in found, (
+        "aria-disabled source-link suppression is not allowed in governed documents"
+    )
     assert "keyboard-navigation" not in found, (
         "negative tabindex keyboard-navigation suppression is not allowed in governed documents"
     )
@@ -3314,6 +3316,10 @@ def _require_complete_entry_integrity(entry: str, section: str) -> None:
     assert "executable-url" not in forbidden_html, (
         f"{entry} contains an executable URL attribute; governed HTML must not "
         "carry javascript:/vbscript: navigation"
+    )
+    assert "thematic-break" not in forbidden_html, (
+        f"{entry} contains a raw HTML thematic break; governed entry receipts "
+        "must preserve the visual association between provenance and its boundary"
     )
     assert "non-rendering-container" not in forbidden_html, (
         f"{entry} contains a non-rendering datalist container; governed clauses "

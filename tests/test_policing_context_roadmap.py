@@ -1446,6 +1446,14 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         values: dict[str, str] = {}
         for key, value in attrs:
             values.setdefault(key.lower(), value or "")
+        # An ARIA-disabled provenance anchor can retain its canonical label and
+        # href while assistive technology exposes it as unavailable. Keep that
+        # interaction state inside the governed source-link contract.
+        if (
+            tag == "a"
+            and values.get("aria-disabled", "").strip().casefold() == "true"
+        ):
+            self.violations.add("accessibility-disabled")
         # Negative tabindex removes an otherwise valid provenance anchor from
         # sequential keyboard navigation. Keep focusability inside the governed
         # link contract instead of sealing only label/href text.
@@ -1598,6 +1606,7 @@ def _assert_supported_governed_html(violations: set[str]) -> None:
         "presentational-font": "legacy presentational font HTML",
         "accessible-name": "accessible-name override HTML",
         "accessibility-hidden": "aria-hidden accessibility suppression HTML",
+        "accessibility-disabled": "aria-disabled source-link suppression HTML",
         "nested-anchor": "nested anchor HTML",
         "nested-nobr": "nested nobr HTML",
         "in-body-structure": "discarded in-body structural HTML",
