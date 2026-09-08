@@ -6,6 +6,7 @@ on:
       - research-corpus-governed-expansion
     paths:
       - .github/repair-pr4-inert-breaks-hierarchy.py
+      - .github/repair-pr4-inert-breaks-hierarchy-v2.py
       - .github/workflows/pr4-inert-breaks-hierarchy-repair.yml
 
 permissions:
@@ -25,9 +26,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = "77d270271207dce9b8d8ee106e710500d6768821"
-          test "$(git rev-parse HEAD^^)" = "c199e6b45c2689b9fb960afec287e906e762ff19"
+          test "$(git rev-parse HEAD^)" = "55eb03fc2c633a1a3c0df1ba3be4349eac01d149"
+          test "$(git rev-parse HEAD^^)" = "57cd6282612dcf55152f3cddb670150ba9d6a165"
           test -f .github/repair-pr4-inert-breaks-hierarchy.py
+          test -f .github/repair-pr4-inert-breaks-hierarchy-v2.py
           test -f .github/workflows/pr4-inert-breaks-hierarchy-repair.yml
 
       - uses: actions/setup-python@v5
@@ -47,6 +49,7 @@ jobs:
         run: |
           set -euo pipefail
           python .github/repair-pr4-inert-breaks-hierarchy.py
+          python .github/repair-pr4-inert-breaks-hierarchy-v2.py
           git diff --check
 
       - name: Run exact current-review regressions
@@ -84,11 +87,14 @@ jobs:
         run: |
           set -euo pipefail
           rm .github/repair-pr4-inert-breaks-hierarchy.py
+          rm .github/repair-pr4-inert-breaks-hierarchy-v2.py
           rm .github/workflows/pr4-inert-breaks-hierarchy-repair.yml
           git add \
             tests/test_policing_context_roadmap.py \
+            tests/test_research_reference_registry.py \
             tests/test_pr4_current_review_regressions.py \
             .github/repair-pr4-inert-breaks-hierarchy.py \
+            .github/repair-pr4-inert-breaks-hierarchy-v2.py \
             .github/workflows/pr4-inert-breaks-hierarchy-repair.yml
           git diff --cached --check
           git config user.name 'github-actions[bot]'
