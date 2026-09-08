@@ -41,7 +41,6 @@ replace_once(
 text = registry.read_text(encoding="utf-8")
 start = text.index("def _inline_link_destination(inner: str) -> str | None:\n")
 end = text.index("\n\ndef _markdown_inline_links", start)
-old_block = text[start:end]
 new_block = '''def _inline_link_destination_and_title(inner: str) -> tuple[str, str | None] | None:\n    """Extract a destination and optional CommonMark tooltip title."""\n    value = inner.lstrip(" \\t\\r\\n")\n    if not value:\n        return None\n\n    if value.startswith("<"):\n        close = value.find(">", 1)\n        if close < 0:\n            return None\n        destination = value[1:close]\n        remainder = value[close + 1:].strip()\n    else:\n        cursor = 0\n        depth = 0\n        while cursor < len(value):\n            character = value[cursor]\n            if character == "\\\\" and cursor + 1 < len(value):\n                cursor += 2\n                continue\n            if character == "(":\n                depth += 1\n            elif character == ")":\n                if depth == 0:\n                    return None\n                depth -= 1\n            elif character in " \\t\\r\\n" and depth == 0:\n                break\n            cursor += 1\n        if depth != 0:\n            return None\n        destination = value[:cursor]\n        remainder = value[cursor:].strip()\n\n    if not destination:\n        return None\n    title: str | None = None\n    if remainder:\n        quoted = (\n            len(remainder) >= 2\n            and remainder[0] in {"\\\"", "'"}\n            and remainder[-1] == remainder[0]\n        )\n        parenthesized = (\n            len(remainder) >= 2\n            and remainder[0] == "("\n            and remainder[-1] == ")"\n        )\n        if not (quoted or parenthesized):\n            return None\n        title = remainder[1:-1]\n    return destination, title\n\n\ndef _inline_link_destination(inner: str) -> str | None:\n    """Compatibility view retaining the existing destination-only helper."""\n    parsed = _inline_link_destination_and_title(inner)\n    return None if parsed is None else parsed[0]\n'''
 registry.write_text(text[:start] + new_block + text[end:], encoding="utf-8")
 
@@ -57,8 +56,23 @@ replace_once(
 )
 replace_once(
     registry,
-    '''    inline_links = _markdown_inline_links(markdown_structure)\n    for link in inline_links:\n        if not link.image:\n            record(link.label, link.destination.strip("<>"))\n''',
-    '''    inline_links = _markdown_inline_links(markdown_structure)\n    for link in inline_links:\n        if not link.image:\n            assert link.title is None, (\n                "registered-source Markdown link titles are not allowed; "\n                "tooltip provenance must remain inside the sealed source contract"\n            )\n            record(link.label, link.destination.strip("<>"))\n''',
+    '''def _require_registered_source_link(\n    entry: str,\n    section: str,\n    *,\n    reference_scope: str | None = None,\n    source_bindings: list[tuple[str, str]] | None = None,\n) -> tuple[str, ...]:\n''',
+    '''def _require_registered_source_link(\n    entry: str,\n    section: str,\n    *,\n    reference_scope: str | None = None,\n    source_bindings: list[tuple[str, str]] | None = None,\n    source_titles: list[str] | None = None,\n) -> tuple[str, ...]:\n''',
+)
+replace_once(
+    registry,
+    '''    source_value = rendered[source_block.start(1):source_block.end(1)]\n    bindings = _usable_https_source_bindings(\n        source_value,\n        reference_scope=reference_scope,\n    )\n''',
+    '''    source_value = rendered[source_block.start(1):source_block.end(1)]\n    if source_titles is not None:\n        title_structure = _mask_raw_html_tags_for_markdown_link_discovery(\n            _mask_hidden_html_regions(_structural_registry_text(source_value))\n        )\n        source_titles.extend(\n            link.title\n            for link in _markdown_inline_links(title_structure)\n            if not link.image and link.title is not None\n        )\n    bindings = _usable_https_source_bindings(\n        source_value,\n        reference_scope=reference_scope,\n    )\n''',
+)
+replace_once(
+    registry,
+    '''    _reject_non_commonmark_character_references(section)\n    source_bindings: list[tuple[str, str]] = []\n    destinations = _require_registered_source_link(\n        entry,\n        section,\n        reference_scope=reference_scope,\n        source_bindings=source_bindings,\n    )\n''',
+    '''    _reject_non_commonmark_character_references(section)\n    source_bindings: list[tuple[str, str]] = []\n    source_titles: list[str] = []\n    destinations = _require_registered_source_link(\n        entry,\n        section,\n        reference_scope=reference_scope,\n        source_bindings=source_bindings,\n        source_titles=source_titles,\n    )\n''',
+)
+replace_once(
+    registry,
+    '''    assert set(source_bindings) == expected_bindings, (\n        f"{entry} registered-source label/destination bindings changed: "\n        f"expected {sorted(expected_bindings)!r}, got {sorted(source_bindings)!r}"\n    )\n    _require_complete_entry_integrity(entry, section)\n''',
+    '''    assert set(source_bindings) == expected_bindings, (\n        f"{entry} registered-source label/destination bindings changed: "\n        f"expected {sorted(expected_bindings)!r}, got {sorted(source_bindings)!r}"\n    )\n    assert not source_titles, (\n        f"{entry} registered-source Markdown link titles are not allowed; "\n        "tooltip provenance must remain inside the sealed source contract"\n    )\n    _require_complete_entry_integrity(entry, section)\n''',
 )
 
 regressions = Path("tests/test_pr4_current_review_regressions.py")
