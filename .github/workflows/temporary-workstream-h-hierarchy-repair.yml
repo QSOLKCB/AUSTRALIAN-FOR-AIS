@@ -32,11 +32,16 @@ jobs:
           path = Path('tests/test_workstream_h_methodology.py')
           text = path.read_text(encoding='utf-8')
 
+          function_start = text.index('def _assert_workstream_h_integrity(text: str) -> str:\n')
+          function_end = text.index('def _trans_tasman_raw(text: str) -> str:\n', function_start)
+          block = text[function_start:function_end]
+
           old = '''    section = _visible_markdown_text(raw_section)\n    value = " ".join(section.split())\n    actual_hash = hashlib.sha256(value.encode("utf-8")).hexdigest()\n'''
           new = '''    section = _visible_markdown_text(raw_section)\n    policing = runpy.run_path(str(POLICING_TEST))\n    visible_records = policing["_normalised_visible_workstream_records"](raw_section)\n    unsupported_containers = [\n        (signature, line)\n        for signature, line in visible_records\n        if signature not in {"root", "list:2"}\n    ]\n    assert not unsupported_containers, (\n        "browser-visible Workstream H list/container hierarchy changed: "\n        f"{unsupported_containers!r}"\n    )\n    value = " ".join(section.split())\n    actual_hash = hashlib.sha256(value.encode("utf-8")).hexdigest()\n'''
-          if text.count(old) != 1:
-              raise SystemExit(f'expected exactly one Workstream H integrity anchor, found {text.count(old)}')
-          text = text.replace(old, new, 1)
+          if block.count(old) != 1:
+              raise SystemExit(f'expected exactly one Workstream H integrity anchor in function, found {block.count(old)}')
+          block = block.replace(old, new, 1)
+          text = text[:function_start] + block + text[function_end:]
 
           test_anchor = '''def _trans_tasman_raw(text: str) -> str:\n'''
           regression = '''def test_workstream_h_list_hierarchy_is_pinned():\n    roadmap = ROADMAP.read_text(encoding="utf-8")\n    _assert_workstream_h_integrity(roadmap)\n    bullet = (\n        "keep any military claims limited to what official or archival evidence "\n        "actually demonstrates."\n    )\n    canonical = f"- {bullet}"\n    assert canonical in roadmap\n    mutated = roadmap.replace(canonical, f"  - {bullet}", 1)\n    with pytest.raises(AssertionError, match="list/container hierarchy changed"):\n        _assert_workstream_h_integrity(mutated)\n\n\n'''
