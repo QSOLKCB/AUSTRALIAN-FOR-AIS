@@ -19,6 +19,7 @@ WORKSTREAM_I_HEADING = "### I. Australian and United States policing-context tra
 TRANS_TASMAN_METHODOLOGY_HEADING = "## Trans-Tasman and Slang/Operational Experiment Design"
 POLICING_METHODOLOGY_HEADING = "## Australian and United States Policing-Context Experiment Design"
 WORKSTREAM_H_VISIBLE_SHA256 = "c38e4bc194d820c30ee714851ec279da7649fffc921da5a331d722d22d7c34b8"
+WORKSTREAM_H_RECORDS_SHA256 = "456bd5d56197844d9f7bab8550bd341346fb30ef8695dbbf9031290b482eb09c"
 WORKSTREAM_H_CITATION_LINKS = frozenset({
     ("Australian slang dictionary", "https://www.vu.edu.au/about-vu/news-events/vu-blog/australian-slang-dictionary"),
     ("Best Aussie slang", "https://www.reddit.com/r/australia/comments/1g73mue/best_aussie_slang/"),
@@ -382,6 +383,34 @@ def _normalised_workstream_h_visible_value(text: str) -> str:
     return " ".join(_workstream_h(text).split())
 
 
+class _RawAnchorDetector(HTMLParser):
+    """Detect live raw-HTML anchors before Markdown-link masking."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.hrefs: list[str] = []
+
+    def _record(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() == "a":
+            for key, value in attrs:
+                if key.lower() == "href":
+                    self.hrefs.append(value or "")
+                    break
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self._record(tag, attrs)
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self._record(tag, attrs)
+
+
+def _raw_html_anchor_hrefs(text: str) -> tuple[str, ...]:
+    parser = _RawAnchorDetector()
+    parser.feed(text)
+    parser.close()
+    return tuple(parser.hrefs)
+
+
 def _rendered_inline_citation_links(
     text: str, *, reject_titles: bool = True
 ) -> tuple[tuple[str, str], ...]:
@@ -394,6 +423,11 @@ def _rendered_inline_citation_links(
     structure = registry["_mask_hidden_html_regions"](structure)
     assert not registry["_contains_inert_html"](structure), (
         "Workstream H citations must not depend on inert, non-navigable HTML"
+    )
+    raw_anchor_hrefs = _raw_html_anchor_hrefs(structure)
+    assert not raw_anchor_hrefs, (
+        "Workstream H raw HTML anchors are not allowed; "
+        f"got {raw_anchor_hrefs!r}"
     )
     structure = registry["_mask_raw_html_tags_for_markdown_link_discovery"](structure)
     titled_links = [
@@ -442,6 +476,14 @@ def _assert_workstream_h_integrity(text: str) -> str:
         "browser-visible Workstream H changed: expected hash "
         f"{WORKSTREAM_H_VISIBLE_SHA256!r}, got {actual_hash!r}"
     )
+    record_value = "\n".join(
+        f"{signature}\x1f{line}" for signature, line in visible_records
+    )
+    actual_record_hash = hashlib.sha256(record_value.encode("utf-8")).hexdigest()
+    assert actual_record_hash == WORKSTREAM_H_RECORDS_SHA256, (
+        "browser-visible Workstream H record boundaries changed: expected hash "
+        f"{WORKSTREAM_H_RECORDS_SHA256!r}, got {actual_record_hash!r}"
+    )
     return section
 
 
@@ -456,6 +498,37 @@ def test_workstream_h_list_hierarchy_is_pinned():
     assert canonical in roadmap
     mutated = roadmap.replace(canonical, f"  - {bullet}", 1)
     with pytest.raises(AssertionError, match="list/container hierarchy changed"):
+        _assert_workstream_h_integrity(mutated)
+
+
+def test_workstream_h_record_boundaries_are_pinned():
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    _assert_workstream_h_integrity(roadmap)
+    preceding = (
+        "- connect suitable tests to Phase 5 adversarial context swaps and Phase 7 "
+        "cross-dialect/cross-register comparison;"
+    )
+    boundary = (
+        "- keep any military claims limited to what official or archival evidence "
+        "actually demonstrates."
+    )
+    canonical = preceding + "\n" + boundary
+    assert canonical in roadmap
+    mutated = roadmap.replace(canonical, preceding + " " + boundary, 1)
+    with pytest.raises(AssertionError, match="record boundaries changed"):
+        _assert_workstream_h_integrity(mutated)
+
+
+def test_workstream_h_rejects_raw_html_anchor_attribution():
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    phrase = "local language, terminology, accent, and slang"
+    assert phrase in roadmap
+    mutated = roadmap.replace(
+        phrase,
+        f'<a href="https://example.com/unregistered">{phrase}</a>',
+        1,
+    )
+    with pytest.raises(AssertionError, match="raw HTML anchors are not allowed"):
         _assert_workstream_h_integrity(mutated)
 
 

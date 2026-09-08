@@ -550,6 +550,7 @@ CONTRACT_SENTENCE = (
 )
 REGISTRATION_CONTRACT_HASH = "1d171556a66c3cfc54a7bf14072d51bb68d17cb390fffa826a0f50329e2d51d6"
 SOURCE_USE_SECTION_HASH = "ffd50e6c62ec28f45dc18e372c0feb4d04f044671e1fc8cfb30293175935f1bb"
+REGISTRY_TRAILING_VISIBLE_SHA256 = "84abf902b3ba863c88f140cc86d387b8f48a8c905574fbfe892bf207c452e3ba"
 STATUS_SECTION_HASH = "4d99f6f7a4378dc14a85bc12b3e389a7d221e08abed84211fa5f881734f93580"
 CONSULTATION_BOUNDARY = (
     "appropriate consultation, provenance, permissions, and scope limitations"
@@ -3461,6 +3462,13 @@ def _normalised_source_use_rules_value(corpus: str) -> str:
     return _visible_inline_text(rendered[start:end])
 
 
+def _normalised_registry_trailing_value(corpus: str) -> str:
+    """Return browser-visible registry content from the post-batch boundary to EOF."""
+    rendered, structure = _markdown_views(corpus)
+    start, _ = _visible_markdown_heading_span(structure, BATCH_END)
+    return _visible_inline_text(rendered[start:])
+
+
 def _validate_registry_corpus(corpus: str) -> None:
     # Check the original document before any heading slicing or masking.
     corpus_forbidden_html = _forbidden_governed_html_constructs(corpus)
@@ -3548,6 +3556,25 @@ def _validate_registry_corpus(corpus: str) -> None:
     assert "accessibility-inert" not in _SHARED_HTML_PREFLIGHT(corpus), (
         "native inert accessibility suppression is not allowed in governed documents"
     )
+
+    visible_trailing = _normalised_registry_trailing_value(corpus)
+    actual_trailing_hash = hashlib.sha256(visible_trailing.encode("utf-8")).hexdigest()
+    assert actual_trailing_hash == REGISTRY_TRAILING_VISIBLE_SHA256, (
+        "browser-visible trailing registry content changed outside the governed receipts: "
+        f"expected hash {REGISTRY_TRAILING_VISIBLE_SHA256!r}, got {actual_trailing_hash!r}"
+    )
+
+
+def test_trailing_registry_visible_corpus_is_pinned():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    _validate_registry_corpus(corpus)
+    mutated = (
+        corpus.rstrip()
+        + "\n\nAll registered sources may be copied freely into benchmark data.\n"
+    )
+    with pytest.raises(AssertionError, match="browser-visible trailing registry content changed"):
+        _validate_registry_corpus(mutated)
+
 
 def test_post_phase2_registry_batch_preserves_governance_contract():
     _validate_registry_corpus(CORPUS.read_text(encoding="utf-8"))
