@@ -17,12 +17,13 @@ def replace_once(path: Path, old: str, new: str) -> None:
 
 
 # 1) Reject reader-visible CommonMark two-space hard breaks before the ordinary
-# whitespace fold can erase the distinction. The structural view already masks
-# comments, fenced code, and inline code spans, so inert examples remain inert.
+# whitespace fold can erase the distinction. Detect the syntax in the original
+# Markdown so structural masking cannot manufacture trailing spaces, then use
+# the structural view only to confirm that the line has live governed content.
 replace_once(
     REGISTRY,
     '''def _visible_inline_text(text: str) -> str:\n    """Reduce Markdown/HTML metadata to browser-visible text only."""\n    rendered = _rendered_registry_text(text)\n    visible = _mask_link_reference_definitions_for_visibility(rendered)\n''',
-    '''def _visible_inline_text(text: str) -> str:\n    """Reduce Markdown/HTML metadata to browser-visible text only."""\n    structural = _structural_registry_text(text)\n    if re.search(r"(?<=\\S) {2,}(?:\\r\\n|\\r|\\n)", structural):\n        raise AssertionError(\n            "Markdown hard line breaks are not allowed in governed registry receipts"\n        )\n    rendered = _rendered_registry_text(text)\n    visible = _mask_link_reference_definitions_for_visibility(rendered)\n''',
+    '''def _visible_inline_text(text: str) -> str:\n    """Reduce Markdown/HTML metadata to browser-visible text only."""\n    structural = _structural_registry_text(text)\n    for hard_break in re.finditer(r" {2,}(?=\\r\\n|\\r|\\n)", text):\n        line_start = max(\n            text.rfind("\\n", 0, hard_break.start()),\n            text.rfind("\\r", 0, hard_break.start()),\n        ) + 1\n        if structural[line_start : hard_break.start()].strip():\n            raise AssertionError(\n                "Markdown hard line breaks are not allowed in governed registry receipts"\n            )\n    rendered = _rendered_registry_text(text)\n    visible = _mask_link_reference_definitions_for_visibility(rendered)\n''',
 )
 
 # 2) Language metadata changes assistive pronunciation without changing the
