@@ -51,7 +51,7 @@ jobs:
 
       - name: Commit verified repair
         run: |
-          # This commit happens only after exact, focused, and full-suite gates pass.
+          # Third gate: the new detector is scoped to the reported two-space hard break.
           if git diff --quiet -- tests/test_research_reference_registry.py tests/test_policing_context_roadmap.py tests/test_pr4_latest_codex_regressions.py; then
             echo "No repair diff produced"
             exit 1
