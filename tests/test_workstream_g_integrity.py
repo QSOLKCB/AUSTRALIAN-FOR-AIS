@@ -10,10 +10,17 @@ import pytest
 ROOT = Path(__file__).parent.parent
 ROADMAP = ROOT / "ROADMAP.md"
 POLICING = runpy.run_path(str(Path(__file__).with_name("test_policing_context_roadmap.py")))
+WORKSTREAM_H = runpy.run_path(str(Path(__file__).with_name("test_workstream_h_methodology.py")))
 WORKSTREAM_G_HEADING = '### G. Trans-Tasman relational pragmatics and lexical context'
 WORKSTREAM_H_HEADING = '### H. Slang density, register compression, and operational intelligibility'
 WORKSTREAM_G_VISIBLE_SHA256 = '3af2e5d1e987d550d492d5231f67a8c82538bd97ce94d01ef646ba747ee88135'
 WORKSTREAM_G_RECORDS_SHA256 = 'b1ef6be68642ac60b4ef92eef96e135cd9a0f7a197c0de1c6d865384c1edb11e'
+WORKSTREAM_G_CITATION_LINKS = frozenset({
+    ('Federation timeline', 'https://peo.gov.au/understand-our-parliament/history-of-parliament/federation/federation'),
+    ('Constitution introduction', 'https://peo.gov.au/understand-our-parliament/how-parliament-works/the-australian-constitution/introducing-the-australian-constitution'),
+    ('Commonwealth of Australia Constitution Act', 'https://www.legislation.gov.au/C2004Q00685/asmade/1901-01-01/text/original/epub/OEBPS/document_1/document_1.html'),
+    ('history of Australian slang terms for sex', 'https://www.abc.net.au/news/2018-03-01/from-rooting-to-bonking-a-history-of-australian-sex-terms/9492856'),
+})
 NONFACTUAL_BOUNDARY = (
     "The research lead is not a factual statement about New Zealanders and is not evidence "
     "that Australians generally hold the underlying belief."
@@ -38,6 +45,13 @@ def _workstream_g_raw(text: str) -> str:
 
 def _assert_workstream_g_integrity(text: str) -> str:
     raw = _workstream_g_raw(text)
+    rendered_links = WORKSTREAM_H["_rendered_inline_citation_links"](raw)
+    actual_links = set(rendered_links)
+    assert len(rendered_links) == len(actual_links), "duplicate Workstream G citation binding"
+    assert actual_links == WORKSTREAM_G_CITATION_LINKS, (
+        "Workstream G citation label/destination bindings changed: expected "
+        f"{sorted(WORKSTREAM_G_CITATION_LINKS)!r}, got {sorted(actual_links)!r}"
+    )
     visible = " ".join(POLICING["_visible_text"](raw).split())
     actual_visible_hash = hashlib.sha256(visible.encode("utf-8")).hexdigest()
     assert actual_visible_hash == WORKSTREAM_G_VISIBLE_SHA256, (

@@ -1456,8 +1456,7 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         }
         if (
             machine_metadata_attributes.intersection(attribute_names)
-            or ("rel" in attribute_names and tag not in {"a", "area", "link"})
-            or "license" in rel_tokens
+            or "rel" in attribute_names
         ):
             self.violations.add("machine-metadata")
         # `hidden=until-found` is conditionally revealed by find-in-page or
@@ -1717,6 +1716,50 @@ def _assert_supported_governed_html(violations: set[str]) -> None:
         assert kind not in violations, (
             f"{description} is not allowed on governed methodology surfaces"
         )
+
+
+def _assert_link_free_governed_section(markdown: str, *, context: str) -> None:
+    """Require a governed section to contain no rendered hyperlinks."""
+    html_spans: list[tuple[int, int]] = []
+    structure = _rendered_structure(markdown, html_spans=html_spans)
+    markdown_characters = list(structure)
+    raw_html_parts: list[str] = []
+    for start, end in html_spans:
+        raw_html_parts.append(structure[start:end])
+        markdown_characters[start:end] = " " * (end - start)
+
+    markdown_only = "".join(markdown_characters)
+    remaining_tags = list(PREFLIGHT_HTML_TAG.finditer(markdown_only))
+    for match in reversed(remaining_tags):
+        raw_html_parts.append(match.group(0))
+        markdown_characters[match.start():match.end()] = " " * (
+            match.end() - match.start()
+        )
+    markdown_only = "".join(markdown_characters)
+
+    assert not tuple(_iter_inline_markdown_destinations(markdown_only)), (
+        f"{context} must remain link-free: unexpected Markdown hyperlink"
+    )
+    assert AUTOLINK_PATTERN.search(markdown_only) is None, (
+        f"{context} must remain link-free: unexpected URI autolink"
+    )
+    assert EMAIL_AUTOLINK_PATTERN.search(markdown_only) is None, (
+        f"{context} must remain link-free: unexpected email autolink"
+    )
+    assert LINK_REFERENCE_DEFINITION_PATTERN.search(markdown_only) is None, (
+        f"{context} must remain link-free: unexpected link-reference definition"
+    )
+    assert re.search(
+        r"(?<!!)\[[^\]\r\n]+\]\s*\[[^\]\r\n]*\]",
+        markdown_only,
+    ) is None, f"{context} must remain link-free: unexpected reference-style hyperlink"
+
+    raw_html = "\n".join(raw_html_parts)
+    assert re.search(
+        r"<\s*(?:a|area)\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*\bhref\s*=",
+        raw_html,
+        flags=re.IGNORECASE,
+    ) is None, f"{context} must remain link-free: unexpected raw HTML hyperlink"
 
 
 def _visible_text(markdown: str) -> str:

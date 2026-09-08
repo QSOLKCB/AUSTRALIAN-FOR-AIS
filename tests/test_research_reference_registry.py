@@ -554,6 +554,7 @@ CONTRACT_SENTENCE = (
     "Every adopted post-Phase-2 registry entry must record all of the following fields"
 )
 REGISTRATION_CONTRACT_HASH = "1d171556a66c3cfc54a7bf14072d51bb68d17cb390fffa826a0f50329e2d51d6"
+REGISTRATION_CONTRACT_RECORDS_SHA256 = "90cf07cb4cbd7f6f84c1162218ba4b6c92bf1d98382711b9c25ede3161953981"
 SOURCE_USE_SECTION_HASH = "ffd50e6c62ec28f45dc18e372c0feb4d04f044671e1fc8cfb30293175935f1bb"
 SOURCE_USE_RECORDS_SHA256 = "eb497d46b98bbd546d02587ae314e7b003f34915ff21aa20e9f46fe14b4d44df"
 REGISTRY_TRAILING_VISIBLE_SHA256 = "84abf902b3ba863c88f140cc86d387b8f48a8c905574fbfe892bf207c452e3ba"
@@ -3331,6 +3332,13 @@ def _assert_no_active_document_html(found: set[str]) -> None:
     assert "replacement-content" not in found, (
         "replacement-content HTML is not allowed in governed documents"
     )
+    if "thematic-break" in found:
+        raise AssertionError(
+            "raw HTML thematic break is not allowed in governed documents"
+        )
+    assert "rendered-break" not in found, (
+        "rendered break HTML is not allowed in governed documents"
+    )
     assert "raw-table" not in found, (
         "raw table HTML, including visually hidden raw HTML table semantics, is not allowed in governed documents"
     )
@@ -3785,6 +3793,24 @@ def _validate_registry_corpus(corpus: str) -> None:
     assert actual_contract_hash == REGISTRATION_CONTRACT_HASH, (
         "rendered registration contract changed or was weakened: "
         f"expected hash {REGISTRATION_CONTRACT_HASH!r}, got {actual_contract_hash!r}"
+    )
+    contract_raw = corpus[contract_start:contract_end]
+    _SHARED_POLICING["_assert_link_free_governed_section"](
+        contract_raw, context="registration contract"
+    )
+    contract_records = _SHARED_POLICING[
+        "_normalised_visible_workstream_records"
+    ](contract_raw)
+    contract_record_receipt = "\n".join(
+        f"{signature}\x1f{line}" for signature, line in contract_records
+    )
+    actual_contract_records_hash = hashlib.sha256(
+        contract_record_receipt.encode("utf-8")
+    ).hexdigest()
+    assert actual_contract_records_hash == REGISTRATION_CONTRACT_RECORDS_SHA256, (
+        "registration-contract record hierarchy changed: "
+        f"expected hash {REGISTRATION_CONTRACT_RECORDS_SHA256!r}, "
+        f"got {actual_contract_records_hash!r}"
     )
 
     visible_status = _normalised_status_value(corpus)
