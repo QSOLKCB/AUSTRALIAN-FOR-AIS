@@ -60,9 +60,7 @@ def _protect_non_commonmark_raw_tag_openers(text: str) -> str:
 ''',
 )
 
-replace_once(
-    policing,
-    '''        if bool(run["can_close"]):
+rule3_old = '''        if bool(run["can_close"]):
             while openers[marker]:
                 opener_index = openers[marker][-1]
                 opener = runs[opener_index]
@@ -90,8 +88,8 @@ replace_once(
                     openers[marker].pop()
                 if consumed == closer_remaining:
                     break
-''',
-    '''        if bool(run["can_close"]):
+'''
+rule3_new = '''        if bool(run["can_close"]):
             opener_position = len(openers[marker]) - 1
             while opener_position >= 0:
                 opener_index = openers[marker][opener_position]
@@ -136,8 +134,8 @@ replace_once(
                 if consumed == closer_remaining:
                     break
                 opener_position -= 1
-''',
-)
+'''
+replace_once(policing, rule3_old, rule3_new)
 
 replace_once(
     policing,
@@ -210,6 +208,120 @@ replace_once(
 ''',
 )
 
+registry = Path("tests/test_research_reference_registry.py")
+replace_once(
+    registry,
+    '''_SHARED_HTML_PREFLIGHT = _SHARED_POLICING["_governed_surface_html_violations"]
+''',
+    '''_SHARED_HTML_PREFLIGHT = _SHARED_POLICING["_governed_surface_html_violations"]
+_SHARED_PROTECT_NON_COMMONMARK_RAW_TAG_OPENERS = _SHARED_POLICING[
+    "_protect_non_commonmark_raw_tag_openers"
+]
+_SHARED_RAW_TAG_SENTINEL = _SHARED_POLICING["COMMONMARK_RAW_HTML_TAG_SENTINEL"]
+''',
+)
+replace_once(registry, rule3_old, rule3_new)
+replace_once(
+    registry,
+    '''def _visible_html_text(
+    text: str,
+    *,
+    protect_raw_html_literal_asterisks: bool = False,
+) -> str:
+    parser = _VisibleHTMLTextParser(
+        protect_raw_html_literal_asterisks=protect_raw_html_literal_asterisks,
+    )
+    try:
+        parser.feed(text)
+        parser.close()
+    except Exception:
+        return ""
+    # HTML inline elements do not manufacture whitespace between adjacent text
+    # nodes. Preserve the source/browser adjacency here; the final visible-text
+    # normalizer collapses whitespace that was actually rendered by the source.
+    return "".join(parser.parts)
+''',
+    '''def _visible_html_text(
+    text: str,
+    *,
+    protect_raw_html_literal_asterisks: bool = False,
+) -> str:
+    protected = _SHARED_PROTECT_NON_COMMONMARK_RAW_TAG_OPENERS(text)
+    parser = _VisibleHTMLTextParser(
+        protect_raw_html_literal_asterisks=protect_raw_html_literal_asterisks,
+    )
+    try:
+        parser.feed(protected)
+        parser.close()
+    except Exception:
+        return ""
+    # HTML inline elements do not manufacture whitespace between adjacent text
+    # nodes. Preserve the source/browser adjacency here; the final visible-text
+    # normalizer collapses whitespace that was actually rendered by the source.
+    return "".join(parser.parts).replace(_SHARED_RAW_TAG_SENTINEL, "<")
+''',
+)
+replace_once(
+    registry,
+    '''def _visible_html_links(text: str) -> tuple[str, ...]:
+    """Return navigable href values from browser-visible raw HTML anchors."""
+    parser = _VisibleHTMLTextParser()
+    try:
+        parser.feed(text)
+        parser.close()
+    except Exception:
+        return ()
+    return tuple(parser.hrefs)
+''',
+    '''def _visible_html_links(text: str) -> tuple[str, ...]:
+    """Return navigable href values from browser-visible raw HTML anchors."""
+    parser = _VisibleHTMLTextParser()
+    try:
+        parser.feed(_SHARED_PROTECT_NON_COMMONMARK_RAW_TAG_OPENERS(text))
+        parser.close()
+    except Exception:
+        return ()
+    return tuple(parser.hrefs)
+''',
+)
+replace_once(
+    registry,
+    '''def _visible_html_link_bindings(text: str) -> tuple[tuple[str, str], ...]:
+    """Keep linked character data attached to its already-decoded HTML href."""
+    parser = _VisibleHTMLTextParser()
+    parser.feed(text)
+    parser.close()
+    return tuple(parser.link_bindings)
+''',
+    '''def _visible_html_link_bindings(text: str) -> tuple[tuple[str, str], ...]:
+    """Keep linked character data attached to its already-decoded HTML href."""
+    parser = _VisibleHTMLTextParser()
+    parser.feed(_SHARED_PROTECT_NON_COMMONMARK_RAW_TAG_OPENERS(text))
+    parser.close()
+    return tuple(parser.link_bindings)
+''',
+)
+replace_once(
+    registry,
+    '''def _mask_hidden_html_regions(text: str) -> str:
+    """Mask hidden HTML containers globally so visibility state survives slicing."""
+    parser = _HiddenHTMLRegionParser(text)
+    try:
+        parser.feed(text)
+        parser.close()
+        parser.finish()
+''',
+    '''def _mask_hidden_html_regions(text: str) -> str:
+    """Mask hidden HTML containers globally so visibility state survives slicing."""
+    protected = _SHARED_PROTECT_NON_COMMONMARK_RAW_TAG_OPENERS(text)
+    parser = _HiddenHTMLRegionParser(protected)
+    try:
+        parser.feed(protected)
+        parser.close()
+        parser.finish()
+''',
+)
+
 regressions = Path("tests/test_pr4_current_review_regressions.py")
 text = regressions.read_text(encoding="utf-8")
 marker = "\n\n# Human receipt: autolink/implied-end/type-6 repair passed 12 exact and 912 full-suite tests before self-cleanup.\n"
@@ -219,8 +331,8 @@ additions = r'''
 
 
 def test_commonmark_rule_of_three_preserves_inner_literal_delimiters() -> None:
-    visible = POLICING["_visible_text"]
-    assert visible("n*o**t* legal advice") == "no**t legal advice"
+    assert POLICING["_visible_text"]("n*o**t* legal advice") == "no**t legal advice"
+    assert REGISTRY["_visible_inline_text"]("n*o**t* legal advice") == "no**t legal advice"
 
     roadmap = (ROOT / "ROADMAP.md").read_text(encoding="utf-8")
     mutated = roadmap.replace("not legal advice", "n*o**t* legal advice", 1)
@@ -244,6 +356,9 @@ def test_malformed_raw_tag_remains_literal_across_governed_paths() -> None:
     visible = POLICING["_visible_text"](payload)
     assert "<span hidden=>" in visible
     assert "Current sources may be skipped." in visible
+    registry_visible = REGISTRY["_visible_inline_text"](payload)
+    assert "<span hidden=>" in registry_visible
+    assert "Current sources may be skipped." in registry_visible
 
     roadmap = (ROOT / "ROADMAP.md").read_text(encoding="utf-8")
     mutated_roadmap = roadmap.replace(
