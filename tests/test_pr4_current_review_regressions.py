@@ -557,3 +557,51 @@ def test_shared_preflight_reports_governed_interaction_semantics() -> None:
     assert "semantic-role" in violations('<span role="img">not</span>')
     assert "semantic-heading" in violations('<span role="heading">not</span>')
     assert "semantic-role" not in violations('<span role="heading">not</span>')
+
+
+
+def test_full_registry_html_policy_rejects_machine_metadata_before_title() -> None:
+    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")
+    mutated = '<a href="https://creativecommons.org/publicdomain/zero/1.0/" rel="license"></a>\n' + corpus
+    with pytest.raises(AssertionError, match="machine-readable"):
+        REGISTRY["_validate_registry_corpus"](mutated)
+
+
+def test_governed_entry_rejects_hyperlink_outside_source_contract() -> None:
+    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")
+    phrase = "This project must not copy screenplay text"
+    assert phrase in corpus
+    mutated = corpus.replace(
+        phrase,
+        f'[{phrase}](https://creativecommons.org/publicdomain/zero/1.0/)',
+        1,
+    )
+    with pytest.raises(AssertionError, match="ungoverned or misbound hyperlinks"):
+        REGISTRY["_validate_registry_corpus"](mutated)
+
+
+def test_trans_tasman_methodology_preserves_record_hierarchy() -> None:
+    methodology = (ROOT / "docs" / "METHODOLOGY.md").read_text(encoding="utf-8")
+    paragraph = "Official or archival military sources may motivate **communication-friction** hypotheses"
+    assert paragraph in methodology
+    mutated = methodology.replace(paragraph, "  " + paragraph, 1)
+    with pytest.raises(AssertionError, match="record hierarchy changed"):
+        WORKSTREAM_H["_assert_trans_tasman_integrity"](mutated)
+
+
+def test_registry_mapping_receipts_preserve_list_hierarchy() -> None:
+    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")
+    entry = "### *Black Comedy* (ABC, 2014-2020)"
+    section = REGISTRY["_registered_sections"](corpus)[entry]
+    lines = section.splitlines(keepends=True)
+    changed = False
+    for index, line in enumerate(lines):
+        if "AU-HUMOUR-007" in line and line.startswith("- "):
+            lines[index] = "  " + line
+            changed = True
+            break
+    assert changed, "expected noninitial Black Comedy mapping bullet was not found"
+    mutated_section = "".join(lines)
+    mutated = corpus.replace(section, mutated_section, 1)
+    with pytest.raises(AssertionError, match="mapping hierarchy changed"):
+        REGISTRY["_validate_registry_corpus"](mutated)

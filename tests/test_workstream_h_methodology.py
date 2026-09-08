@@ -31,6 +31,7 @@ WORKSTREAM_H_CITATION_DESTINATIONS = frozenset(
     destination for _, destination in WORKSTREAM_H_CITATION_LINKS
 )
 TRANS_TASMAN_VISIBLE_SHA256 = "977cb0423a8e0690383f68ef9915ce049ed6f977feeff4f4ab28d21449db1c9b"
+TRANS_TASMAN_SOURCE_STRUCTURE_SHA256 = "b7ddafd25cbc499dca28e3c5ffde094dc4f6115f4ad7995bc3752ab8240c12e2"
 
 MARKDOWN_IMAGE_PATTERN = re.compile(
     r"!\[[^\]\r\n]*\]\([^\r\n)]*(?:\)[^\r\n)]*)?\)"
@@ -562,6 +563,23 @@ def _assert_trans_tasman_integrity(text: str) -> str:
     assert actual_hash == TRANS_TASMAN_VISIBLE_SHA256, (
         "browser-visible Trans-Tasman methodology changed: expected hash "
         f"{TRANS_TASMAN_VISIBLE_SHA256!r}, got {actual_hash!r}"
+    )
+    namespace = runpy.run_path(str(POLICING_TEST))
+    structural = namespace["_rendered_structure"](raw_section)
+    source_lines = raw_section.splitlines()
+    structural_lines = structural.splitlines()
+    assert len(source_lines) == len(structural_lines)
+    source_structure_value = "\n".join(
+        original.rstrip()
+        for original, live in zip(source_lines, structural_lines)
+        if live.strip()
+    )
+    actual_structure_hash = hashlib.sha256(
+        source_structure_value.encode("utf-8")
+    ).hexdigest()
+    assert actual_structure_hash == TRANS_TASMAN_SOURCE_STRUCTURE_SHA256, (
+        "Trans-Tasman methodology record hierarchy changed: expected source-structure hash "
+        f"{TRANS_TASMAN_SOURCE_STRUCTURE_SHA256!r}, got {actual_structure_hash!r}"
     )
     return section
 

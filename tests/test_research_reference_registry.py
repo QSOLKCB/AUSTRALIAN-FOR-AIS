@@ -3003,6 +3003,90 @@ def _has_non_heading_content(block: str) -> bool:
     return False
 
 
+RESEARCH_MAPPING_RECORD_HASHES: dict[str, str] = {'### *Acropolis Now*': '9243605ea698d02fa8b70f32407f59352eee67645a4829c351c92292241776ff',
+ '### *Black Comedy* (ABC, 2014-2020)': 'ca70791922ae76f5f26eabc1f7c015ad82d7f676e131d752bf126ce15648b9b9',
+ '### *Kath & Kim*': 'a3216e3e4c366e742bee1f9afe90f708450c1e0b34e85315a4bbfb9d9da6fc5e',
+ "### *Shaun Micallef's MAD AS HELL*": '12f4362f21225a577cfc9ef6e516398d9928f542969714268e5e2230039e43a1',
+ '### *The Castle* (1997)': '749aea29b84e3347aed748eec76f9e14697676c12b732630c0ce74ad73140edc',
+ '### ABC Language, *From rooting to bonking: a history of Australian sex terms*': 'b5e02f81ed78d939a04825dd4f7ebc9d32201e169a2df6261994bf18fad80697',
+ '### Australian Defence multinational communication reports (2022 and 2026)': '3795ab1f15164724a5d9f59b2bf7772516fd73f5b5dd6ac58fb5a95223aa9490',
+ '### Chey (2021), *Overcoming awkwardness: some interpretations of Australian humour*': '8cd49182fca888d812241c5d4564b7a462aceb9a0301e0a900ecde68aabe6a11',
+ '### Hurley (2025), *Laughter with purpose: how First Nations Australian comedians use humour to engage, educate, and empower audiences*': 'df07dcf4b45bc39e91360a13cd37baeb79e488d9f8db59e7fb2cdf47897df80e',
+ '### Slade, *Australian Sketch Comedy Field Theory* (ASCFT)': '6d7a33e3accf7a6fce7fd743c9509809dfcc27430b39d951add0e158edece6b4',
+ '### Trans-Tasman constitutional and federation context': 'c4f5ea8992312629e9dca6dc45e03e17a49b81b2e6efd2236c27594596a5545d',
+ '### Victoria University, *Australian slang dictionary*': '33037e05424270e7701385d6749fa9d8ecdc09faf4aa9f9dcdc11ea4827e9f0a',
+ '### WWII American-serviceman Australia language guides': '91481fe6ad50e600b97842132dee21654766ff76da82bc950feba9f920846491',
+ '### r/australia, *Best Aussie slang* community thread': '13e19baec17b2140fa072d57b827e81d3321302f91f9d9e300dcbb0c3be95cd6'}
+PROJECT_MAPPING_RECORD_HASHES: dict[str, str] = {'### *Acropolis Now*': '41a0835f46a5cb24a6098ac7ba52ccbfd14e9ff02e33dec6121cbed062a7378f',
+ '### *Black Comedy* (ABC, 2014-2020)': 'f5685d40effd380853b7636613371fc10b45d2ff00b8ed712fd0c57619e2f1b3',
+ '### *Kath & Kim*': 'e1e5fb35be80038affaf0143b08eb2466bba81695f53d1b9fa504e5882a5fd75',
+ "### *Shaun Micallef's MAD AS HELL*": 'd95efd1cb78594af0c0549977b9fead2fa7f037abc1e1de6892821e8d02b20ee',
+ '### *The Castle* (1997)': 'b463c2b4fa888bc3313eee56d0eb2a4b0af47175cdecdbcc4178c3a69b1fa9bb',
+ '### ABC Language, *From rooting to bonking: a history of Australian sex terms*': 'c39a2dfbf90f6a56e9b892dd6303f9c120f08ed349d15c44f26e4d1c636b33fb',
+ '### Australian Defence multinational communication reports (2022 and 2026)': '11a2f78a5d21c3f5e46de2c0072f1d6b4226b368382900cb6f040f983bedcda8',
+ '### Chey (2021), *Overcoming awkwardness: some interpretations of Australian humour*': 'be05133dc0915ba9c2a41d8dbc742f15325532ce284694d319f5866cca88d60a',
+ '### Hurley (2025), *Laughter with purpose: how First Nations Australian comedians use humour to engage, educate, and empower audiences*': 'fe3a1250d25472d00282bcccf6e077da384d0056c2b8da9765dae751c3ec4bb6',
+ '### Slade, *Australian Sketch Comedy Field Theory* (ASCFT)': '29a7156688275f39c43bca4fed9d88215f01125ebdc44b0360552723d8d7b670',
+ '### Trans-Tasman constitutional and federation context': '6199e07c6fa1304081ba9e7cb6a0fb4cdbb2305ac3b582bb9aecaff8ddd3bff7',
+ '### Victoria University, *Australian slang dictionary*': '720eda81059b91acd4d4c974bd91bd37eeee7352df6fc8792b43df3e2686f72b',
+ '### WWII American-serviceman Australia language guides': '0606e66ffc1396d59fa081fc6858981a0775143de848eabb216312801798e400',
+ '### r/australia, *Best Aussie slang* community thread': '98adfdfde92efbbe9860c05be3ef0cfaa221be28b479a2e03bd145747bcad242'}
+ENTRY_WIDE_LINK_BINDINGS: dict[str, tuple[tuple[str, str], ...]] = {'### *Acropolis Now*': (),
+ '### *Black Comedy* (ABC, 2014-2020)': (),
+ '### *Kath & Kim*': (),
+ "### *Shaun Micallef's MAD AS HELL*": (),
+ '### *The Castle* (1997)': (('https://www.acmi.net.au/works/86581--the-castle/',
+                              'https://www.acmi.net.au/works/86581--the-castle/'),
+                             ('https://www.nfsa.gov.au/collection/item/castle-fathers-day',
+                              'https://www.nfsa.gov.au/collection/item/castle-fathers-day')),
+ '### ABC Language, *From rooting to bonking: a history of Australian sex terms*': (),
+ '### Australian Defence multinational communication reports (2022 and 2026)': (('https://www.defence.gov.au/news-events/news/2022-09-08/communication-key-combined-exercise',
+                                                                                 'https://www.defence.gov.au/news-events/news/2022-09-08/communication-key-combined-exercise'),
+                                                                                ('https://www.defence.gov.au/news-events/news/2026-06-11/partner-nations-rehearse-war',
+                                                                                 'https://www.defence.gov.au/news-events/news/2026-06-11/partner-nations-rehearse-war')),
+ '### Chey (2021), *Overcoming awkwardness: some interpretations of Australian humour*': (),
+ '### Hurley (2025), *Laughter with purpose: how First Nations Australian comedians use humour to engage, educate, and empower audiences*': (),
+ '### Slade, *Australian Sketch Comedy Field Theory* (ASCFT)': (),
+ '### Trans-Tasman constitutional and federation context': (('https://peo.gov.au/understand-our-parliament/history-of-parliament/federation/federation',
+                                                             'https://peo.gov.au/understand-our-parliament/history-of-parliament/federation/federation'),
+                                                            ('https://peo.gov.au/understand-our-parliament/how-parliament-works/the-australian-constitution/introducing-the-australian-constitution',
+                                                             'https://peo.gov.au/understand-our-parliament/how-parliament-works/the-australian-constitution/introducing-the-australian-constitution'),
+                                                            ('https://peo.gov.au/understand-our-parliament/your-questions-on-notice/questions/new-zealand-is-mentioned-in-the-australian-constitution-does-that-mean-that-new-zealanders-have-the-right-to-vote-in-australia',
+                                                             'https://peo.gov.au/understand-our-parliament/your-questions-on-notice/questions/new-zealand-is-mentioned-in-the-australian-constitution-does-that-mean-that-new-zealanders-have-the-right-to-vote-in-australia'),
+                                                            ('https://www.legislation.gov.au/C2004Q00685/asmade/1901-01-01/text/original/epub/OEBPS/document_1/document_1.html',
+                                                             'https://www.legislation.gov.au/C2004Q00685/asmade/1901-01-01/text/original/epub/OEBPS/document_1/document_1.html')),
+ '### Victoria University, *Australian slang dictionary*': (),
+ '### WWII American-serviceman Australia language guides': (('https://www.awm.gov.au/collection/LIB100000077',
+                                                             'https://www.awm.gov.au/collection/LIB100000077'),
+                                                            ('https://www.awm.gov.au/collection/LIB20571',
+                                                             'https://www.awm.gov.au/collection/LIB20571'),
+                                                            ('https://dictionaryofsydney.org/media/5562',
+                                                             'https://dictionaryofsydney.org/media/5562')),
+ '### r/australia, *Best Aussie slang* community thread': ()}
+
+
+def _mapping_record_hashes(section: str) -> tuple[str, str]:
+    rendered, structure = _markdown_views(section)
+    research_headings = list(RESEARCH_MAPPING_HEADING_PATTERN.finditer(structure))
+    project_headings = list(PROJECT_MAPPING_HEADING_PATTERN.finditer(structure))
+    assert len(research_headings) == 1 and len(project_headings) == 1
+    research_block = rendered[research_headings[0].end():project_headings[0].start()]
+    safe_heading = re.search(
+        rf"(?m)^ {{0,3}}{re.escape(SAFE_FIELD)}",
+        structure[project_headings[0].end():],
+    )
+    assert safe_heading is not None
+    project_start = project_headings[0].end()
+    project_end = project_start + safe_heading.start()
+    project_block = rendered[project_start:project_end]
+    records_fn = _SHARED_POLICING["_normalised_visible_workstream_records"]
+    def digest(block: str) -> str:
+        records = records_fn(block)
+        receipt = "\n".join(f"{signature}\x1f{line}" for signature, line in records)
+        return hashlib.sha256(receipt.encode("utf-8")).hexdigest()
+    return digest(research_block), digest(project_block)
+
+
 def _require_mapping_block(entry: str, section: str) -> tuple[str, str]:
     normalised = _normalised_rendered_lines(section)
     research_count = sum(
@@ -3185,7 +3269,7 @@ def _forbidden_governed_html_constructs(text: str) -> set[str]:
     rendered = _rendered_registry_text(text)
     scan = _mask_multiline_code_spans(rendered)
     fence: FenceState | None = None
-    found = _SHARED_HTML_PREFLIGHT(text) & ACTIVE_DOCUMENT_HTML_KINDS
+    found = set(_SHARED_HTML_PREFLIGHT(text)) - {"semantic-heading"}
     semantics = _GovernedHTMLSemanticsDetector()
 
     try:
@@ -3462,6 +3546,17 @@ def _validate_registered_entry(
         research_mapping=research_mapping,
         project_mapping=project_mapping,
     )
+    actual_research_records_hash, actual_project_records_hash = _mapping_record_hashes(section)
+    expected_research_records_hash = RESEARCH_MAPPING_RECORD_HASHES[entry]
+    expected_project_records_hash = PROJECT_MAPPING_RECORD_HASHES[entry]
+    assert actual_research_records_hash == expected_research_records_hash, (
+        f"{entry} research mapping hierarchy changed: expected hash "
+        f"{expected_research_records_hash!r}, got {actual_research_records_hash!r}"
+    )
+    assert actual_project_records_hash == expected_project_records_hash, (
+        f"{entry} project mapping hierarchy changed: expected hash "
+        f"{expected_project_records_hash!r}, got {actual_project_records_hash!r}"
+    )
     expected_bindings = {
         (_visible_inline_text(label), destination)
         for label, destination in contract["source_bindings"]
@@ -3475,6 +3570,15 @@ def _validate_registered_entry(
         "tooltip provenance must remain inside the sealed source contract"
     )
     _require_complete_entry_integrity(entry, section)
+    whole_entry_bindings = tuple(
+        _usable_https_source_bindings(section, reference_scope=reference_scope)
+    )
+    expected_entry_bindings = ENTRY_WIDE_LINK_BINDINGS[entry]
+    assert whole_entry_bindings == expected_entry_bindings, (
+        f"{entry} contains ungoverned or misbound hyperlinks outside its pinned "
+        f"entry contract: expected {expected_entry_bindings!r}, "
+        f"got {whole_entry_bindings!r}"
+    )
 
 
 def _assert_registry_document_prefix(corpus: str) -> None:
