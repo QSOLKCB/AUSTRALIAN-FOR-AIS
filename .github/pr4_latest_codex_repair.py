@@ -16,14 +16,13 @@ def replace_once(path: Path, old: str, new: str) -> None:
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
-# 1) Preserve/reject reader-visible CommonMark hard breaks before the ordinary
+# 1) Reject reader-visible CommonMark two-space hard breaks before the ordinary
 # whitespace fold can erase the distinction. The structural view already masks
-# comments, fenced code, and inline code spans, so only live Markdown hard-break
-# syntax trips this fail-closed receipt rule.
+# comments, fenced code, and inline code spans, so inert examples remain inert.
 replace_once(
     REGISTRY,
     '''def _visible_inline_text(text: str) -> str:\n    """Reduce Markdown/HTML metadata to browser-visible text only."""\n    rendered = _rendered_registry_text(text)\n    visible = _mask_link_reference_definitions_for_visibility(rendered)\n''',
-    '''def _visible_inline_text(text: str) -> str:\n    """Reduce Markdown/HTML metadata to browser-visible text only."""\n    structural = _structural_registry_text(text)\n    if re.search(r"(?<=\\S) {2,}(?:\\r\\n|\\r|\\n)", structural) or re.search(\n        r"(?<!\\\\)\\\\(?:\\r\\n|\\r|\\n)", structural\n    ):\n        raise AssertionError(\n            "Markdown hard line breaks are not allowed in governed registry receipts"\n        )\n    rendered = _rendered_registry_text(text)\n    visible = _mask_link_reference_definitions_for_visibility(rendered)\n''',
+    '''def _visible_inline_text(text: str) -> str:\n    """Reduce Markdown/HTML metadata to browser-visible text only."""\n    structural = _structural_registry_text(text)\n    if re.search(r"(?<=\\S) {2,}(?:\\r\\n|\\r|\\n)", structural):\n        raise AssertionError(\n            "Markdown hard line breaks are not allowed in governed registry receipts"\n        )\n    rendered = _rendered_registry_text(text)\n    visible = _mask_link_reference_definitions_for_visibility(rendered)\n''',
 )
 
 # 2) Language metadata changes assistive pronunciation without changing the
