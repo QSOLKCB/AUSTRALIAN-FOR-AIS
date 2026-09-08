@@ -6,6 +6,8 @@ import runpy
 import pytest
 
 
+# Keep the reviewed-head reproductions together so later parser hardening cannot
+# accidentally make one review fix depend on an unrelated regression module.
 TESTS = Path(__file__).parent
 ROOT = TESTS.parent
 POLICING = runpy.run_path(str(TESTS / "test_policing_context_roadmap.py"))
