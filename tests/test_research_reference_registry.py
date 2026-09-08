@@ -3507,6 +3507,16 @@ def _validate_registry_corpus(corpus: str) -> None:
             reference_scope=corpus,
         )
 
+    # Keep the established source-link inert diagnostics above: an inert source
+    # fails while its registered-source field is being validated. After every
+    # entry has had that more specific check, reject native inert anywhere else
+    # in the governed corpus so rights/provenance and global governance clauses
+    # cannot disappear from the accessibility tree while retaining their text
+    # receipts.
+    assert "accessibility-inert" not in _SHARED_HTML_PREFLIGHT(corpus), (
+        "native inert accessibility suppression is not allowed in governed documents"
+    )
+
 def test_post_phase2_registry_batch_preserves_governance_contract():
     _validate_registry_corpus(CORPUS.read_text(encoding="utf-8"))
 

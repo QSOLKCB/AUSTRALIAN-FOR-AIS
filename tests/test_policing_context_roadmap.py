@@ -16,6 +16,7 @@ WORKSTREAM_HEADING = "### I. Australian and United States policing-context trans
 WORKSTREAM_END = "\n---\n\n## Phase 3"
 WORKSTREAM_END_HEADING = "## Phase 3 — Multi-Annotator Culturally Contextualised Dataset"
 POLICING_WORKSTREAM_VISIBLE_SHA256 = "d43f7d255da2792106d69048e617d96d9f8933204bc3dd4623b2482e5a4600e8"
+POLICING_WORKSTREAM_STRUCTURE_SHA256 = "9d73aabbee5bb5bc727562a23ab62bf7375ef54a72efea51c9adbcd5987f03ca"
 
 
 REQUIRED_CLAUSES = (
@@ -1380,6 +1381,12 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             "marquee",
         }:
             self.violations.add("replacement-content")
+        # Browser-rendered line/thematic breaks can visually separate a
+        # mandatory governance phrase while character-data normalization
+        # recreates the canonical text. Keep those boundaries inside the
+        # shared governed-surface contract.
+        if tag in {"br", "hr"}:
+            self.violations.add("rendered-break")
         if tag == "table":
             self.violations.add("raw-table")
         # Legacy font presentation can make sealed prose unreadable without
@@ -1439,6 +1446,12 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             self.violations.add("accessible-name")
         if "aria-hidden" in attribute_names:
             self.violations.add("accessibility-hidden")
+        # Native inert suppresses descendant interaction and accessibility
+        # exposure even though the character data can remain visually
+        # present. Reuse the accessibility-suppression policy across every
+        # governed surface, not only source-link/citation special cases.
+        if "inert" in attribute_names:
+            self.violations.add("accessibility-inert")
         # Raw Markdown is embedded into an existing HTML document. Live
         # html/body tags can merge attributes onto the document root, while
         # <base> mutates document-wide URL/target behavior for otherwise sealed
@@ -1596,6 +1609,7 @@ def _assert_supported_governed_html(violations: set[str]) -> None:
     """Fail closed on rendering semantics outside the shared text contract."""
     descriptions = {
         "replacement-content": "replacement-content HTML",
+        "rendered-break": "rendered break HTML",
         "preformatted-content": "preformatted content HTML",
         "semantic-role": "semantic role override HTML",
         "raw-svg": "raw SVG HTML",
@@ -1617,6 +1631,7 @@ def _assert_supported_governed_html(violations: set[str]) -> None:
         "presentational-font": "legacy presentational font HTML",
         "accessible-name": "accessible-name override HTML",
         "accessibility-hidden": "aria-hidden accessibility suppression HTML",
+        "accessibility-inert": "native inert accessibility suppression HTML",
         "accessibility-disabled": "aria-disabled source-link suppression HTML",
         "nested-anchor": "nested anchor HTML",
         "nested-nobr": "nested nobr HTML",
@@ -1724,21 +1739,38 @@ def _rendered_policing_workstream(roadmap: str) -> str:
 
 
 
-def _normalised_visible_workstream_lines(rendered: str) -> list[str]:
-    """Return the canonical browser-visible line sequence used by Workstream I integrity."""
-    visible_lines: list[str] = []
+def _workstream_container_signature(raw_line: str) -> str:
+    """Encode CommonMark quote/list ownership for one visible Workstream I line."""
+    _, is_code, containers = _parse_fence_container_prefixes(raw_line)
+    if is_code:
+        return "code"
+    if not containers:
+        return "root"
+    return "/".join(f"{kind}:{amount}" for kind, amount in containers)
+
+
+def _normalised_visible_workstream_records(rendered: str) -> list[tuple[str, str]]:
+    """Return structural signatures plus canonical browser-visible Workstream I text."""
+    records: list[tuple[str, str]] = []
     for raw_line in rendered.splitlines():
+        signature = _workstream_container_signature(raw_line)
         line = _visible_text(raw_line).strip()
         line = re.sub(r"^(?:[-+*]|\d{1,9}[.)])\s+", "", line)
         if line:
-            visible_lines.append(line)
-    return visible_lines
+            records.append((signature, line))
+    return records
+
+
+def _normalised_visible_workstream_lines(rendered: str) -> list[str]:
+    """Return canonical browser-visible text lines for clause-level checks."""
+    return [line for _, line in _normalised_visible_workstream_records(rendered)]
 
 
 def _validate_policing_workstream(roadmap: str) -> None:
     rendered = _rendered_policing_workstream(roadmap)
     workstream = _visible_text(rendered)
-    visible_lines = _normalised_visible_workstream_lines(rendered)
+    visible_records = _normalised_visible_workstream_records(rendered)
+    visible_lines = [line for _, line in visible_records]
 
     for clause in REQUIRED_CLAUSES:
         visible_clause = _visible_text(clause)
@@ -1777,6 +1809,17 @@ def _validate_policing_workstream(roadmap: str) -> None:
     assert integrity_hash == POLICING_WORKSTREAM_VISIBLE_SHA256, (
         "browser-visible policing workstream changed: expected hash "
         f"{POLICING_WORKSTREAM_VISIBLE_SHA256!r}, got {integrity_hash!r}"
+    )
+
+    structural_integrity_value = "\n".join(
+        f"{signature}\t{line}" for signature, line in visible_records
+    )
+    structural_integrity_hash = hashlib.sha256(
+        structural_integrity_value.encode("utf-8")
+    ).hexdigest()
+    assert structural_integrity_hash == POLICING_WORKSTREAM_STRUCTURE_SHA256, (
+        "browser-visible policing workstream container hierarchy changed: expected hash "
+        f"{POLICING_WORKSTREAM_STRUCTURE_SHA256!r}, got {structural_integrity_hash!r}"
     )
 
 def test_policing_context_workstream_remains_source_gated_and_noncomparative():

@@ -350,3 +350,78 @@ def test_shared_methodology_rejects_preformatted_and_semantic_role_semantics(
     assert kind in POLICING["_governed_surface_html_violations"](mutated_h)
     with pytest.raises(AssertionError):
         WORKSTREAM_H["_assert_workstream_h_integrity"](mutated_h)
+
+
+# PR4 inert/break/list-hierarchy review regressions
+
+def test_inert_is_rejected_across_shared_and_registry_governed_surfaces() -> None:
+    roadmap = (ROOT / "ROADMAP.md").read_text(encoding="utf-8")
+    phrase = "source-gated research proposal"
+    inert_phrase = f"<span inert>{phrase}</span>"
+    mutated_roadmap = roadmap.replace(phrase, inert_phrase, 1)
+    assert mutated_roadmap != roadmap
+    assert "accessibility-inert" in POLICING["_governed_surface_html_violations"](mutated_roadmap)
+    with pytest.raises(AssertionError):
+        POLICING["_validate_policing_workstream"](mutated_roadmap)
+
+    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")
+    live = "The article is a scholarly research reference."
+    inert_rights = f"<span inert>{live}</span>"
+    mutated_corpus = corpus.replace(live, inert_rights, 1)
+    assert mutated_corpus != corpus
+    with pytest.raises(AssertionError):
+        REGISTRY["_validate_registry_corpus"](mutated_corpus)
+
+
+@pytest.mark.parametrize("tag", ("br", "hr"))
+def test_rendered_breaks_cannot_split_shared_methodology_safeguards(tag: str) -> None:
+    roadmap = (ROOT / "ROADMAP.md").read_text(encoding="utf-8")
+
+    workstream_i_phrase = "source-gated research proposal"
+    mutated_i = roadmap.replace(
+        workstream_i_phrase,
+        f"source-gated <{tag}> research proposal",
+        1,
+    )
+    assert mutated_i != roadmap
+    assert "rendered-break" in POLICING["_governed_surface_html_violations"](mutated_i)
+    with pytest.raises(AssertionError):
+        POLICING["_validate_policing_workstream"](mutated_i)
+
+    workstream_h_phrase = (
+        "nationality and first-language identity must not define the comparison cohorts"
+    )
+    mutated_h = roadmap.replace(
+        workstream_h_phrase,
+        f"nationality and first-language identity must <{tag}> not define the comparison cohorts",
+        1,
+    )
+    assert mutated_h != roadmap
+    assert "rendered-break" in POLICING["_governed_surface_html_violations"](mutated_h)
+    with pytest.raises(AssertionError):
+        WORKSTREAM_H["_assert_workstream_h_integrity"](mutated_h)
+
+
+def test_policing_workstream_receipt_preserves_list_hierarchy() -> None:
+    roadmap = (ROOT / "ROADMAP.md").read_text(encoding="utf-8")
+    review_line = (
+        "- before publishing any family involving coercion, consent, search, detention, "
+        "questioning, force, emergency powers, or legal rights, verify the governing "
+        "sources are current for the recorded jurisdiction and date and obtain appropriate "
+        "review from relevant Australian and United States legal, policing, civil-liberties, "
+        "and community expertise;"
+    )
+    assert review_line in roadmap
+    mutated = roadmap.replace(review_line, "  " + review_line, 1)
+
+    canonical_rendered = POLICING["_rendered_policing_workstream"](roadmap)
+    mutated_rendered = POLICING["_rendered_policing_workstream"](mutated)
+    canonical_records = POLICING["_normalised_visible_workstream_records"](canonical_rendered)
+    mutated_records = POLICING["_normalised_visible_workstream_records"](mutated_rendered)
+    review_text = review_line[2:]
+    canonical_signature = next(signature for signature, line in canonical_records if line == review_text)
+    mutated_signature = next(signature for signature, line in mutated_records if line == review_text)
+    assert canonical_signature != mutated_signature
+
+    with pytest.raises(AssertionError, match="container hierarchy changed"):
+        POLICING["_validate_policing_workstream"](mutated)
