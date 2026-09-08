@@ -30,7 +30,9 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Apply surgical repair
-        run: python .github/temporary-pr4-active-html-link-batch-repair.py
+        run: |
+          python .github/temporary-pr4-active-html-link-batch-repair.py
+          python .github/temporary-pr4-active-html-link-batch-adjust.py
 
       - name: Whitespace guard
         run: git diff --check
