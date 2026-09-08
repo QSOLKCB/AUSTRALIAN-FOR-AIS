@@ -360,15 +360,9 @@ def _protect_unmatched_markdown_emphasis_delimiters(text: str) -> str:
         end = int(run["end"]) - int(run["open_consumed"])
         if start >= end:
             continue
-        # Preserve an unmatched candidate run, or the literal surplus left
-        # after CommonMark consumes only part of a matched delimiter run.
-        if not (
-            bool(run["can_open"])
-            or bool(run["can_close"])
-            or int(run["open_consumed"])
-            or int(run["close_consumed"])
-        ):
-            continue
+        # Any unconsumed delimiter character is browser-visible literal text.
+        # That includes a run surrounded by whitespace, which can neither open
+        # nor close emphasis and therefore must not disappear from the receipt.
         sentinel = (
             UNMATCHED_MARKDOWN_ASTERISK
             if run["marker"] == "*"
@@ -1327,7 +1321,10 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             self.violations.add("raw-image")
         if tag in {"form", "input", "button", "select", "textarea", "option", "optgroup"}:
             self.violations.add("interactive-form")
-        if tag in {"iframe", "object", "embed", "audio", "video", "meter", "progress"}:
+        if tag in {
+            "iframe", "object", "embed", "audio", "video", "meter", "progress",
+            "marquee",
+        }:
             self.violations.add("replacement-content")
         if tag == "table":
             self.violations.add("raw-table")
@@ -1355,6 +1352,10 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         # Parsed names cover duplicate, boolean, and multiline attributes.
         # The reducer cannot establish readability for arbitrary inline CSS.
         attribute_names = {key.lower() for key, _ in attrs}
+        # Hyperlink auditing can send an additional network request that is not
+        # represented by the sealed href binding. Fail closed on it.
+        if tag == "a" and "ping" in attribute_names:
+            self.violations.add("executable-url")
         if any(name.startswith("on") for name in attribute_names):
             self.violations.add("event-handler")
         if "title" in attribute_names:
@@ -1593,8 +1594,12 @@ def _rendered_policing_workstream(roadmap: str) -> str:
         # Global styles and ancestor direction can affect a section even when
         # their source lies outside its heading boundaries.
         _assert_supported_governed_html(_governed_surface_html_violations(roadmap))
-        structure = _rendered_structure(roadmap)
-        start, _ = _visible_markdown_heading_span(structure, WORKSTREAM_HEADING)
+        # Heading discovery must ignore raw HTML block payloads so a
+        # heading-looking line inside <pre> cannot become a section boundary.
+        heading_structure = _rendered_structure(roadmap)
+        start, _ = _visible_markdown_heading_span(
+            heading_structure, WORKSTREAM_HEADING
+        )
     except AssertionError as exc:
         # Preserve the established generic safeguard diagnostic for legacy
         # rendering-policy failures while allowing the newly migrated form
@@ -1602,12 +1607,21 @@ def _rendered_policing_workstream(roadmap: str) -> str:
         if "interactive form control HTML" in str(exc):
             raise
         raise AssertionError("rendered policing workstream is missing; missing policing-workstream safeguard") from exc
-    end, _ = _visible_markdown_heading_span(structure, WORKSTREAM_END_HEADING)
+    end, _ = _visible_markdown_heading_span(
+        heading_structure, WORKSTREAM_END_HEADING
+    )
     assert start < end, "rendered policing workstream boundary is invalid"
     assert "closed-details" not in _governed_surface_html_violations(roadmap[start:end]), (
         "default-closed <details> is not allowed in the rendered policing workstream"
     )
-    visible_structure = _mask_hidden_html_regions(structure)
+    # Integrity uses a distinct same-length view that preserves raw HTML
+    # blocks. Visible <pre>/<textarea> character data therefore contributes to
+    # the receipt even though those blocks remain inert for heading discovery.
+    integrity_structure = _rendered_structure(roadmap, html_spans=[])
+    assert len(integrity_structure) == len(heading_structure), (
+        "heading and integrity rendering views lost source-offset alignment"
+    )
+    visible_structure = _mask_hidden_html_regions(integrity_structure)
     return visible_structure[start:end]
 
 
@@ -1640,6 +1654,25 @@ def _validate_policing_workstream(roadmap: str) -> None:
         else:
             assert visible_clause in workstream, f"missing policing-workstream safeguard: {clause}"
 
+
+    # Workstream I currently has no approved hyperlinks. Keep destinations out
+    # of the prose-only receipt only by rejecting link-bearing syntax entirely;
+    # future links must be explicitly registered and added to this contract.
+    assert not tuple(_iter_inline_markdown_destinations(rendered)), (
+        "unexpected Markdown hyperlink in governed policing workstream"
+    )
+    assert AUTOLINK_PATTERN.search(rendered) is None, (
+        "unexpected autolink in governed policing workstream"
+    )
+    assert re.search(
+        r"<\s*a\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*\bhref\s*=",
+        rendered,
+        flags=re.IGNORECASE,
+    ) is None, "unexpected raw HTML hyperlink in governed policing workstream"
+    assert re.search(
+        r"(?<!!)\[[^\]\r\n]+\]\s*\[[^\]\r\n]*\]",
+        rendered,
+    ) is None, "unexpected reference-style hyperlink in governed policing workstream"
 
     integrity_value = "\n".join(visible_lines)
     integrity_hash = hashlib.sha256(integrity_value.encode("utf-8")).hexdigest()

@@ -20,9 +20,10 @@ import pytest
 # Reuse the raw-HTML-preserving scanner for document-active elements. Unlike
 # a structural Markdown view, it does not treat backticks inside raw HTML
 # blocks as code or discard executable script blocks before inspection.
-_SHARED_HTML_PREFLIGHT = runpy.run_path(
+_SHARED_POLICING = runpy.run_path(
     str(Path(__file__).with_name("test_policing_context_roadmap.py"))
-)["_governed_surface_html_violations"]
+)
+_SHARED_HTML_PREFLIGHT = _SHARED_POLICING["_governed_surface_html_violations"]
 ACTIVE_DOCUMENT_HTML_KINDS = frozenset({
     "executable-script",
     "meta-refresh",
@@ -635,12 +636,11 @@ NON_RENDERING_HTML_PATTERN = re.compile(
     flags=re.IGNORECASE | re.DOTALL,
 )
 
-HTML_P_IMPLIED_END_START_TAGS = frozenset({
-    "address", "article", "aside", "blockquote", "div", "dl", "fieldset",
-    "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6", "header",
-    "hgroup", "hr", "main", "menu", "nav", "ol", "p", "pre", "search",
-    "section", "table", "ul",
-})
+# Keep paragraph-closing browser semantics identical to the shared
+# governed-surface parser instead of maintaining a drifting registry copy.
+HTML_P_IMPLIED_END_START_TAGS = _SHARED_POLICING[
+    "HTML_P_IMPLIED_END_START_TAGS"
+]
 HTML_HEADING_TAGS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
 
 HTML_IMPLIED_END_TARGETS = {
