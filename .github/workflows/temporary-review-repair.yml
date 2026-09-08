@@ -1,0 +1,104 @@
+name: Temporary review repair
+
+on:
+  push:
+    branches:
+      - research-corpus-governed-expansion
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research-corpus-governed-expansion
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Apply exact review repairs and regressions
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_once(path: Path, old: str, new: str) -> None:
+              text = path.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected exactly one repair target in {path}, found {count}")
+              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          workstream = Path("tests/test_workstream_h_methodology.py")
+          replace_once(
+              workstream,
+              '''def _trans_tasman_methodology(text: str) -> str:\n    start, _ = _rendered_heading_span(text, TRANS_TASMAN_METHODOLOGY_HEADING)\n    end, _ = _rendered_heading_span(text, POLICING_METHODOLOGY_HEADING)\n    assert start < end, "rendered Trans-Tasman methodology boundary is invalid"\n    return _visible_markdown_text(text[start:end])\n''',
+              '''def _trans_tasman_methodology(text: str) -> str:\n    start, _ = _rendered_heading_span(text, TRANS_TASMAN_METHODOLOGY_HEADING)\n    end, _ = _rendered_heading_span(text, POLICING_METHODOLOGY_HEADING)\n    assert start < end, "rendered Trans-Tasman methodology boundary is invalid"\n    raw_section = text[start:end]\n    rendered_links = _rendered_inline_citation_links(raw_section)\n    assert not rendered_links, (\n        "Trans-Tasman methodology citation links are not allowed; "\n        f"got {sorted(set(rendered_links))!r}"\n    )\n    return _visible_markdown_text(raw_section)\n''',
+          )
+
+          workstream_text = workstream.read_text(encoding="utf-8")
+          trans_test_name = "def test_trans_tasman_methodology_rejects_unregistered_link_binding():"
+          if trans_test_name in workstream_text:
+              raise SystemExit("Trans-Tasman link regression already present")
+          workstream.write_text(
+              workstream_text
+              + '''\n\n\ndef test_trans_tasman_methodology_rejects_unregistered_link_binding():\n    methodology = METHODOLOGY.read_text(encoding="utf-8")\n    _assert_trans_tasman_integrity(methodology)\n    start, _ = _rendered_heading_span(methodology, TRANS_TASMAN_METHODOLOGY_HEADING)\n    end, _ = _rendered_heading_span(methodology, POLICING_METHODOLOGY_HEADING)\n    raw_section = methodology[start:end]\n    assert "relational licence" in raw_section\n    mutated_section = raw_section.replace(\n        "relational licence",\n        "[relational licence](https://example.com/unregistered)",\n        1,\n    )\n    mutated = methodology[:start] + mutated_section + methodology[end:]\n    with pytest.raises(\n        AssertionError, match="Trans-Tasman methodology citation links are not allowed"\n    ):\n        _assert_trans_tasman_integrity(mutated)\n''',
+              encoding="utf-8",
+          )
+
+          policing = Path("tests/test_policing_context_roadmap.py")
+          replace_once(
+              policing,
+              '''        if tag == "nobr":\n            if self._nobr_open:\n                self.violations.add("nested-nobr")\n            self._nobr_open = True\n''',
+              '''        if tag == "nobr":\n            self.violations.add("nobr")\n            if self._nobr_open:\n                self.violations.add("nested-nobr")\n            self._nobr_open = True\n''',
+          )
+          replace_once(
+              policing,
+              '''        if (\n            machine_metadata_attributes.intersection(attribute_names)\n            or ("rel" in attribute_names and tag not in {"a", "area", "link"})\n        ):\n            self.violations.add("machine-metadata")\n''',
+              '''        rel_tokens = {\n            token.casefold()\n            for key, value in attrs\n            if key.lower() == "rel"\n            for token in (value or "").split()\n        }\n        if (\n            machine_metadata_attributes.intersection(attribute_names)\n            or ("rel" in attribute_names and tag not in {"a", "area", "link"})\n            or "license" in rel_tokens\n        ):\n            self.violations.add("machine-metadata")\n''',
+          )
+          replace_once(
+              policing,
+              '''        "nested-nobr": "nested nobr HTML",\n''',
+              '''        "nobr": "nobr HTML",\n        "nested-nobr": "nested nobr HTML",\n''',
+          )
+
+          policing_text = policing.read_text(encoding="utf-8")
+          nobr_test_name = "def test_governed_surface_rejects_single_nobr_container():"
+          license_test_name = "def test_governed_surface_rejects_license_rel_on_anchor():"
+          if nobr_test_name in policing_text or license_test_name in policing_text:
+              raise SystemExit("governed-surface review regression already present")
+          policing.write_text(
+              policing_text
+              + '''\n\n\ndef test_governed_surface_rejects_single_nobr_container():\n    violations = _governed_surface_html_violations(\n        "<nobr>sealed provenance and rights boundary</nobr>"\n    )\n    assert "nobr" in violations\n    with pytest.raises(AssertionError, match="nobr HTML"):\n        _assert_supported_governed_html(violations)\n\n\ndef test_governed_surface_rejects_license_rel_on_anchor():\n    violations = _governed_surface_html_violations(\n        '<a href="https://creativecommons.org/publicdomain/zero/1.0/" '\n        'rel="noopener LICENSE"></a>'\n    )\n    assert "machine-metadata" in violations\n    with pytest.raises(AssertionError, match="machine-readable metadata HTML"):\n        _assert_supported_governed_html(violations)\n''',
+              encoding="utf-8",
+          )
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run focused review regressions
+        run: |
+          pytest -q tests/test_workstream_h_methodology.py tests/test_policing_context_roadmap.py --disable-warnings --maxfail=1
+
+      - name: Run full suite
+        run: pytest -q --disable-warnings --maxfail=1
+
+      - name: Check patch cleanliness
+        run: git diff --check
+
+      - name: Commit verified repairs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/test_workstream_h_methodology.py tests/test_policing_context_roadmap.py
+          git commit -m "Harden governed methodology receipts"
+          git push origin HEAD:research-corpus-governed-expansion
