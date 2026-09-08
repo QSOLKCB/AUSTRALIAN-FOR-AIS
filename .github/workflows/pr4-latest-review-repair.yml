@@ -35,8 +35,8 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          path = Path("tests/test_research_reference_registry.py")
-          text = path.read_text(encoding="utf-8")
+          registry = Path("tests/test_research_reference_registry.py")
+          text = registry.read_text(encoding="utf-8")
           needle = '    assert "rendered-break" not in found, (\n'
           replacement = (
               '    if "thematic-break" in found:\n'
@@ -47,7 +47,15 @@ jobs:
           )
           if text.count(needle) != 1:
               raise SystemExit(f"expected one rendered-break assertion, found {text.count(needle)}")
-          path.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
+          registry.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
+
+          regression = Path("tests/test_pr4_latest_review_regressions.py")
+          tests = regression.read_text(encoding="utf-8")
+          old = 'with pytest.raises(AssertionError, match="rendered break"):'
+          new = 'with pytest.raises(AssertionError, match="raw HTML thematic break"):'
+          if tests.count(old) != 1:
+              raise SystemExit(f"expected one regression diagnostic matcher, found {tests.count(old)}")
+          regression.write_text(tests.replace(old, new, 1), encoding="utf-8")
           PY
 
       - name: Run exact review regressions
