@@ -1596,6 +1596,8 @@ def _assert_supported_governed_html(violations: set[str]) -> None:
     """Fail closed on rendering semantics outside the shared text contract."""
     descriptions = {
         "replacement-content": "replacement-content HTML",
+        "preformatted-content": "preformatted content HTML",
+        "semantic-role": "semantic role override HTML",
         "raw-svg": "raw SVG HTML",
         "inline-style": "inline style HTML",
         "semantic-deletion": "semantic deletion HTML",

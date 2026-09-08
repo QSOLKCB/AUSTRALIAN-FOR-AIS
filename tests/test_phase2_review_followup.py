@@ -241,3 +241,54 @@ def test_phase2_notes_stop_at_next_visible_peer_heading():
         1,
     )
     assert FREE_TEXT_IAA_BOUNDARY not in _visible_phase2_notes(moved)
+
+
+
+EXPECTED_VISIBLE_PHASE2_SECTION_SHA256 = "87ab007dbc8c8bb27d812438d69e9708907da64c00d89394fdb7e399877978ac"
+
+
+def _visible_phase2_section(changelog: str) -> str:
+    """Return the complete browser-visible Phase 2 changelog section."""
+    namespace = runpy.run_path(str(POLICING_TEST))
+    structure = namespace["_rendered_structure"](changelog)
+    phase2_start, _ = namespace["_visible_markdown_heading_span"](
+        structure, PHASE2_HEADING
+    )
+    phase1_start, _ = namespace["_visible_markdown_heading_span"](
+        structure, PHASE1_HEADING
+    )
+    assert phase2_start < phase1_start, "Phase 2 changelog boundaries are out of order"
+    return namespace["_visible_text"](changelog[phase2_start:phase1_start])
+
+
+def _phase2_section_sha256(changelog: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(_visible_phase2_section(changelog).encode("utf-8")).hexdigest()
+
+
+def test_complete_phase2_changelog_section_is_pinned():
+    changelog = CHANGELOG.read_text(encoding="utf-8")
+    assert _phase2_section_sha256(changelog) == EXPECTED_VISIBLE_PHASE2_SECTION_SHA256
+
+
+def test_phase2_section_seal_catches_sibling_empirical_claims():
+    changelog = CHANGELOG.read_text(encoding="utf-8")
+    assert _visible_phase2_notes(changelog) == EXPECTED_VISIBLE_PHASE2_NOTES
+    claims = (
+        "Three human annotators completed the Phase 2 pilot.",
+        "The completed Phase 2 study received ethical-review approval.",
+        "Three human annotators achieved 100% exact-string IAA.",
+    )
+    for claim in claims:
+        sibling = (
+            "### Fabricated Phase 2 results\n\n"
+            f"- {claim}\n\n"
+            + PHASE2_NOTES_HEADING
+        )
+        mutated = changelog.replace(PHASE2_NOTES_HEADING, sibling, 1)
+        assert mutated != changelog
+        # The existing Notes-only receipt remains unchanged, which is the gap
+        # this complete-section seal is intended to close.
+        assert _visible_phase2_notes(mutated) == EXPECTED_VISIBLE_PHASE2_NOTES
+        assert _phase2_section_sha256(mutated) != EXPECTED_VISIBLE_PHASE2_SECTION_SHA256

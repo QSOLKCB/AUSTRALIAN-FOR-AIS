@@ -312,3 +312,41 @@ def test_preformatted_whitespace_cannot_bypass_registry_receipt() -> None:
 
 
 # Human receipt: autolink/implied-end/type-6 repair passed 12 exact and 912 full-suite tests before self-cleanup.
+
+
+
+@pytest.mark.parametrize("kind", ("preformatted-content", "semantic-role"))
+def test_shared_methodology_rejects_preformatted_and_semantic_role_semantics(
+    kind: str,
+) -> None:
+    roadmap = (ROOT / "ROADMAP.md").read_text(encoding="utf-8")
+
+    workstream_i_phrase = "source-gated research proposal"
+    if kind == "preformatted-content":
+        workstream_i_payload = "<pre>source-gated     research proposal</pre>"
+    else:
+        workstream_i_payload = '<a role="button">source-gated research proposal</a>'
+    mutated_i = roadmap.replace(workstream_i_phrase, workstream_i_payload, 1)
+    assert mutated_i != roadmap
+    assert kind in POLICING["_governed_surface_html_violations"](mutated_i)
+    with pytest.raises(AssertionError):
+        POLICING["_validate_policing_workstream"](mutated_i)
+
+    workstream_h_phrase = (
+        "nationality and first-language identity must not define the comparison cohorts"
+    )
+    if kind == "preformatted-content":
+        workstream_h_payload = (
+            "<pre>nationality and first-language identity must     not define the "
+            "comparison cohorts</pre>"
+        )
+    else:
+        workstream_h_payload = (
+            '<a role="button">nationality and first-language identity must not define '
+            "the comparison cohorts</a>"
+        )
+    mutated_h = roadmap.replace(workstream_h_phrase, workstream_h_payload, 1)
+    assert mutated_h != roadmap
+    assert kind in POLICING["_governed_surface_html_violations"](mutated_h)
+    with pytest.raises(AssertionError):
+        WORKSTREAM_H["_assert_workstream_h_integrity"](mutated_h)
