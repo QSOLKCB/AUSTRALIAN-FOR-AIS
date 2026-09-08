@@ -25,8 +25,10 @@ def records_hash(source: str) -> str:
     return hashlib.sha256(receipt.encode('utf-8')).hexdigest()
 
 
+# Derive immutable receipts from the canonical pre-repair tree.
 research_record_hashes: dict[str, str] = {}
 project_record_hashes: dict[str, str] = {}
+entry_link_bindings: dict[str, tuple[tuple[str, str], ...]] = {}
 sections = registry_ns['_registered_sections'](corpus)
 for entry, section in sections.items():
     rendered, structure = registry_ns['_markdown_views'](section)
@@ -44,9 +46,12 @@ for entry, section in sections.items():
     project_block = rendered[project_start:project_end]
     research_record_hashes[entry] = records_hash(research_block)
     project_record_hashes[entry] = records_hash(project_block)
+    entry_link_bindings[entry] = tuple(
+        registry_ns['_usable_https_source_bindings'](section, reference_scope=corpus)
+    )
 
 trans_raw = h_ns['_trans_tasman_raw'](methodology)
-trans_records_hash = records_hash(trans_raw)
+trans_source_hash = hashlib.sha256(trans_raw.encode('utf-8')).hexdigest()
 
 g_heading = '### G. Trans-Tasman relational pragmatics and lexical context'
 h_heading = '### H. Slang density, register compression, and operational intelligibility'
@@ -60,11 +65,17 @@ g_visible_hash = hashlib.sha256(g_visible.encode('utf-8')).hexdigest()
 g_records_hash = records_hash(g_raw)
 
 registry = registry_path.read_text(encoding='utf-8')
+
+# 1) Apply every shared HTML-policy finding corpus-wide before slicing, while
+# preserving the deliberately supported raw h3 entry-discovery path. Raw h3
+# semantics are governed separately by _registered_sections()/ENTRY_CONTRACTS.
 old = '    found = _SHARED_HTML_PREFLIGHT(text) & ACTIVE_DOCUMENT_HTML_KINDS\n'
-new = '    found = set(_SHARED_HTML_PREFLIGHT(text))\n'
+new = '    found = set(_SHARED_HTML_PREFLIGHT(text)) - {"semantic-heading"}\n'
 assert registry.count(old) == 1
 registry = registry.replace(old, new, 1)
 
+# 2) Add immutable mapping-container receipts, but enforce them only after the
+# existing content-value contract so historical diagnostics retain precedence.
 marker = 'def _require_mapping_block(entry: str, section: str) -> tuple[str, str]:\n'
 assert registry.count(marker) == 1
 constants = (
@@ -72,86 +83,89 @@ constants = (
     + pprint.pformat(research_record_hashes, width=100, sort_dicts=True)
     + '\nPROJECT_MAPPING_RECORD_HASHES: dict[str, str] = '
     + pprint.pformat(project_record_hashes, width=100, sort_dicts=True)
-    + '\n\n\ndef _mapping_record_hash(block: str) -> str:\n'
-    + '    records = _SHARED_POLICING["_normalised_visible_workstream_records"](block)\n'
-    + '    receipt = "\\n".join(f"{signature}\\x1f{line}" for signature, line in records)\n'
-    + '    return hashlib.sha256(receipt.encode("utf-8")).hexdigest()\n\n\n'
+    + '\nENTRY_WIDE_LINK_BINDINGS: dict[str, tuple[tuple[str, str], ...]] = '
+    + pprint.pformat(entry_link_bindings, width=100, sort_dicts=True)
+    + '\n\n\ndef _mapping_record_hashes(section: str) -> tuple[str, str]:\n'
+    + '    rendered, structure = _markdown_views(section)\n'
+    + '    research_headings = list(RESEARCH_MAPPING_HEADING_PATTERN.finditer(structure))\n'
+    + '    project_headings = list(PROJECT_MAPPING_HEADING_PATTERN.finditer(structure))\n'
+    + '    assert len(research_headings) == 1 and len(project_headings) == 1\n'
+    + '    research_block = rendered[research_headings[0].end():project_headings[0].start()]\n'
+    + '    safe_heading = re.search(\n'
+    + '        rf"(?m)^ {{0,3}}{re.escape(SAFE_FIELD)}",\n'
+    + '        structure[project_headings[0].end():],\n'
+    + '    )\n'
+    + '    assert safe_heading is not None\n'
+    + '    project_start = project_headings[0].end()\n'
+    + '    project_end = project_start + safe_heading.start()\n'
+    + '    project_block = rendered[project_start:project_end]\n'
+    + '    records_fn = _SHARED_POLICING["_normalised_visible_workstream_records"]\n'
+    + '    def digest(block: str) -> str:\n'
+    + '        records = records_fn(block)\n'
+    + '        receipt = "\\n".join(f"{signature}\\x1f{line}" for signature, line in records)\n'
+    + '        return hashlib.sha256(receipt.encode("utf-8")).hexdigest()\n'
+    + '    return digest(research_block), digest(project_block)\n\n\n'
 )
 registry = registry.replace(marker, constants + marker, 1)
 
-research_anchor = (
-    '    research_value = _visible_inline_text(research_block)\n'
-    '    assert research_value, f"{entry} has empty research mappings"\n'
+contract_anchor = (
+    '    _require_pinned_entry_contract(\n'
+    '        entry,\n'
+    '        classification=classification,\n'
+    '        scalar_values=scalar_values,\n'
+    '        destinations=destinations,\n'
+    '        research_mapping=research_mapping,\n'
+    '        project_mapping=project_mapping,\n'
+    '    )\n'
 )
-assert registry.count(research_anchor) == 1
+assert registry.count(contract_anchor) == 1
 registry = registry.replace(
-    research_anchor,
-    research_anchor
-    + '    actual_research_records_hash = _mapping_record_hash(research_block)\n'
+    contract_anchor,
+    contract_anchor
+    + '    actual_research_records_hash, actual_project_records_hash = _mapping_record_hashes(section)\n'
     + '    expected_research_records_hash = RESEARCH_MAPPING_RECORD_HASHES[entry]\n'
+    + '    expected_project_records_hash = PROJECT_MAPPING_RECORD_HASHES[entry]\n'
     + '    assert actual_research_records_hash == expected_research_records_hash, (\n'
     + '        f"{entry} research mapping hierarchy changed: expected hash "\n'
     + '        f"{expected_research_records_hash!r}, got {actual_research_records_hash!r}"\n'
+    + '    )\n'
+    + '    assert actual_project_records_hash == expected_project_records_hash, (\n'
+    + '        f"{entry} project mapping hierarchy changed: expected hash "\n'
+    + '        f"{expected_project_records_hash!r}, got {actual_project_records_hash!r}"\n'
     + '    )\n',
     1,
 )
-project_anchor = (
-    '    project_value = _visible_inline_text(project_block)\n'
-    '    assert project_value, f"{entry} has empty project mappings"\n'
-    '    return research_value, project_value\n'
-)
-assert registry.count(project_anchor) == 1
-registry = registry.replace(
-    project_anchor,
-    '    project_value = _visible_inline_text(project_block)\n'
-    '    assert project_value, f"{entry} has empty project mappings"\n'
-    '    actual_project_records_hash = _mapping_record_hash(project_block)\n'
-    '    expected_project_records_hash = PROJECT_MAPPING_RECORD_HASHES[entry]\n'
-    '    assert actual_project_records_hash == expected_project_records_hash, (\n'
-    '        f"{entry} project mapping hierarchy changed: expected hash "\n'
-    '        f"{expected_project_records_hash!r}, got {actual_project_records_hash!r}"\n'
-    '    )\n'
-    '    return research_value, project_value\n',
-    1,
-)
 
-source_title_anchor = (
-    '    assert not source_titles, (\n'
-    '        f"{entry} registered-source Markdown link titles are not allowed; "\n'
-    '        "tooltip provenance must remain inside the sealed source contract"\n'
-    '    )\n'
-    '    _require_complete_entry_integrity(entry, section)\n'
-)
-assert registry.count(source_title_anchor) == 1
+# 3) Bind every explicit hyperlink in an entry. Run this after the pre-existing
+# complete visible-entry seal so older content diagnostics remain stable; a link
+# wrapped around unchanged prose reaches this new binding assertion.
+complete_anchor = '    _require_complete_entry_integrity(entry, section)\n'
+assert registry.count(complete_anchor) == 1
 registry = registry.replace(
-    source_title_anchor,
-    '    assert not source_titles, (\n'
-    '        f"{entry} registered-source Markdown link titles are not allowed; "\n'
-    '        "tooltip provenance must remain inside the sealed source contract"\n'
-    '    )\n'
-    '    allowed_entry_bindings = set(expected_bindings)\n'
-    '    if DOI_FIELD in contract:\n'
-    '        pinned_doi = str(contract[DOI_FIELD])\n'
-    '        allowed_entry_bindings.add((pinned_doi, pinned_doi))\n'
-    '    whole_entry_bindings = set(\n'
-    '        _usable_https_source_bindings(section, reference_scope=reference_scope)\n'
-    '    )\n'
-    '    assert whole_entry_bindings == allowed_entry_bindings, (\n'
-    '        f"{entry} contains ungoverned or misbound hyperlinks outside its pinned "\n'
-    '        f"source/DOI contract: expected {sorted(allowed_entry_bindings)!r}, "\n'
-    '        f"got {sorted(whole_entry_bindings)!r}"\n'
-    '    )\n'
-    '    _require_complete_entry_integrity(entry, section)\n',
+    complete_anchor,
+    complete_anchor
+    + '    whole_entry_bindings = tuple(\n'
+    + '        _usable_https_source_bindings(section, reference_scope=reference_scope)\n'
+    + '    )\n'
+    + '    expected_entry_bindings = ENTRY_WIDE_LINK_BINDINGS[entry]\n'
+    + '    assert whole_entry_bindings == expected_entry_bindings, (\n'
+    + '        f"{entry} contains ungoverned or misbound hyperlinks outside its pinned "\n'
+    + '        f"entry contract: expected {expected_entry_bindings!r}, "\n'
+    + '        f"got {whole_entry_bindings!r}"\n'
+    + '    )\n',
     1,
 )
 registry_path.write_text(registry, encoding='utf-8')
 
+# 4) Trans-Tasman: the existing visible hash is intentionally whitespace
+# normalized. Add a second exact source-structure seal after it, so two-space
+# paragraph continuation cannot narrow an independent evidence boundary.
 h_text = h_path.read_text(encoding='utf-8')
 visible_line = re.search(r'^TRANS_TASMAN_VISIBLE_SHA256 = .+$', h_text, flags=re.MULTILINE)
 assert visible_line
 h_text = (
     h_text[:visible_line.end()]
-    + f'\nTRANS_TASMAN_RECORDS_SHA256 = "{trans_records_hash}"'
+    + f'\nTRANS_TASMAN_SOURCE_STRUCTURE_SHA256 = "{trans_source_hash}"'
     + h_text[visible_line.end():]
 )
 return_anchor = (
@@ -168,21 +182,18 @@ h_text = h_text.replace(
     '        "browser-visible Trans-Tasman methodology changed: expected hash "\n'
     '        f"{TRANS_TASMAN_VISIBLE_SHA256!r}, got {actual_hash!r}"\n'
     '    )\n'
-    '    namespace = runpy.run_path(str(POLICING_TEST))\n'
-    '    records = namespace["_normalised_visible_workstream_records"](raw_section)\n'
-    '    record_receipt = "\\n".join(\n'
-    '        f"{signature}\\x1f{line}" for signature, line in records\n'
-    '    )\n'
-    '    actual_records_hash = hashlib.sha256(record_receipt.encode("utf-8")).hexdigest()\n'
-    '    assert actual_records_hash == TRANS_TASMAN_RECORDS_SHA256, (\n'
-    '        "Trans-Tasman methodology record hierarchy changed: expected hash "\n'
-    '        f"{TRANS_TASMAN_RECORDS_SHA256!r}, got {actual_records_hash!r}"\n'
+    '    actual_structure_hash = hashlib.sha256(raw_section.encode("utf-8")).hexdigest()\n'
+    '    assert actual_structure_hash == TRANS_TASMAN_SOURCE_STRUCTURE_SHA256, (\n'
+    '        "Trans-Tasman methodology record hierarchy changed: expected source-structure hash "\n'
+    '        f"{TRANS_TASMAN_SOURCE_STRUCTURE_SHA256!r}, got {actual_structure_hash!r}"\n'
     '    )\n'
     '    return section\n',
     1,
 )
 h_path.write_text(h_text, encoding='utf-8')
 
+# 5) Workstream G: section-scoped, browser-visible and container-aware receipt,
+# plus explicit nonfactual and safe-abstraction boundary mutations.
 g_test = f'''"""Integrity receipt for Roadmap Workstream G trans-Tasman safeguards."""
 
 from pathlib import Path
@@ -227,14 +238,14 @@ def _assert_workstream_g_integrity(text: str) -> str:
     actual_visible_hash = hashlib.sha256(visible.encode("utf-8")).hexdigest()
     assert actual_visible_hash == WORKSTREAM_G_VISIBLE_SHA256, (
         "browser-visible Workstream G changed: expected hash "
-        f"{{WORKSTREAM_G_VISIBLE_SHA256!r}}, got {{actual_visible_hash!r}}"
+        f"{WORKSTREAM_G_VISIBLE_SHA256!r}, got {actual_visible_hash!r}"
     )
     records = POLICING["_normalised_visible_workstream_records"](raw)
-    receipt = "\\n".join(f"{{signature}}\\x1f{{line}}" for signature, line in records)
+    receipt = "\n".join(f"{signature}\x1f{line}" for signature, line in records)
     actual_records_hash = hashlib.sha256(receipt.encode("utf-8")).hexdigest()
     assert actual_records_hash == WORKSTREAM_G_RECORDS_SHA256, (
         "Workstream G record hierarchy changed: expected hash "
-        f"{{WORKSTREAM_G_RECORDS_SHA256!r}}, got {{actual_records_hash!r}}"
+        f"{WORKSTREAM_G_RECORDS_SHA256!r}, got {actual_records_hash!r}"
     )
     assert NONFACTUAL_BOUNDARY in visible
     assert SAFE_ABSTRACTION_BOUNDARY in visible
