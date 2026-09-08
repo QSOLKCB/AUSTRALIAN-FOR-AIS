@@ -31,7 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           base='0af1e400845679ce5e9bf79cb4441d5c99fc5ce1'
-          unexpected="$(git diff --name-only "$base" HEAD | grep -v -E '^\.github/(repair-pr4-a11y-links\.py|workflows/pr4-a11y-link-repair\.yml)$' || true)"
+          unexpected="$(git diff --name-only "$base" HEAD | grep -v -E '^\.github/(repair-pr4-a11y-links\.py|repair-pr4-a11y-tests\.py|workflows/pr4-a11y-link-repair\.yml)$' || true)"
           test -z "$unexpected" || {
             echo "Refusing repair because substantive files moved since the reviewed head:" >&2
             printf '%s\n' "$unexpected" >&2
@@ -50,6 +50,7 @@ jobs:
         run: |
           set -euo pipefail
           python .github/repair-pr4-a11y-links.py
+          python .github/repair-pr4-a11y-tests.py
           git diff --check
 
       - name: Run exact and focused governance regressions
@@ -58,6 +59,7 @@ jobs:
           set -euo pipefail
           python -m pytest -q \
             tests/test_pr4_current_review_regressions.py \
+            tests/test_pr4_source_binding_regressions.py \
             tests/test_policing_context_roadmap.py \
             tests/test_research_reference_registry.py
 
@@ -81,13 +83,16 @@ jobs:
           git diff --check
           rm \
             .github/workflows/pr4-a11y-link-repair.yml \
-            .github/repair-pr4-a11y-links.py
+            .github/repair-pr4-a11y-links.py \
+            .github/repair-pr4-a11y-tests.py
           git add \
             tests/test_policing_context_roadmap.py \
             tests/test_research_reference_registry.py \
             tests/test_pr4_current_review_regressions.py \
+            tests/test_pr4_source_binding_regressions.py \
             .github/workflows/pr4-a11y-link-repair.yml \
-            .github/repair-pr4-a11y-links.py
+            .github/repair-pr4-a11y-links.py \
+            .github/repair-pr4-a11y-tests.py
           git diff --cached --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
