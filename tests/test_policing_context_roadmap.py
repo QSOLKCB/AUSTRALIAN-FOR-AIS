@@ -1426,7 +1426,7 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             self.violations.add("event-handler")
         if "title" in attribute_names:
             self.violations.add("tooltip-title")
-        if {"aria-label", "aria-labelledby"}.intersection(attribute_names):
+        if {"aria-label", "aria-labelledby", "aria-description", "aria-describedby"}.intersection(attribute_names):
             self.violations.add("accessible-name")
         if "aria-hidden" in attribute_names:
             self.violations.add("accessibility-hidden")
@@ -1446,6 +1446,16 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         values: dict[str, str] = {}
         for key, value in attrs:
             values.setdefault(key.lower(), value or "")
+        # Negative tabindex removes an otherwise valid provenance anchor from
+        # sequential keyboard navigation. Keep focusability inside the governed
+        # link contract instead of sealing only label/href text.
+        if tag == "a" and "tabindex" in values:
+            try:
+                tabindex = int(values["tabindex"].strip())
+            except ValueError:
+                tabindex = 0
+            if tabindex < 0:
+                self.violations.add("keyboard-navigation")
         if tag == "meta" and values.get("http-equiv", "").strip().lower() == "refresh":
             self.violations.add("meta-refresh")
         if any(

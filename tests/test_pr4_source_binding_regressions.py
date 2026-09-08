@@ -72,7 +72,7 @@ def test_registry_rejects_swapped_url_labels(validators, registered, form):
         r["_validate_registry_corpus"](changed)
 
 
-@pytest.mark.parametrize("form", ["inline", "multiline-title", "html", "html-nested-label"])
+@pytest.mark.parametrize("form", ["inline", "html", "html-nested-label"])
 def test_matching_source_bindings_preserve_accepted_hashes(validators, registered, form):
     r = validators["registry"]
     corpus, _, section, sources = registered

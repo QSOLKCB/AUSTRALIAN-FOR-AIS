@@ -42,6 +42,7 @@ ACTIVE_DOCUMENT_HTML_KINDS = frozenset({
     "presentational-font",
     "accessible-name",
     "accessibility-hidden",
+    "keyboard-navigation",
     "nested-anchor",
     "interactive-form",
     "non-rendering-container",
@@ -2229,6 +2230,7 @@ class MarkdownInlineLink:
     label: str
     destination: str
     image: bool
+    title: str | None = None
 
 
 def _is_escaped_markdown_character(text: str, index: int) -> bool:
@@ -2309,8 +2311,8 @@ def _inline_link_closing_paren(text: str, start: int) -> int | None:
     return None
 
 
-def _inline_link_destination(inner: str) -> str | None:
-    """Extract the destination while retaining the existing title contract."""
+def _inline_link_destination_and_title(inner: str) -> tuple[str, str | None] | None:
+    """Extract a destination and optional CommonMark tooltip title."""
     value = inner.lstrip(" \t\r\n")
     if not value:
         return None
@@ -2345,6 +2347,7 @@ def _inline_link_destination(inner: str) -> str | None:
 
     if not destination:
         return None
+    title: str | None = None
     if remainder:
         quoted = (
             len(remainder) >= 2
@@ -2358,7 +2361,14 @@ def _inline_link_destination(inner: str) -> str | None:
         )
         if not (quoted or parenthesized):
             return None
-    return destination
+        title = remainder[1:-1]
+    return destination, title
+
+
+def _inline_link_destination(inner: str) -> str | None:
+    """Compatibility view retaining the existing destination-only helper."""
+    parsed = _inline_link_destination_and_title(inner)
+    return None if parsed is None else parsed[0]
 
 
 def _markdown_inline_links(text: str) -> tuple[MarkdownInlineLink, ...]:
@@ -2385,10 +2395,13 @@ def _markdown_inline_links(text: str) -> tuple[MarkdownInlineLink, ...]:
         if paren_end is None:
             cursor = label_end + 1
             continue
-        destination = _inline_link_destination(text[paren_start + 1:paren_end])
-        if destination is None:
+        parsed_destination = _inline_link_destination_and_title(
+            text[paren_start + 1:paren_end]
+        )
+        if parsed_destination is None:
             cursor = paren_end + 1
             continue
+        destination, title = parsed_destination
 
         image = (
             bracket > 0
@@ -2403,6 +2416,7 @@ def _markdown_inline_links(text: str) -> tuple[MarkdownInlineLink, ...]:
                 label=text[bracket + 1:label_end],
                 destination=destination,
                 image=image,
+                title=title,
             )
         )
         cursor = paren_end + 1
@@ -3006,6 +3020,7 @@ def _require_registered_source_link(
     *,
     reference_scope: str | None = None,
     source_bindings: list[tuple[str, str]] | None = None,
+    source_titles: list[str] | None = None,
 ) -> tuple[str, ...]:
     source_count = _metadata_field_count(
         section,
@@ -3021,6 +3036,15 @@ def _require_registered_source_link(
     )
     assert source_block, f"{entry} has an empty registered-source field"
     source_value = rendered[source_block.start(1):source_block.end(1)]
+    if source_titles is not None:
+        title_structure = _mask_raw_html_tags_for_markdown_link_discovery(
+            _mask_hidden_html_regions(_structural_registry_text(source_value))
+        )
+        source_titles.extend(
+            link.title
+            for link in _markdown_inline_links(title_structure)
+            if not link.image and link.title is not None
+        )
     bindings = _usable_https_source_bindings(
         source_value,
         reference_scope=reference_scope,
@@ -3210,6 +3234,9 @@ def _assert_no_active_document_html(found: set[str]) -> None:
     assert "accessibility-hidden" not in found, (
         "aria-hidden accessibility suppression is not allowed in governed documents"
     )
+    assert "keyboard-navigation" not in found, (
+        "negative tabindex keyboard-navigation suppression is not allowed in governed documents"
+    )
     assert "nested-anchor" not in found, (
         "nested anchor HTML is not allowed in governed documents"
     )
@@ -3320,11 +3347,13 @@ def _validate_registered_entry(
 ) -> None:
     _reject_non_commonmark_character_references(section)
     source_bindings: list[tuple[str, str]] = []
+    source_titles: list[str] = []
     destinations = _require_registered_source_link(
         entry,
         section,
         reference_scope=reference_scope,
         source_bindings=source_bindings,
+        source_titles=source_titles,
     )
     scalar_values = {field: _scalar_value(entry, section, field) for field in SCALAR_FIELDS}
     contract = ENTRY_CONTRACTS.get(entry)
@@ -3360,6 +3389,10 @@ def _validate_registered_entry(
     assert set(source_bindings) == expected_bindings, (
         f"{entry} registered-source label/destination bindings changed: "
         f"expected {sorted(expected_bindings)!r}, got {sorted(source_bindings)!r}"
+    )
+    assert not source_titles, (
+        f"{entry} registered-source Markdown link titles are not allowed; "
+        "tooltip provenance must remain inside the sealed source contract"
     )
     _require_complete_entry_integrity(entry, section)
 

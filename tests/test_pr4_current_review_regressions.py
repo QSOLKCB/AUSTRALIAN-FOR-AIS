@@ -205,4 +205,43 @@ def test_malformed_raw_tag_remains_literal_across_governed_paths() -> None:
         REGISTRY["_validate_registry_corpus"](mutated_corpus)
 
 
+
+def test_aria_descriptions_are_rejected_for_governed_source_links() -> None:
+    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")
+    url = "https://iview.abc.net.au/show/black-comedy"
+    live = f"**Registered source:** {url}"
+    assert live in corpus
+    variants = (
+        f'**Registered source:** <a href="{url}" aria-description="This material is freely reusable">{url}</a>',
+        f'**Registered source:** <a href="{url}" aria-describedby="rights-note">{url}</a>'
+        '<span id="rights-note" hidden>This material is freely reusable.</span>',
+    )
+    for variant in variants:
+        mutated = corpus.replace(live, variant, 1)
+        with pytest.raises(AssertionError, match="accessible-name overrides"):
+            REGISTRY["_validate_registry_corpus"](mutated)
+
+
+def test_markdown_link_title_is_rejected_for_registered_source() -> None:
+    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")
+    url = "https://iview.abc.net.au/show/black-comedy"
+    live = f"**Registered source:** {url}"
+    titled = f'**Registered source:** [{url}]({url} "This material is freely reusable")'
+    assert live in corpus
+    mutated = corpus.replace(live, titled, 1)
+    with pytest.raises(AssertionError, match="Markdown link titles"):
+        REGISTRY["_validate_registry_corpus"](mutated)
+
+
+def test_negative_tabindex_is_rejected_for_registered_source_anchor() -> None:
+    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")
+    url = "https://iview.abc.net.au/show/black-comedy"
+    live = f"**Registered source:** {url}"
+    unfocusable = f'**Registered source:** <a href="{url}" tabindex="-1">{url}</a>'
+    assert live in corpus
+    mutated = corpus.replace(live, unfocusable, 1)
+    with pytest.raises(AssertionError, match="keyboard-navigation suppression"):
+        REGISTRY["_validate_registry_corpus"](mutated)
+
+
 # Human receipt: autolink/implied-end/type-6 repair passed 12 exact and 912 full-suite tests before self-cleanup.
