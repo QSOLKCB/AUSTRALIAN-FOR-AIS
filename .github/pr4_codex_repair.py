@@ -25,7 +25,6 @@ def records_hash(source: str) -> str:
     return hashlib.sha256(receipt.encode('utf-8')).hexdigest()
 
 
-# Derive immutable receipts from the canonical pre-repair tree.
 research_record_hashes: dict[str, str] = {}
 project_record_hashes: dict[str, str] = {}
 entry_link_bindings: dict[str, tuple[tuple[str, str], ...]] = {}
@@ -65,17 +64,11 @@ g_visible_hash = hashlib.sha256(g_visible.encode('utf-8')).hexdigest()
 g_records_hash = records_hash(g_raw)
 
 registry = registry_path.read_text(encoding='utf-8')
-
-# 1) Apply every shared HTML-policy finding corpus-wide before slicing, while
-# preserving the deliberately supported raw h3 entry-discovery path. Raw h3
-# semantics are governed separately by _registered_sections()/ENTRY_CONTRACTS.
 old = '    found = _SHARED_HTML_PREFLIGHT(text) & ACTIVE_DOCUMENT_HTML_KINDS\n'
 new = '    found = set(_SHARED_HTML_PREFLIGHT(text)) - {"semantic-heading"}\n'
 assert registry.count(old) == 1
 registry = registry.replace(old, new, 1)
 
-# 2) Add immutable mapping-container receipts, but enforce them only after the
-# existing content-value contract so historical diagnostics retain precedence.
 marker = 'def _require_mapping_block(entry: str, section: str) -> tuple[str, str]:\n'
 assert registry.count(marker) == 1
 constants = (
@@ -136,9 +129,6 @@ registry = registry.replace(
     1,
 )
 
-# 3) Bind every explicit hyperlink in an entry. Run this after the pre-existing
-# complete visible-entry seal so older content diagnostics remain stable; a link
-# wrapped around unchanged prose reaches this new binding assertion.
 complete_anchor = '    _require_complete_entry_integrity(entry, section)\n'
 assert registry.count(complete_anchor) == 1
 registry = registry.replace(
@@ -157,9 +147,6 @@ registry = registry.replace(
 )
 registry_path.write_text(registry, encoding='utf-8')
 
-# 4) Trans-Tasman: the existing visible hash is intentionally whitespace
-# normalized. Add a second exact source-structure seal after it, so two-space
-# paragraph continuation cannot narrow an independent evidence boundary.
 h_text = h_path.read_text(encoding='utf-8')
 visible_line = re.search(r'^TRANS_TASMAN_VISIBLE_SHA256 = .+$', h_text, flags=re.MULTILINE)
 assert visible_line
@@ -192,8 +179,6 @@ h_text = h_text.replace(
 )
 h_path.write_text(h_text, encoding='utf-8')
 
-# 5) Workstream G: section-scoped, browser-visible and container-aware receipt,
-# plus explicit nonfactual and safe-abstraction boundary mutations.
 g_test = f'''"""Integrity receipt for Roadmap Workstream G trans-Tasman safeguards."""
 
 from pathlib import Path
@@ -241,7 +226,7 @@ def _assert_workstream_g_integrity(text: str) -> str:
         f"{{WORKSTREAM_G_VISIBLE_SHA256!r}}, got {{actual_visible_hash!r}}"
     )
     records = POLICING["_normalised_visible_workstream_records"](raw)
-    receipt = "\n".join(f"{{signature}}\x1f{{line}}" for signature, line in records)
+    receipt = "\\n".join(f"{{signature}}\\x1f{{line}}" for signature, line in records)
     actual_records_hash = hashlib.sha256(receipt.encode("utf-8")).hexdigest()
     assert actual_records_hash == WORKSTREAM_G_RECORDS_SHA256, (
         "Workstream G record hierarchy changed: expected hash "
