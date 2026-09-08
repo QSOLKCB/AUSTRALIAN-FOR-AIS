@@ -1392,7 +1392,7 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             self.violations.add("raw-table")
         # Legacy font presentation can make sealed prose unreadable without
         # changing its character data. Do not approximate that rendering.
-        if tag in {"font", "basefont"}:
+        if tag in {"font", "basefont", "small"}:
             self.violations.add("presentational-font")
         # SVG needs its own rendering tree, not HTML character-data callbacks.
         if tag == "svg":
@@ -1477,6 +1477,8 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             self.violations.add("event-handler")
         if "title" in attribute_names:
             self.violations.add("tooltip-title")
+        if {"lang", "xml:lang"}.intersection(attribute_names):
+            self.violations.add("language-override")
         if {"aria-label", "aria-labelledby", "aria-description", "aria-describedby", "aria-details"}.intersection(attribute_names):
             self.violations.add("accessible-name")
         if "aria-hidden" in attribute_names:
@@ -1665,7 +1667,8 @@ def _assert_supported_governed_html(violations: set[str]) -> None:
         "raw-table": "raw table HTML",
         "named-details": "named details-group HTML",
         "tooltip-title": "tooltip title-attribute HTML",
-        "presentational-font": "legacy presentational font HTML",
+        "presentational-font": "presentational font-size HTML",
+        "language-override": "language override HTML",
         "accessible-name": "accessible-name override HTML",
         "accessibility-hidden": "aria-hidden accessibility suppression HTML",
         "accessibility-inert": "native inert accessibility suppression HTML",

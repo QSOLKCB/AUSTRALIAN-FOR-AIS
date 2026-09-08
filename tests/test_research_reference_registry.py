@@ -41,6 +41,7 @@ ACTIVE_DOCUMENT_HTML_KINDS = frozenset({
     "tooltip-title",
     "presentational-font",
     "accessible-name",
+    "language-override",
     "accessibility-hidden",
     "accessibility-disabled",
     "keyboard-navigation",
@@ -2099,6 +2100,16 @@ def _restore_entity_decoded_emphasis_punctuation(text: str) -> str:
 
 def _visible_inline_text(text: str) -> str:
     """Reduce Markdown/HTML metadata to browser-visible text only."""
+    structural = _structural_registry_text(text)
+    for hard_break in re.finditer(r" {2,}(?=\r\n|\r|\n)", text):
+        line_start = max(
+            text.rfind("\n", 0, hard_break.start()),
+            text.rfind("\r", 0, hard_break.start()),
+        ) + 1
+        if structural[line_start : hard_break.start()].strip():
+            raise AssertionError(
+                "Markdown hard line breaks are not allowed in governed registry receipts"
+            )
     rendered = _rendered_registry_text(text)
     visible = _mask_link_reference_definitions_for_visibility(rendered)
     visible = _render_inline_code_spans(visible)
@@ -3237,6 +3248,9 @@ def _assert_no_active_document_html(found: set[str]) -> None:
     )
     assert "accessible-name" not in found, (
         "accessible-name overrides are not allowed in governed documents"
+    )
+    assert "language-override" not in found, (
+        "language overrides are not allowed on governed content"
     )
     assert "accessibility-hidden" not in found, (
         "aria-hidden accessibility suppression is not allowed in governed documents"
