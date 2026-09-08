@@ -550,6 +550,7 @@ CONTRACT_SENTENCE = (
 )
 REGISTRATION_CONTRACT_HASH = "1d171556a66c3cfc54a7bf14072d51bb68d17cb390fffa826a0f50329e2d51d6"
 SOURCE_USE_SECTION_HASH = "ffd50e6c62ec28f45dc18e372c0feb4d04f044671e1fc8cfb30293175935f1bb"
+SOURCE_USE_RECORDS_SHA256 = "eb497d46b98bbd546d02587ae314e7b003f34915ff21aa20e9f46fe14b4d44df"
 REGISTRY_TRAILING_VISIBLE_SHA256 = "84abf902b3ba863c88f140cc86d387b8f48a8c905574fbfe892bf207c452e3ba"
 REGISTRY_TRAILING_LINK_BINDINGS_SHA256 = "3dec1c09731ecbd0216911f33b3fdc2a9d1360bbf72ff07cc1b10f4941180b49"
 STATUS_SECTION_HASH = "4d99f6f7a4378dc14a85bc12b3e389a7d221e08abed84211fa5f881734f93580"
@@ -3463,6 +3464,18 @@ def _normalised_source_use_rules_value(corpus: str) -> str:
     return _visible_inline_text(rendered[start:end])
 
 
+def _source_use_rules_record_receipt(corpus: str) -> str:
+    """Seal browser-visible source-use rule records with their container hierarchy."""
+    _, structure = _markdown_views(corpus)
+    start, _ = _visible_markdown_heading_span(structure, SOURCE_USE_HEADING)
+    end, _ = _visible_markdown_heading_span(structure, CONTRACT_HEADING)
+    assert start < end, "rendered source-use/registration-contract boundaries are out of order"
+    records = _SHARED_POLICING["_normalised_visible_workstream_records"](corpus[start:end])
+    return "\n".join(
+        f"{signature}\x1f{line}" for signature, line in records
+    )
+
+
 def _normalised_registry_trailing_value(corpus: str) -> str:
     """Return browser-visible registry content from the post-batch boundary to EOF."""
     rendered, structure = _markdown_views(corpus)
@@ -3480,6 +3493,21 @@ def _registry_trailing_link_binding_receipt(corpus: str) -> str:
     )
     return "\n".join(
         f"{label}\x1f{destination}" for label, destination in bindings
+    )
+
+
+def _registry_trailing_link_titles(corpus: str) -> tuple[str, ...]:
+    """Return rendered inline-link tooltip titles in the trailing registry region."""
+    rendered, structure = _markdown_views(corpus)
+    start, _ = _visible_markdown_heading_span(structure, BATCH_END)
+    trailing = rendered[start:]
+    title_structure = _mask_raw_html_tags_for_markdown_link_discovery(
+        _mask_hidden_html_regions(_structural_registry_text(trailing))
+    )
+    return tuple(
+        link.title
+        for link in _markdown_inline_links(title_structure)
+        if not link.image and link.title is not None
     )
 
 
@@ -3549,6 +3577,15 @@ def _validate_registry_corpus(corpus: str) -> None:
         "browser-visible source-use rules changed or were weakened: "
         f"expected hash {SOURCE_USE_SECTION_HASH!r}, got {actual_source_use_hash!r}"
     )
+    source_use_records = _source_use_rules_record_receipt(corpus)
+    actual_source_use_records_hash = hashlib.sha256(
+        source_use_records.encode("utf-8")
+    ).hexdigest()
+    assert actual_source_use_records_hash == SOURCE_USE_RECORDS_SHA256, (
+        "source-use rule record hierarchy changed: "
+        f"expected hash {SOURCE_USE_RECORDS_SHA256!r}, "
+        f"got {actual_source_use_records_hash!r}"
+    )
 
     sections = _registered_sections(corpus)
     assert set(sections) == set(ENTRY_CONTRACTS), (
@@ -3587,6 +3624,11 @@ def _validate_registry_corpus(corpus: str) -> None:
         f"expected hash {REGISTRY_TRAILING_LINK_BINDINGS_SHA256!r}, "
         f"got {actual_trailing_binding_hash!r}"
     )
+    trailing_titles = _registry_trailing_link_titles(corpus)
+    assert not trailing_titles, (
+        "trailing registry Markdown link titles are not allowed; "
+        f"tooltip provenance must remain inside the sealed registry contract: {trailing_titles!r}"
+    )
 
 
 def test_trailing_registry_visible_corpus_is_pinned():
@@ -3613,6 +3655,21 @@ def test_trailing_registry_link_destinations_are_pinned():
         _validate_registry_corpus(mutated)
 
 
+def test_trailing_registry_link_titles_are_rejected():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    source = "- https://en.wikipedia.org/wiki/The_Chaser"
+    titled = (
+        '- [https://en.wikipedia.org/wiki/The_Chaser]'
+        '(https://en.wikipedia.org/wiki/The_Chaser "All content is CC0")'
+    )
+    mutated = corpus.replace(source, titled, 1)
+    assert mutated != corpus
+    assert _normalised_registry_trailing_value(mutated) == _normalised_registry_trailing_value(corpus)
+    assert _registry_trailing_link_binding_receipt(mutated) == _registry_trailing_link_binding_receipt(corpus)
+    with pytest.raises(AssertionError, match="trailing registry Markdown link titles"):
+        _validate_registry_corpus(mutated)
+
+
 def test_post_phase2_registry_batch_preserves_governance_contract():
     _validate_registry_corpus(CORPUS.read_text(encoding="utf-8"))
 
@@ -3627,6 +3684,19 @@ def test_source_use_rules_are_complete_and_pinned():
         + corpus[end:]
     )
     with pytest.raises(AssertionError, match="source-use rules changed or were weakened"):
+        _validate_registry_corpus(mutated)
+
+
+def test_source_use_rules_preserve_list_hierarchy():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    rule = (
+        "3. Record provenance and licence for every benchmark example independently "
+        "of the reference that motivated it."
+    )
+    assert rule in corpus
+    mutated = corpus.replace(rule, f"  {rule}", 1)
+    assert _normalised_source_use_rules_value(mutated) == _normalised_source_use_rules_value(corpus)
+    with pytest.raises(AssertionError, match="source-use rule record hierarchy changed"):
         _validate_registry_corpus(mutated)
 
 
