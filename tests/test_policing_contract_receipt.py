@@ -51,6 +51,7 @@ POLICING_METHODOLOGY_HEADING = (
 )
 POLICING_METHODOLOGY_END_HEADING = "## Scoring Philosophy"
 POLICING_METHODOLOGY_VISIBLE_SHA256 = "07227f9c687d0632cc24eb5e73415a406048733a5718713faeb108f04cc4346b"
+POLICING_METHODOLOGY_RECORDS_SHA256 = "eba064ccada1f02eb72e7d87a44ae6216362b7e11da2fb27b18de7cf1405f5ec"
 POLICING_METADATA_INTRO = (
     "Every implemented policing-context item must record, at minimum:"
 )
@@ -107,6 +108,35 @@ def _normalised_visible_policing_methodology(methodology: str) -> str:
     return " ".join(_visible_policing_methodology(methodology).split())
 
 
+def _leading_indent_columns(raw_line: str) -> int:
+    """Measure source indentation in CommonMark display columns."""
+    columns = 0
+    for character in raw_line:
+        if character == " ":
+            columns += 1
+        elif character == "\t":
+            columns += 4 - (columns % 4)
+        else:
+            break
+    return columns
+
+
+def _policing_methodology_record_receipt(methodology: str) -> str:
+    """Seal visible methodology records with container and indentation structure."""
+    namespace = runpy.run_path(str(POLICING_TEST))
+    section = _policing_methodology_section(methodology)
+    records: list[str] = []
+    for raw_line in section.splitlines():
+        line = namespace["_visible_text"](raw_line).strip()
+        line = re.sub(r"^(?:[-+*]|\d{1,9}[.)])\s+", "", line)
+        if not line:
+            continue
+        signature = namespace["_workstream_container_signature"](raw_line)
+        indent = _leading_indent_columns(raw_line)
+        records.append(f"{signature}\x1findent:{indent}\x1f{line}")
+    return "\n".join(records)
+
+
 def _assert_policing_methodology_link_free(methodology: str) -> None:
     """Keep the canonical policing methodology link-free until links are governed."""
     namespace = runpy.run_path(str(POLICING_TEST))
@@ -134,6 +164,12 @@ def _assert_canonical_policing_integrity(methodology: str) -> None:
     assert actual_hash == POLICING_METHODOLOGY_VISIBLE_SHA256, (
         "browser-visible canonical policing methodology changed: expected hash "
         f"{POLICING_METHODOLOGY_VISIBLE_SHA256!r}, got {actual_hash!r}"
+    )
+    records_value = _policing_methodology_record_receipt(methodology)
+    actual_records_hash = hashlib.sha256(records_value.encode("utf-8")).hexdigest()
+    assert actual_records_hash == POLICING_METHODOLOGY_RECORDS_SHA256, (
+        "canonical policing methodology hierarchy changed: expected hash "
+        f"{POLICING_METHODOLOGY_RECORDS_SHA256!r}, got {actual_records_hash!r}"
     )
 
 

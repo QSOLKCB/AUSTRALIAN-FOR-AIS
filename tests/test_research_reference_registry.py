@@ -57,6 +57,7 @@ ACTIVE_DOCUMENT_HTML_KINDS = frozenset({
     "markdown-image",
     "raw-svg",
     "raw-mathml",
+    "nobr",
     "nested-nobr",
     "in-body-structure",
     "non-commonmark-character-reference",
@@ -542,6 +543,7 @@ ENTRY_RENDERED_VALUE_HASHES: dict[str, str] = {'### *Acropolis Now*': '15e573a67
  '### WWII American-serviceman Australia language guides': 'c66fad136a00e29f20e8c292be17dce027054682c2372bad3e73da9aa97da94c',
  '### r/australia, *Best Aussie slang* community thread': '255bfdc29d88a7b2c6f92f9a48ef2bb3f878af9d685e6ea9d2b5b40c6311e859'}
 
+REGISTRY_TITLE_HEADING = "# Research Reference Corpus"
 STATUS_HEADING = "## Status"
 SOURCE_USE_HEADING = "## Source-use rules"
 REDISTRIBUTION_INVARIANT = "RESEARCH REFERENCE != REDISTRIBUTABLE DATA"
@@ -3315,6 +3317,9 @@ def _assert_no_active_document_html(found: set[str]) -> None:
     assert "raw-mathml" not in found, (
         "raw MathML is not allowed in governed documents"
     )
+    assert "nobr" not in found, (
+        "nobr presentation containers are not allowed in governed documents"
+    )
     assert "nested-nobr" not in found, (
         "nested nobr HTML is not allowed in governed documents"
     )
@@ -3398,6 +3403,14 @@ def _require_complete_entry_integrity(entry: str, section: str) -> None:
     assert GOVERNED_INTERACTIVE_HTML_PATTERN.search(rendered_section) is None, (
         f"{entry} contains interactive HTML that is not permitted in governed entries"
     )
+    # Keep this late in entry validation so established, more-specific diagnostics
+    # retain precedence. Prose-bearing raw block containers can otherwise alter
+    # browser paragraph structure while flattening back to the same receipt text.
+    raw_block_html = _SHARED_HTML_PREFLIGHT(section) & {"raw-block"}
+    assert not raw_block_html, (
+        f"{entry} contains raw block-container HTML around governed prose; scalar "
+        "content must not be structurally detached or reframed by browser block elements"
+    )
     value = _normalise_complete_entry_integrity(section)
     actual_hash = hashlib.sha256(value.encode("utf-8")).hexdigest()
     assert actual_hash == expected_hash, (
@@ -3462,6 +3475,24 @@ def _validate_registered_entry(
         "tooltip provenance must remain inside the sealed source contract"
     )
     _require_complete_entry_integrity(entry, section)
+
+
+def _assert_registry_document_prefix(corpus: str) -> None:
+    """Require no reader-visible registry-wide prose outside the title before Status."""
+    rendered, structure = _markdown_views(corpus)
+    title_start, title_end = _visible_markdown_heading_span(structure, REGISTRY_TITLE_HEADING)
+    status_start, _ = _visible_markdown_heading_span(structure, STATUS_HEADING)
+    assert title_start < status_start, "rendered registry title/Status boundaries are out of order"
+    before_title = _visible_inline_text(rendered[:title_start]).strip()
+    between_title_and_status = _visible_inline_text(rendered[title_end:status_start]).strip()
+    assert not before_title, (
+        "reader-visible registry content before the canonical title is not governed: "
+        f"{before_title!r}"
+    )
+    assert not between_title_and_status, (
+        "reader-visible registry content between the canonical title and Status is not governed: "
+        f"{between_title_and_status!r}"
+    )
 
 
 def _normalised_status_value(corpus: str) -> str:
@@ -3636,6 +3667,7 @@ def _validate_registry_corpus(corpus: str) -> None:
         "retain their canonical visual reading order"
     )
     rendered, structure = _markdown_views(corpus)
+    _assert_registry_document_prefix(corpus)
     try:
         contract_start, _ = _visible_markdown_heading_span(structure, CONTRACT_HEADING)
     except AssertionError as exc:

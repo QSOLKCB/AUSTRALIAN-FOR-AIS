@@ -1619,6 +1619,22 @@ def _governed_surface_html_violations(markdown: str) -> set[str]:
         cursor = end
     live_markup = "".join(characters)
 
+    # Block containers are dangerous specifically when they carry/reframe
+    # governed prose on the same rendered source line. Do not classify a bare
+    # flow-HTML opener/closer as a violation here: CommonMark can legitimately
+    # terminate that block at a blank line and resume Markdown afterwards.
+    raw_block_tag = re.compile(
+        r"</?(?:address|article|aside|div|dl|fieldset|figcaption|figure|footer|header|main|nav|p|section|summary)\b[^>]*>",
+        flags=re.IGNORECASE,
+    )
+    for raw_line in live_markup.splitlines():
+        if raw_block_tag.search(raw_line) is None:
+            continue
+        residual = raw_block_tag.sub("", raw_line)
+        if residual.strip():
+            parser.violations.add("raw-block")
+            break
+
     # Markdown links become anchors only after Markdown rendering, so the raw-HTML
     # parser cannot enforce executable-scheme policy on them. Inspect the rendered
     # Markdown structure before link labels are reduced to visible text. Raw HTML
