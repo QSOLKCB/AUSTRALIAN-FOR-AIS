@@ -105,6 +105,19 @@ def apply() -> None:
     )
 
     _replace_once(
+        POLICING_PATH,
+        '    _assert_supported_governed_html(_governed_surface_html_violations(structure))\n'
+        '    visible_structure = _mask_hidden_html_regions(structure)\n',
+        '    # This helper is also used to *discover* legitimate raw-HTML peer\n'
+        '    # headings in changelog structure. Semantic heading policy belongs to\n'
+        '    # the governed section validator that calls this helper, not to heading\n'
+        '    # discovery itself; otherwise a real <h2> cannot delimit Phase 2 Notes.\n'
+        '    heading_violations = _governed_surface_html_violations(structure)\n'
+        '    _assert_supported_governed_html(heading_violations - {"semantic-heading"})\n'
+        '    visible_structure = _mask_hidden_html_regions(structure)\n',
+    )
+
+    _replace_once(
         REGISTRY_PATH,
         '    visible = visible.replace(RAW_HTML_LITERAL_ASTERISK, "*")\n'
         '    return " ".join(visible.split())\n',
