@@ -551,6 +551,7 @@ CONTRACT_SENTENCE = (
 REGISTRATION_CONTRACT_HASH = "1d171556a66c3cfc54a7bf14072d51bb68d17cb390fffa826a0f50329e2d51d6"
 SOURCE_USE_SECTION_HASH = "ffd50e6c62ec28f45dc18e372c0feb4d04f044671e1fc8cfb30293175935f1bb"
 REGISTRY_TRAILING_VISIBLE_SHA256 = "84abf902b3ba863c88f140cc86d387b8f48a8c905574fbfe892bf207c452e3ba"
+REGISTRY_TRAILING_LINK_BINDINGS_SHA256 = "3dec1c09731ecbd0216911f33b3fdc2a9d1360bbf72ff07cc1b10f4941180b49"
 STATUS_SECTION_HASH = "4d99f6f7a4378dc14a85bc12b3e389a7d221e08abed84211fa5f881734f93580"
 CONSULTATION_BOUNDARY = (
     "appropriate consultation, provenance, permissions, and scope limitations"
@@ -3469,6 +3470,19 @@ def _normalised_registry_trailing_value(corpus: str) -> str:
     return _visible_inline_text(rendered[start:])
 
 
+def _registry_trailing_link_binding_receipt(corpus: str) -> str:
+    """Return a deterministic seal of trailing visible link label/destination bindings."""
+    rendered, structure = _markdown_views(corpus)
+    start, _ = _visible_markdown_heading_span(structure, BATCH_END)
+    bindings = _usable_https_source_bindings(
+        rendered[start:],
+        reference_scope=corpus,
+    )
+    return "\n".join(
+        f"{label}\x1f{destination}" for label, destination in bindings
+    )
+
+
 def _validate_registry_corpus(corpus: str) -> None:
     # Check the original document before any heading slicing or masking.
     corpus_forbidden_html = _forbidden_governed_html_constructs(corpus)
@@ -3564,6 +3578,16 @@ def _validate_registry_corpus(corpus: str) -> None:
         f"expected hash {REGISTRY_TRAILING_VISIBLE_SHA256!r}, got {actual_trailing_hash!r}"
     )
 
+    trailing_binding_receipt = _registry_trailing_link_binding_receipt(corpus)
+    actual_trailing_binding_hash = hashlib.sha256(
+        trailing_binding_receipt.encode("utf-8")
+    ).hexdigest()
+    assert actual_trailing_binding_hash == REGISTRY_TRAILING_LINK_BINDINGS_SHA256, (
+        "trailing registry link bindings changed outside the governed receipts: "
+        f"expected hash {REGISTRY_TRAILING_LINK_BINDINGS_SHA256!r}, "
+        f"got {actual_trailing_binding_hash!r}"
+    )
+
 
 def test_trailing_registry_visible_corpus_is_pinned():
     corpus = CORPUS.read_text(encoding="utf-8")
@@ -3573,6 +3597,19 @@ def test_trailing_registry_visible_corpus_is_pinned():
         + "\n\nAll registered sources may be copied freely into benchmark data.\n"
     )
     with pytest.raises(AssertionError, match="browser-visible trailing registry content changed"):
+        _validate_registry_corpus(mutated)
+
+
+def test_trailing_registry_link_destinations_are_pinned():
+    corpus = CORPUS.read_text(encoding="utf-8")
+    mutated = corpus.replace(
+        "- https://en.wikipedia.org/wiki/The_Chaser",
+        "- [https://en.wikipedia.org/wiki/The_Chaser](https://example.com/unregistered)",
+        1,
+    )
+    assert mutated != corpus
+    assert _normalised_registry_trailing_value(mutated) == _normalised_registry_trailing_value(corpus)
+    with pytest.raises(AssertionError, match="trailing registry link bindings changed"):
         _validate_registry_corpus(mutated)
 
 
