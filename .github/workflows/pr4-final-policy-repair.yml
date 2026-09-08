@@ -65,13 +65,14 @@ jobs:
               '            if "open" not in attribute_names:\n'
               '                self.violations.add("closed-details")\n',
               '        if tag == "details":\n'
-              '            # Even an initially open disclosure is user-collapsible, so a\n'
-              '            # mandatory qualifier can be hidden without changing the source.\n'
-              '            self.violations.add("interactive-details")\n'
               '            if "name" in attribute_names:\n'
               '                self.violations.add("named-details")\n'
               '            if "open" not in attribute_names:\n'
-              '                self.violations.add("closed-details")\n',
+              '                self.violations.add("closed-details")\n'
+              '            else:\n'
+              '                # An initially open disclosure remains user-collapsible, so a\n'
+              '                # mandatory qualifier can be hidden without changing the source.\n'
+              '                self.violations.add("interactive-details")\n',
           )
           replace_once(
               policing,
@@ -109,12 +110,40 @@ jobs:
               '        "semantic role overrides on governed source anchors are not allowed in governed documents"\n',
               '        "semantic role overrides are not allowed on governed content"\n',
           )
+          replace_once(
+              registry,
+              'def test_open_details_keep_governed_batch_visible():\n'
+              '    corpus = CORPUS.read_text(encoding="utf-8")\n'
+              '    start = corpus.index(BATCH_HEADING) + len(BATCH_HEADING)\n'
+              '    end = corpus.index(BATCH_END, start)\n'
+              '    mutated = (\n'
+              '        corpus[:start]\n'
+              '        + "\\n<details open>\\n<summary>Governed references</summary>\\n\\n"\n'
+              '        + corpus[start:end]\n'
+              '        + "\\n</details>\\n\\n"\n'
+              '        + corpus[end:]\n'
+              '    )\n'
+              '    _validate_registry_corpus(mutated)\n',
+              'def test_open_details_are_rejected_as_collapsible_governance():\n'
+              '    corpus = CORPUS.read_text(encoding="utf-8")\n'
+              '    start = corpus.index(BATCH_HEADING) + len(BATCH_HEADING)\n'
+              '    end = corpus.index(BATCH_END, start)\n'
+              '    mutated = (\n'
+              '        corpus[:start]\n'
+              '        + "\\n<details open>\\n<summary>Governed references</summary>\\n\\n"\n'
+              '        + corpus[start:end]\n'
+              '        + "\\n</details>\\n\\n"\n'
+              '        + corpus[end:]\n'
+              '    )\n'
+              '    with pytest.raises(AssertionError, match="interactive details disclosure"):\n'
+              '        _validate_registry_corpus(mutated)\n',
+          )
 
           regressions = Path("tests/test_pr4_current_review_regressions.py")
           marker = "def test_open_details_contenteditable_and_role_overrides_are_rejected() -> None:"
           text = regressions.read_text(encoding="utf-8")
           if marker not in text:
-              text += '''\n\n\ndef test_open_details_contenteditable_and_role_overrides_are_rejected() -> None:\n    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")\n    canonical = "Availability through ABC iview is not permission to redistribute content."\n    assert canonical in corpus\n    variants = (\n        (\n            "Availability through ABC iview is <details open>not</details> permission to redistribute content.",\n            "interactive details disclosure",\n        ),\n        (\n            "Availability through ABC iview is <span contenteditable>not</span> permission to redistribute content.",\n            "contenteditable",\n        ),\n        (\n            'Availability through ABC iview is <span role="img">not</span> permission to redistribute content.',\n            "semantic role overrides",\n        ),\n    )\n    for replacement, diagnostic in variants:\n        mutated = corpus.replace(canonical, replacement, 1)\n        assert mutated != corpus\n        with pytest.raises(AssertionError, match=diagnostic):\n            REGISTRY["_validate_registry_corpus"](mutated)\n\n\ndef test_shared_preflight_reports_governed_interaction_semantics() -> None:\n    violations = POLICING["_governed_surface_html_violations"]\n    assert "interactive-details" in violations("<details open>not</details>")\n    assert "editable-content" in violations("<span contenteditable>not</span>")\n    assert "semantic-role" in violations('<span role="img">not</span>')\n    assert "semantic-heading" in violations('<span role="heading">not</span>')\n    assert "semantic-role" not in violations('<span role="heading">not</span>')\n''' 
+              text += '''\n\n\ndef test_open_details_contenteditable_and_role_overrides_are_rejected() -> None:\n    corpus = (ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md").read_text(encoding="utf-8")\n    canonical = "Availability through ABC iview is not permission to redistribute content."\n    assert canonical in corpus\n    variants = (\n        (\n            "Availability through ABC iview is <details open>not</details> permission to redistribute content.",\n            "interactive details disclosure",\n        ),\n        (\n            "Availability through ABC iview is <span contenteditable>not</span> permission to redistribute content.",\n            "contenteditable",\n        ),\n        (\n            'Availability through ABC iview is <span role="img">not</span> permission to redistribute content.',\n            "semantic role overrides",\n        ),\n    )\n    for replacement, diagnostic in variants:\n        mutated = corpus.replace(canonical, replacement, 1)\n        assert mutated != corpus\n        with pytest.raises(AssertionError, match=diagnostic):\n            REGISTRY["_validate_registry_corpus"](mutated)\n\n\ndef test_shared_preflight_reports_governed_interaction_semantics() -> None:\n    violations = POLICING["_governed_surface_html_violations"]\n    assert "interactive-details" in violations("<details open>not</details>")\n    assert "closed-details" in violations("<details>not</details>")\n    assert "interactive-details" not in violations("<details>not</details>")\n    assert "editable-content" in violations("<span contenteditable>not</span>")\n    assert "semantic-role" in violations('<span role="img">not</span>')\n    assert "semantic-heading" in violations('<span role="heading">not</span>')\n    assert "semantic-role" not in violations('<span role="heading">not</span>')\n''' 
               regressions.write_text(text, encoding="utf-8")
           PY
 
