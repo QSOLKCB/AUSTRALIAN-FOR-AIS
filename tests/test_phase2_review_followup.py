@@ -179,6 +179,26 @@ def _phase2_namespace(changelog: str) -> dict:
     return namespace
 
 
+def _assert_phase2_section_link_free(section: str, namespace: dict) -> None:
+    """Keep Phase 2 changelog claims free of unsealed hyperlink destinations."""
+    structure = namespace["_rendered_structure"](section)
+    assert not tuple(namespace["_iter_inline_markdown_destinations"](structure)), (
+        "unexpected Markdown hyperlink in governed Phase 2 changelog section"
+    )
+    assert namespace["AUTOLINK_PATTERN"].search(structure) is None, (
+        "unexpected autolink in governed Phase 2 changelog section"
+    )
+    assert re.search(
+        r"<\s*a\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*\bhref(?:\s*=|\s|/?>)",
+        structure,
+        flags=re.IGNORECASE | re.DOTALL,
+    ) is None, "unexpected raw HTML hyperlink in governed Phase 2 changelog section"
+    assert re.search(
+        r"(?<!!)\[[^\]\r\n]+\]\s*\[[^\]\r\n]*\]",
+        structure,
+    ) is None, "unexpected reference-style hyperlink in governed Phase 2 changelog section"
+
+
 def _visible_phase2_notes(changelog: str) -> str:
     namespace = _phase2_namespace(changelog)
     structure = namespace["_rendered_structure"](changelog)
@@ -190,6 +210,8 @@ def _visible_phase2_notes(changelog: str) -> str:
     )
     assert phase2_start < phase1_start, "Phase 2 changelog boundaries are out of order"
 
+    phase2_source = changelog[phase2_start:phase1_start]
+    _assert_phase2_section_link_free(phase2_source, namespace)
     phase2_structure = structure[phase2_start:phase1_start]
     notes_start, notes_heading_end = namespace["_visible_markdown_heading_span"](
         phase2_structure, PHASE2_NOTES_HEADING
@@ -271,7 +293,9 @@ def _raw_phase2_section(changelog: str) -> str:
         structure, PHASE1_HEADING
     )
     assert phase2_start < phase1_start, "Phase 2 changelog boundaries are out of order"
-    return changelog[phase2_start:phase1_start]
+    section = changelog[phase2_start:phase1_start]
+    _assert_phase2_section_link_free(section, namespace)
+    return section
 
 
 def _visible_phase2_section(changelog: str) -> str:
@@ -354,4 +378,21 @@ def test_phase2_receipts_reject_document_wide_active_html_before_slicing(prefix:
         _phase2_records_sha256,
     ):
         with pytest.raises(AssertionError):
+            receipt(mutated)
+
+
+def test_phase2_receipts_reject_unsealed_link_destinations():
+    changelog = CHANGELOG.read_text(encoding="utf-8")
+    mutated = changelog.replace(
+        "ethical approvals",
+        "[ethical approvals](https://example.com/fake-approval)",
+        1,
+    )
+    assert mutated != changelog
+    for receipt in (
+        _visible_phase2_notes,
+        _phase2_section_sha256,
+        _phase2_records_sha256,
+    ):
+        with pytest.raises(AssertionError, match="hyperlink"):
             receipt(mutated)

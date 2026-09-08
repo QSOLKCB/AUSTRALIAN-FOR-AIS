@@ -3495,14 +3495,27 @@ def _source_use_rules_link_bindings(corpus: str) -> tuple[tuple[str, str], ...]:
     )
 
 
-def _normalised_registry_batch_prefix_value(corpus: str) -> str:
-    """Return unowned reader-visible content before the first governed entry."""
-    rendered, structure = _markdown_views(corpus)
+def _registry_batch_prefix_bounds(corpus: str) -> tuple[int, int]:
+    """Return source offsets for the gap between the batch heading and first entry."""
+    _, structure = _markdown_views(corpus)
     _, start = _visible_markdown_heading_span(structure, BATCH_HEADING)
     first_entry_start, _ = _visible_markdown_heading_span(
         structure, EXPECTED_GOVERNED_ENTRIES[0]
     )
     assert start <= first_entry_start, "rendered governed batch prefix boundaries are out of order"
+    return start, first_entry_start
+
+
+def _registry_batch_prefix_source(corpus: str) -> str:
+    """Return the raw source gap before the first governed registry entry."""
+    start, end = _registry_batch_prefix_bounds(corpus)
+    return corpus[start:end]
+
+
+def _normalised_registry_batch_prefix_value(corpus: str) -> str:
+    """Return unowned reader-visible content before the first governed entry."""
+    rendered, _ = _markdown_views(corpus)
+    start, first_entry_start = _registry_batch_prefix_bounds(corpus)
     prefix = rendered[start:first_entry_start]
     # Preserve the established positive control that allows the governed batch
     # to be wrapped in an open disclosure labelled exactly "Governed references".
@@ -3647,6 +3660,9 @@ def _validate_registry_corpus(corpus: str) -> None:
         "every rendered governed entry must have an explicit pinned source contract"
     )
 
+    batch_prefix_source = _registry_batch_prefix_source(corpus)
+    batch_prefix_violations = _SHARED_HTML_PREFLIGHT(batch_prefix_source)
+    _SHARED_POLICING["_assert_supported_governed_html"](batch_prefix_violations)
     batch_prefix = _normalised_registry_batch_prefix_value(corpus)
     assert not batch_prefix, (
         "governed registry batch prefix must remain empty before the first registered entry; "
@@ -3712,6 +3728,23 @@ def test_governed_registry_batch_prefix_must_remain_empty():
     )
     assert mutated != corpus
     with pytest.raises(AssertionError, match="governed registry batch prefix must remain empty"):
+        _validate_registry_corpus(mutated)
+
+
+@pytest.mark.parametrize(
+    "injected",
+    (
+        '<a href="https://creativecommons.org/publicdomain/zero/1.0/" rel="license"></a>',
+        '<meta itemprop="license" content="CC0">',
+        '<hr>',
+    ),
+)
+def test_governed_registry_batch_prefix_rejects_nontext_rendering_semantics(injected: str):
+    corpus = CORPUS.read_text(encoding="utf-8")
+    mutated = corpus.replace(BATCH_HEADING, BATCH_HEADING + "\n\n" + injected, 1)
+    assert mutated != corpus
+    assert _normalised_registry_batch_prefix_value(mutated) == ""
+    with pytest.raises(AssertionError):
         _validate_registry_corpus(mutated)
 
 
