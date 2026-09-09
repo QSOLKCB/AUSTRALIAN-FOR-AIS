@@ -51,6 +51,84 @@ POLICING.write_text(text, encoding="utf-8")
 regressions = REGRESSIONS.read_text(encoding="utf-8")
 marker = "def test_anchor_attribution_reporting_endpoint_is_rejected() -> None:"
 if marker not in regressions:
-    regressions = regressions.rstrip() + '''\n\n\ndef test_anchor_attribution_reporting_endpoint_is_rejected() -> None:\n    url = "https://iview.abc.net.au/show/black-comedy"\n    endpoint = "https://untrusted.example/register"\n    fragment = f'<a href="{url}" attributionsrc="{endpoint}">{url}</a>'\n    violations = POLICING["_governed_surface_html_violations"](fragment)\n    assert "executable-url" in violations\n\n    corpus = CORPUS.read_text(encoding="utf-8")\n    original = f"**Registered source:** {url}"\n    replacement = f"**Registered source:** {fragment}"\n    assert original in corpus\n    with pytest.raises(AssertionError):\n        REGISTRY["_validate_registry_corpus"](\n            corpus.replace(original, replacement, 1)\n        )\n\n\ndef test_machine_readable_time_value_is_rejected() -> None:\n    fragment = '<time datetime="2099-01-01">2022</time>'\n    violations = POLICING["_governed_surface_html_violations"](fragment)\n    assert "machine-metadata" in violations\n\n    corpus = CORPUS.read_text(encoding="utf-8")\n    original = "The 2022 report directly records that Australian accent and slang"\n    replacement = (\n        'The <time datetime="2099-01-01">2022</time> report directly records '\n        "that Australian accent and slang"\n    )\n    assert original in corpus\n    with pytest.raises(AssertionError):\n        REGISTRY["_validate_registry_corpus"](\n            corpus.replace(original, replacement, 1)\n        )\n\n\ndef test_autofocus_is_rejected_across_governed_content() -> None:\n    fragment = '<span tabindex="-1" autofocus>not</span>'\n    violations = POLICING["_governed_surface_html_violations"](fragment)\n    assert "keyboard-navigation" in violations\n\n    corpus = CORPUS.read_text(encoding="utf-8")\n    original = (\n        "Availability through ABC iview is not permission "\n        "to redistribute content."\n    )\n    replacement = (\n        'Availability through ABC iview is <span tabindex="-1" autofocus>not</span> '\n        "permission to redistribute content."\n    )\n    assert original in corpus\n    with pytest.raises(AssertionError):\n        REGISTRY["_validate_registry_corpus"](\n            corpus.replace(original, replacement, 1)\n        )\n\n\ndef test_translate_no_is_rejected_as_language_override() -> None:\n    fragment = '<span translate="no">not</span>'\n    violations = POLICING["_governed_surface_html_violations"](fragment)\n    assert "language-override" in violations\n\n    corpus = CORPUS.read_text(encoding="utf-8")\n    original = (\n        "Availability through ABC iview is not permission "\n        "to redistribute content."\n    )\n    replacement = (\n        'Availability through ABC iview is <span translate="no">not</span> '\n        "permission to redistribute content."\n    )\n    assert original in corpus\n    with pytest.raises(AssertionError):\n        REGISTRY["_validate_registry_corpus"](\n            corpus.replace(original, replacement, 1)\n        )\n''' + "\n"
+    regressions = (regressions.rstrip() + '''
+
+
+def test_anchor_attribution_reporting_endpoint_is_rejected() -> None:
+    url = "https://iview.abc.net.au/show/black-comedy"
+    endpoint = "https://untrusted.example/register"
+    fragment = f'<a href="{url}" attributionsrc="{endpoint}">{url}</a>'
+    violations = POLICING["_governed_surface_html_violations"](fragment)
+    assert "executable-url" in violations
+
+    corpus = CORPUS.read_text(encoding="utf-8")
+    original = f"**Registered source:** {url}"
+    replacement = f"**Registered source:** {fragment}"
+    assert original in corpus
+    with pytest.raises(AssertionError):
+        REGISTRY["_validate_registry_corpus"](
+            corpus.replace(original, replacement, 1)
+        )
+
+
+def test_machine_readable_time_value_is_rejected() -> None:
+    fragment = '<time datetime="2099-01-01">2022</time>'
+    violations = POLICING["_governed_surface_html_violations"](fragment)
+    assert "machine-metadata" in violations
+
+    corpus = CORPUS.read_text(encoding="utf-8")
+    original = "The 2022 report directly records that Australian accent and slang"
+    replacement = (
+        'The <time datetime="2099-01-01">2022</time> report directly records '
+        "that Australian accent and slang"
+    )
+    assert original in corpus
+    with pytest.raises(AssertionError):
+        REGISTRY["_validate_registry_corpus"](
+            corpus.replace(original, replacement, 1)
+        )
+
+
+def test_autofocus_is_rejected_across_governed_content() -> None:
+    fragment = '<span tabindex="-1" autofocus>not</span>'
+    violations = POLICING["_governed_surface_html_violations"](fragment)
+    assert "keyboard-navigation" in violations
+
+    corpus = CORPUS.read_text(encoding="utf-8")
+    original = (
+        "Availability through ABC iview is not permission "
+        "to redistribute content."
+    )
+    replacement = (
+        'Availability through ABC iview is <span tabindex="-1" autofocus>not</span> '
+        "permission to redistribute content."
+    )
+    assert original in corpus
+    with pytest.raises(AssertionError):
+        REGISTRY["_validate_registry_corpus"](
+            corpus.replace(original, replacement, 1)
+        )
+
+
+def test_translate_no_is_rejected_as_language_override() -> None:
+    fragment = '<span translate="no">not</span>'
+    violations = POLICING["_governed_surface_html_violations"](fragment)
+    assert "language-override" in violations
+
+    corpus = CORPUS.read_text(encoding="utf-8")
+    original = (
+        "Availability through ABC iview is not permission "
+        "to redistribute content."
+    )
+    replacement = (
+        'Availability through ABC iview is <span translate="no">not</span> '
+        "permission to redistribute content."
+    )
+    assert original in corpus
+    with pytest.raises(AssertionError):
+        REGISTRY["_validate_registry_corpus"](
+            corpus.replace(original, replacement, 1)
+        )
+''').rstrip() + "\n"
 
 REGRESSIONS.write_text(regressions, encoding="utf-8")
