@@ -13,8 +13,16 @@ new = '        if tag in {"ol", "ul", "li"}:\n            self.violations.add("r
 assert text.count(old) == 1
 text = text.replace(old, new, 1)
 
-marker = '        tag = tag.lower()\n'
-assert text.count(marker) >= 1
+
+def insert_after_in_governed_parser(source: str, method_signature: str, needle: str, addition: str) -> str:
+    class_start = source.index("class _GovernedSurfaceHTMLParser(HTMLParser):")
+    class_end = source.index("\ndef _governed_surface_html_violations", class_start)
+    method_start = source.index(method_signature, class_start, class_end)
+    needle_start = source.index(needle, method_start, class_end)
+    insert_at = needle_start + len(needle)
+    return source[:insert_at] + addition + source[insert_at:]
+
+
 parsed_start_policy = '''        # Generic CommonMark block containers are checked from HTMLParser's
         # complete parsed start-tag span. This is deliberately source-aware so
         # multiline attributes cannot evade the ownership boundary by being
@@ -52,10 +60,13 @@ parsed_start_policy = '''        # Generic CommonMark block containers are check
                     ):
                         self.violations.add("raw-block")
 '''
-text = text.replace(marker, marker + parsed_start_policy, 1)
+text = insert_after_in_governed_parser(
+    text,
+    "    def handle_starttag(\n",
+    "        tag = tag.lower()\n",
+    parsed_start_policy,
+)
 
-endtag_marker = '    def handle_endtag(self, tag: str) -> None:\n        tag = tag.lower()\n'
-assert text.count(endtag_marker) == 1
 parsed_end_policy = '''        # Generic block closing tags use the parser's source position too,
         # so closing boundaries cannot fall back to line-local regex parsing.
         if tag in GOVERNED_RAW_BLOCK_CONTAINER_TAGS and self._source:
@@ -81,7 +92,12 @@ parsed_end_policy = '''        # Generic block closing tags use the parser's sou
                 ):
                     self.violations.add("raw-block")
 '''
-text = text.replace(endtag_marker, endtag_marker + parsed_end_policy, 1)
+text = insert_after_in_governed_parser(
+    text,
+    "    def handle_endtag(self, tag: str) -> None:\n",
+    "        tag = tag.lower()\n",
+    parsed_end_policy,
+)
 
 start_marker = '    # Raw block containers may be retained only as complete structural\n'
 end_marker = '    # Markdown links become anchors only after Markdown rendering, so the raw-HTML\n'
