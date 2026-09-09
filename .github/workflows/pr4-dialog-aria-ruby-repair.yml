@@ -31,7 +31,13 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Apply parser hardening
-        run: python .github/pr4_dialog_aria_ruby_repair.py
+        run: |
+          python .github/pr4_dialog_aria_ruby_repair.py
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("tests/test_pr4_native_machine_dialog_regressions.py")
+          path.write_text(path.read_text(encoding="utf-8").rstrip() + "\n", encoding="utf-8")
+          PY
 
       - name: Exact fresh regressions
         run: pytest -q tests/test_pr4_native_machine_dialog_regressions.py
