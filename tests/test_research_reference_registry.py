@@ -3385,6 +3385,9 @@ def _assert_no_active_document_html(found: set[str]) -> None:
     assert "machine-metadata" not in found, (
         "machine-readable Microdata/RDFa metadata is not allowed in governed documents"
     )
+    assert "dialog-inline-block" not in found, (
+        "dialog block-container HTML carrying governed prose is not allowed in governed documents"
+    )
     assert "preformatted-content" not in found, (
         "preformatted HTML is not allowed in governed registry documents"
     )

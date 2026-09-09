@@ -1457,6 +1457,7 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         if (
             machine_metadata_attributes.intersection(attribute_names)
             or "rel" in attribute_names
+            or (tag == "data" and "value" in attribute_names)
         ):
             self.violations.add("machine-metadata")
         # `hidden=until-found` is conditionally revealed by find-in-page or
@@ -1626,13 +1627,22 @@ def _governed_surface_html_violations(markdown: str) -> set[str]:
         r"</?(?:address|article|aside|div|dl|fieldset|figcaption|figure|footer|header|main|nav|p|section|summary)\b[^>]*>",
         flags=re.IGNORECASE,
     )
+    dialog_tag = re.compile(r"</?dialog\b[^>]*>", flags=re.IGNORECASE)
+    open_dialog_tag = re.compile(
+        r"<dialog\b(?=[^>]*(?:\sopen(?:\s*=|\s|/?>)))[^>]*>",
+        flags=re.IGNORECASE,
+    )
     for raw_line in live_markup.splitlines():
-        if raw_block_tag.search(raw_line) is None:
-            continue
-        residual = raw_block_tag.sub("", raw_line)
-        if residual.strip():
-            parser.violations.add("raw-block")
-            break
+        if raw_block_tag.search(raw_line) is not None:
+            residual = raw_block_tag.sub("", raw_line)
+            if residual.strip():
+                parser.violations.add("raw-block")
+                break
+        if open_dialog_tag.search(raw_line) is not None:
+            residual = dialog_tag.sub("", raw_line)
+            if residual.strip():
+                parser.violations.add("dialog-inline-block")
+                break
 
     # Markdown links become anchors only after Markdown rendering, so the raw-HTML
     # parser cannot enforce executable-scheme policy on them. Inspect the rendered
@@ -1674,6 +1684,7 @@ def _assert_supported_governed_html(violations: set[str]) -> None:
     descriptions = {
         "replacement-content": "replacement-content HTML",
         "rendered-break": "rendered break HTML",
+        "dialog-inline-block": "dialog block-container HTML carrying governed prose",
         "preformatted-content": "preformatted content HTML",
         "semantic-heading": "raw/ARIA heading semantics HTML",
         "machine-metadata": "machine-readable metadata HTML",
