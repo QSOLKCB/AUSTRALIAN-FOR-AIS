@@ -1,0 +1,105 @@
+name: PR4 braille ins dialog repair
+
+on:
+  push:
+    branches: ["research-corpus-governed-expansion"]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research-corpus-governed-expansion
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Apply exact parser and regression repair
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("tests/test_policing_context_roadmap.py")
+          text = path.read_text(encoding="utf-8")
+
+          old = '        if tag in {"del", "s", "strike"}:\n            self.violations.add("semantic-deletion")\n'
+          new = (
+              '        if tag in {"del", "s", "strike"}:\n'
+              '            self.violations.add("semantic-deletion")\n'
+              '        if tag == "ins":\n'
+              '            self.violations.add("semantic-insertion")\n'
+          )
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          old = '        if {"aria-label", "aria-labelledby", "aria-description", "aria-describedby", "aria-details"}.intersection(attribute_names):\n'
+          new = '        if {"aria-label", "aria-labelledby", "aria-description", "aria-describedby", "aria-details", "aria-braillelabel"}.intersection(attribute_names):\n'
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          old = '        "semantic-deletion": "semantic deletion HTML",\n'
+          new = (
+              '        "semantic-deletion": "semantic deletion HTML",\n'
+              '        "semantic-insertion": "semantic insertion HTML",\n'
+          )
+          assert old in text
+          text = text.replace(old, new, 1)
+
+          marker = '    def handle_endtag(self, tag: str) -> None:\n'
+          addition = (
+              '    def close(self) -> None:\n'
+              '        """Finalize HTML parsing and fail closed on unterminated open dialogs."""\n'
+              '        super().close()\n'
+              '        if any(self._dialog_open_stack):\n'
+              '            self.violations.add("dialog-inline-block")\n\n'
+          )
+          assert marker in text
+          assert addition not in text
+          text = text.replace(marker, addition + marker, 1)
+          path.write_text(text, encoding="utf-8")
+
+          regression = Path("tests/test_pr4_braille_ins_dialog_regressions.py")
+          regression.write_text('''"""Exact regressions for the latest PR #4 governed-HTML findings."""\n\nfrom pathlib import Path\nimport runpy\n\nimport pytest\n\nROOT = Path(__file__).resolve().parents[1]\nPOLICING = runpy.run_path(str(ROOT / "tests/test_policing_context_roadmap.py"))\nREGISTRY = runpy.run_path(str(ROOT / "tests/test_research_reference_registry.py"))\nCORPUS = ROOT / "docs/RESEARCH-REFERENCE-CORPUS.md"\n\n\ndef test_braille_specific_accessible_name_override_is_rejected() -> None:\n    url = "https://iview.abc.net.au/show/black-comedy"\n    anchor = f'<a href="{url}" aria-braillelabel="CC0 licensed work">{url}</a>'\n    assert "accessible-name" in POLICING["_governed_surface_html_violations"](anchor)\n\n    corpus = CORPUS.read_text(encoding="utf-8")\n    assert f"**Registered source:** {url}" in corpus\n    mutated = corpus.replace(\n        f"**Registered source:** {url}",\n        f"**Registered source:** {anchor}",\n        1,\n    )\n    with pytest.raises(AssertionError, match="accessible-name override HTML"):\n        REGISTRY["_validate_registry_corpus"](mutated)\n\n\ndef test_semantic_insertion_markup_is_rejected() -> None:\n    original = "Availability through ABC iview is not permission to redistribute content."\n    mutated_clause = (\n        'Availability through ABC iview is <ins '\n        'cite="https://creativecommons.org/publicdomain/zero/1.0/" '\n        'datetime="2026-09-09">not</ins> permission to redistribute content.'\n    )\n    assert "semantic-insertion" in POLICING["_governed_surface_html_violations"](mutated_clause)\n\n    corpus = CORPUS.read_text(encoding="utf-8")\n    assert original in corpus\n    mutated = corpus.replace(original, mutated_clause, 1)\n    with pytest.raises(AssertionError, match="semantic insertion HTML"):\n        REGISTRY["_validate_registry_corpus"](mutated)\n\n\ndef test_unclosed_open_dialog_is_rejected_at_eof() -> None:\n    fragment = "## Registered post-Phase-2 expansion batch\\n\\n<dialog open>\\n\\nCanonical governed prose.\\n"\n    assert "dialog-inline-block" in POLICING["_governed_surface_html_violations"](fragment)\n\n    corpus = CORPUS.read_text(encoding="utf-8")\n    heading = "## Registered post-Phase-2 expansion batch\\n\\n"\n    assert heading in corpus\n    mutated = corpus.replace(heading, heading + "<dialog open>\\n\\n", 1)\n    with pytest.raises(AssertionError, match="dialog block-container HTML"):\n        REGISTRY["_validate_registry_corpus"](mutated)\n''', encoding="utf-8")
+          PY
+
+      - name: Run exact and focused governance tests
+        run: |
+          pytest -q \
+            tests/test_pr4_braille_ins_dialog_regressions.py \
+            tests/test_pr4_clean_head_audit_regressions.py \
+            tests/test_policing_context_roadmap.py \
+            tests/test_research_reference_registry.py
+
+      - name: Run full suite
+        run: pytest -q --disable-warnings --maxfail=1
+
+      - name: Validate datasets and whitespace
+        run: |
+          python -m australian_for_ais.cli validate data/starter/examples.jsonl
+          python -m australian_for_ais.cli validate-pilot data/pilot/items.jsonl
+          git diff --check
+
+      - name: Commit verified permanent repair and self-clean
+        run: |
+          rm .github/workflows/pr4-braille-ins-dialog-repair.yml
+          git add tests/test_policing_context_roadmap.py tests/test_pr4_braille_ins_dialog_regressions.py
+          git add -u .github/workflows/pr4-braille-ins-dialog-repair.yml
+          git diff --cached --check
+          git config user.name "EmergentMonk"
+          git config user.email "73952179+EmergentMonk@users.noreply.github.com"
+          git commit -m "Close PR4 braille insertion and dialog gaps"
+          git push origin HEAD:research-corpus-governed-expansion
