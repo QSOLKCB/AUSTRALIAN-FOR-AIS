@@ -1440,22 +1440,21 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         attribute_names = {key.lower() for key, _ in attrs}
         if tag == "dialog":
             self._dialog_open_stack.append("open" in attribute_names)
-        # HTMLParser has already tokenized the complete start tag, including
-        # quoted `>` characters and attributes split across source lines. Use
-        # that parsed span to decide whether an open dialog carries governed
-        # prose on the same source line instead of re-tokenizing HTML by regex.
+        # Open dialogs may wrap a complete governed Markdown section, but
+        # must not split one prose clause into a separate top-layer block.
+        # A clean tag line is therefore not sufficient: require the nearest
+        # substantive source boundary before the opener to be structural.
         if tag == "dialog" and "open" in attribute_names and self._source:
             start = self._source_offset()
-            start_tag = self.get_starttag_text() or ""
-            end = start + len(start_tag)
-            line_start = self._source.rfind("\n", 0, start) + 1
-            line_end = self._source.find("\n", end)
-            if line_end < 0:
-                line_end = len(self._source)
-            prefix = self._source[line_start:start]
-            suffix = self._source[end:line_end]
-            if prefix.strip() or suffix.strip():
-                self.violations.add("dialog-inline-block")
+            before = self._source[:start].rstrip()
+            if before:
+                previous = before.splitlines()[-1].strip()
+                structural = re.fullmatch(
+                    r"(?:#{1,6}[ \t]+.+|(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})",
+                    previous,
+                )
+                if structural is None:
+                    self.violations.add("dialog-inline-block")
         # contenteditable changes committed governance prose into an
         # ordinary browser editing surface without changing its receipt.
         if "contenteditable" in attribute_names:
@@ -1596,15 +1595,15 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
                 start = self._source_offset()
                 close = self._source.find(">", start)
                 if close >= 0:
-                    end = close + 1
-                    line_start = self._source.rfind("\n", 0, start) + 1
-                    line_end = self._source.find("\n", end)
-                    if line_end < 0:
-                        line_end = len(self._source)
-                    prefix = self._source[line_start:start]
-                    suffix = self._source[end:line_end]
-                    if prefix.strip() or suffix.strip():
-                        self.violations.add("dialog-inline-block")
+                    after = self._source[close + 1:].lstrip()
+                    if after:
+                        following = after.splitlines()[0].strip()
+                        structural = re.fullmatch(
+                            r"(?:#{1,6}[ \t]+.+|(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})",
+                            following,
+                        )
+                        if structural is None:
+                            self.violations.add("dialog-inline-block")
         if tag == "a":
             self._anchor_open = False
         if tag == "nobr":

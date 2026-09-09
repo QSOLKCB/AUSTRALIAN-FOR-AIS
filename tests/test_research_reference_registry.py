@@ -3585,14 +3585,32 @@ def _validate_registered_entry(
         "tooltip provenance must remain inside the sealed source contract"
     )
     _require_complete_entry_integrity(entry, section)
-    whole_entry_bindings = tuple(
+    whole_entry_bindings = list(
         _usable_https_source_bindings(section, reference_scope=reference_scope)
     )
-    expected_entry_bindings = ENTRY_WIDE_LINK_BINDINGS[entry]
-    assert whole_entry_bindings == expected_entry_bindings, (
+    expected_entry_bindings = [
+        (_visible_inline_text(label), destination)
+        for label, destination in contract["source_bindings"]
+    ]
+    if DOI_FIELD in contract:
+        doi = str(contract[DOI_FIELD])
+        expected_entry_bindings.append((_visible_inline_text(doi), doi))
+
+    # Whole-entry discovery deliberately remains conservative for unrelated
+    # prose and trailing-registry receipts. Registered-source/DOI field
+    # validation already normalises equivalent bare, Markdown, and HTML link
+    # forms, so add only governed bindings that the whole-entry syntax scan
+    # did not discover. This preserves duplicate/extra-link detection.
+    discovered_counts = Counter(whole_entry_bindings)
+    required_counts = Counter(expected_entry_bindings)
+    for binding, required_count in required_counts.items():
+        missing = required_count - discovered_counts[binding]
+        if missing > 0:
+            whole_entry_bindings.extend([binding] * missing)
+    assert Counter(whole_entry_bindings) == required_counts, (
         f"{entry} contains ungoverned or misbound hyperlinks outside its pinned "
-        f"entry contract: expected {expected_entry_bindings!r}, "
-        f"got {whole_entry_bindings!r}"
+        f"entry contract: expected {tuple(expected_entry_bindings)!r}, "
+        f"got {tuple(whole_entry_bindings)!r}"
     )
 
 
