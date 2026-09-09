@@ -1600,6 +1600,7 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             machine_metadata_attributes.intersection(attribute_names)
             or "rel" in attribute_names
             or (tag == "data" and "value" in attribute_names)
+            or (tag == "time" and "datetime" in attribute_names)
         ):
             self.violations.add("machine-metadata")
         # `hidden=until-found` is conditionally revealed by find-in-page or
@@ -1616,7 +1617,7 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         # Hyperlink auditing can send an additional network request that is not
         # represented by the sealed href binding. Targets change framing, while
         # download changes activation without changing the sealed label/href binding.
-        if tag == "a" and {"download", "ping", "target"}.intersection(attribute_names):
+        if tag == "a" and {"attributionsrc", "download", "ping", "target"}.intersection(attribute_names):
             self.violations.add("executable-url")
         # Any role override can change the accessibility-tree semantics of
         # governed prose or links without changing the sealed characters.
@@ -1629,6 +1630,16 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             self.violations.add("tooltip-title")
         if {"lang", "xml:lang"}.intersection(attribute_names):
             self.violations.add("language-override")
+        if any(
+            key.lower() == "translate"
+            and (value or "").strip().casefold() == "no"
+            for key, value in attrs
+        ):
+            self.violations.add("language-override")
+        # autofocus can move keyboard/assistive-technology focus into the
+        # middle of a sealed governed surface without changing its text.
+        if "autofocus" in attribute_names:
+            self.violations.add("keyboard-navigation")
         if {"aria-label", "aria-labelledby", "aria-description", "aria-describedby", "aria-details"}.intersection(attribute_names):
             self.violations.add("accessible-name")
         if "aria-owns" in attribute_names:
@@ -1889,6 +1900,7 @@ def _assert_supported_governed_html(violations: set[str]) -> None:
         "semantic-role": "semantic role override HTML",
         "accessibility-inert": "native inert accessibility suppression HTML",
         "accessibility-disabled": "aria-disabled source-link suppression HTML",
+        "keyboard-navigation": "autofocus/tabindex keyboard-navigation HTML",
         "accessibility-ownership": "aria-owns accessibility-tree ownership override HTML",
         "nested-anchor": "nested anchor HTML",
         "nobr": "nobr HTML",
