@@ -125,6 +125,22 @@ PREFLIGHT_HTML_BLOCK_TAGS = frozenset({
     "search", "section", "summary", "table", "tbody", "td", "tfoot", "th",
     "thead", "title", "tr", "track", "ul",
 })
+# Every CommonMark type-6 block tag must either have a dedicated fail-closed
+# rendering policy or participate in the generic raw-block ownership policy.
+# Derive the latter from the canonical CommonMark set above so new/less-common
+# block elements cannot silently drift out of coverage.
+GOVERNED_BLOCK_TAGS_WITH_DEDICATED_POLICY = frozenset({
+    "base", "basefont", "blockquote", "body", "caption", "col", "colgroup",
+    "details", "dialog", "form", "h1", "h2", "h3", "h4", "h5", "h6",
+    "head", "hr", "html", "iframe", "link", "noframes", "ol", "optgroup",
+    "option", "table", "tbody", "td", "tfoot", "th", "thead", "title", "tr",
+    "ul",
+})
+GOVERNED_RAW_BLOCK_CONTAINER_TAGS = (
+    PREFLIGHT_HTML_BLOCK_TAGS - GOVERNED_BLOCK_TAGS_WITH_DEDICATED_POLICY
+)
+
+
 COMMONMARK_RAW_HTML_TAG_SENTINEL = "\ue03f"
 COMMONMARK_HTML_ATTRIBUTE = (
     r"[ \t\r\n\f]+[A-Za-z_:][A-Za-z0-9_.:-]*"
@@ -1464,7 +1480,7 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             self.violations.add("raw-list")
         # Legacy font presentation can make sealed prose unreadable without
         # changing its character data. Do not approximate that rendering.
-        if tag in {"font", "basefont", "small"}:
+        if tag in {"font", "basefont", "small", "sup", "sub"}:
             self.violations.add("presentational-font")
         # SVG needs its own rendering tree, not HTML character-data callbacks.
         if tag == "svg":
@@ -1742,8 +1758,11 @@ def _governed_surface_html_violations(markdown: str) -> set[str]:
     # type-6 opener must not consume Markdown list/quote/heading syntax as
     # raw HTML content, because downstream line receipts would otherwise
     # invent structure that the browser never rendered.
+    raw_block_pattern = "|".join(
+        re.escape(tag) for tag in sorted(GOVERNED_RAW_BLOCK_CONTAINER_TAGS)
+    )
     raw_block_tag = re.compile(
-        r"<(?P<closing>/)?(?P<tag>address|article|aside|div|dl|fieldset|figcaption|figure|footer|header|main|nav|p|section|summary)\b[^>]*>",
+        rf"<(?P<closing>/)?(?P<tag>{raw_block_pattern})\b[^>]*>",
         flags=re.IGNORECASE,
     )
     raw_lines = live_markup.splitlines()

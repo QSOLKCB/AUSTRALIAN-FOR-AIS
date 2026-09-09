@@ -115,3 +115,56 @@ def test_single_source_field_binding_is_format_invariant() -> None:
     )
     expected = Counter({(url, url): 1})
     assert Counter(original_bindings) == Counter(linked_bindings) == expected
+
+
+def test_raw_block_policy_is_derived_from_complete_commonmark_set() -> None:
+    expected = (
+        POLICING["PREFLIGHT_HTML_BLOCK_TAGS"]
+        - POLICING["GOVERNED_BLOCK_TAGS_WITH_DEDICATED_POLICY"]
+    )
+    assert POLICING["GOVERNED_RAW_BLOCK_CONTAINER_TAGS"] == expected
+    assert {"center", "search", "menu", "legend"} <= expected
+    assert "title" not in expected
+
+
+@pytest.mark.parametrize("tag", ("center", "search", "menu", "legend"))
+def test_additional_commonmark_block_containers_cannot_detach_rights_negation(
+    tag: str,
+) -> None:
+    corpus = CORPUS.read_text(encoding="utf-8")
+    original = (
+        "Availability through ABC iview is not permission "
+        "to redistribute content."
+    )
+    fragment = (
+        "Availability through ABC iview is "
+        f"<{tag}>not</{tag}> permission to redistribute content."
+    )
+    assert original in corpus
+    assert "raw-block" in POLICING["_governed_surface_html_violations"](
+        fragment
+    )
+    with pytest.raises(AssertionError, match="raw block-container HTML"):
+        REGISTRY["_validate_registry_corpus"](
+  corpus.replace(original, fragment, 1)
+        )
+
+
+@pytest.mark.parametrize("tag", ("sup", "sub"))
+def test_vertical_presentation_cannot_deemphasize_rights_negation(tag: str) -> None:
+    corpus = CORPUS.read_text(encoding="utf-8")
+    original = (
+        "Availability through ABC iview is not permission "
+        "to redistribute content."
+    )
+    fragment = (
+        "Availability through ABC iview is "
+        f"<{tag}>not</{tag}> permission to redistribute content."
+    )
+    assert original in corpus
+    violations = POLICING["_governed_surface_html_violations"](fragment)
+    assert "presentational-font" in violations
+    with pytest.raises(AssertionError, match="presentational"):
+        REGISTRY["_validate_registry_corpus"](
+  corpus.replace(original, fragment, 1)
+        )
