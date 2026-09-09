@@ -1352,11 +1352,21 @@ def _has_executable_url_scheme(value: str) -> bool:
 class _GovernedSurfaceHTMLParser(HTMLParser):
     """Detect live HTML whose browser semantics are unsafe to approximate."""
 
-    def __init__(self) -> None:
+    def __init__(self, source: str = "") -> None:
         super().__init__(convert_charrefs=True)
         self.violations: set[str] = set()
         self._anchor_open = False
         self._nobr_open = False
+        self._source = source
+        self._line_starts = [0]
+        self._line_starts.extend(match.end() for match in re.finditer(r"\n", source))
+
+    def _source_offset(self) -> int:
+        """Map HTMLParser's current start-tag position back into source text."""
+        line, column = self.getpos()
+        if 1 <= line <= len(self._line_starts):
+            return self._line_starts[line - 1] + column
+        return 0
 
     def handle_starttag(
         self, tag: str, attrs: list[tuple[str, str | None]]
@@ -1427,6 +1437,22 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         # Parsed names cover duplicate, boolean, and multiline attributes.
         # The reducer cannot establish readability for arbitrary inline CSS.
         attribute_names = {key.lower() for key, _ in attrs}
+        # HTMLParser has already tokenized the complete start tag, including
+        # quoted `>` characters and attributes split across source lines. Use
+        # that parsed span to decide whether an open dialog carries governed
+        # prose on the same source line instead of re-tokenizing HTML by regex.
+        if tag == "dialog" and "open" in attribute_names and self._source:
+            start = self._source_offset()
+            start_tag = self.get_starttag_text() or ""
+            end = start + len(start_tag)
+            line_start = self._source.rfind("\n", 0, start) + 1
+            line_end = self._source.find("\n", end)
+            if line_end < 0:
+                line_end = len(self._source)
+            prefix = self._source[line_start:start]
+            suffix = self._source[end:line_end]
+            if prefix.strip() or suffix.strip():
+                self.violations.add("dialog-inline-block")
         # contenteditable changes committed governance prose into an
         # ordinary browser editing surface without changing its receipt.
         if "contenteditable" in attribute_names:
@@ -1513,13 +1539,11 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         values: dict[str, str] = {}
         for key, value in attrs:
             values.setdefault(key.lower(), value or "")
-        # An ARIA-disabled provenance anchor can retain its canonical label and
-        # href while assistive technology exposes it as unavailable. Keep that
-        # interaction state inside the governed source-link contract.
-        if (
-            tag == "a"
-            and values.get("aria-disabled", "").strip().casefold() == "true"
-        ):
+        # aria-disabled propagates disabled semantics to focusable descendants,
+        # so an ancestor can make a generated or nested provenance link appear
+        # unavailable without changing its sealed label/destination. Fail closed
+        # on the true state anywhere on a governed surface.
+        if values.get("aria-disabled", "").strip().casefold() == "true":
             self.violations.add("accessibility-disabled")
         # Negative tabindex removes an otherwise valid provenance anchor from
         # sequential keyboard navigation. Keep focusability inside the governed
@@ -1538,7 +1562,10 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             for name in GOVERNED_EXECUTABLE_URL_ATTRIBUTES
         ):
             self.violations.add("executable-url")
-        if tag in {"datalist", "rp"}:
+        # Ruby changes the visual relationship between base text and annotation.
+        # Do not let a critical qualifier move above/beside its surrounding prose
+        # while flattened character data reconstructs the canonical receipt.
+        if tag in {"datalist", "rp", "ruby", "rt"}:
             self.violations.add("non-rendering-container")
         if "style" in attribute_names:
             self.violations.add("inline-style")
@@ -1572,7 +1599,6 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
 
 def _governed_surface_html_violations(markdown: str) -> set[str]:
     """Inspect live rendered structure while leaving comments/code inert."""
-    parser = _GovernedSurfaceHTMLParser()
     html_spans: list[tuple[int, int]] = []
     structure = _rendered_structure(markdown, html_spans=html_spans)
     # Exclude definite same-line literal code examples before parsing HTML.
@@ -1618,6 +1644,7 @@ def _governed_surface_html_violations(markdown: str) -> set[str]:
         characters[cursor:end] = " " * (end - cursor)
         cursor = end
     live_markup = "".join(characters)
+    parser = _GovernedSurfaceHTMLParser(live_markup)
 
     # Block containers are dangerous specifically when they carry/reframe
     # governed prose on the same rendered source line. Do not classify a bare
@@ -1627,27 +1654,6 @@ def _governed_surface_html_violations(markdown: str) -> set[str]:
         r"</?(?:address|article|aside|div|dl|fieldset|figcaption|figure|footer|header|main|nav|p|section|summary)\b[^>]*>",
         flags=re.IGNORECASE,
     )
-    open_dialog_tag = re.compile(
-        r"<dialog\b(?=[^>]*(?:\sopen(?:\s*=|\s|/?>)))[^>]*>",
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-    # Inspect complete opening-tag spans before source-line splitting. HTML
-    # attributes may legally cross line boundaries, so a line-local regex can
-    # miss `<dialog\n open>`. An open dialog is an inline/reframing violation
-    # when its opener shares its source line with governed prose on either
-    # side. A clean whole-section wrapper remains supported even when the
-    # opener itself is formatted across multiple lines.
-    for open_dialog_match in open_dialog_tag.finditer(live_markup):
-        line_start = live_markup.rfind("\n", 0, open_dialog_match.start()) + 1
-        line_end = live_markup.find("\n", open_dialog_match.end())
-        if line_end < 0:
-            line_end = len(live_markup)
-        prefix = live_markup[line_start:open_dialog_match.start()]
-        suffix = live_markup[open_dialog_match.end():line_end]
-        if prefix.strip() or suffix.strip():
-            parser.violations.add("dialog-inline-block")
-            break
-
     for raw_line in live_markup.splitlines():
         if raw_block_tag.search(raw_line) is not None:
             residual = raw_block_tag.sub("", raw_line)
