@@ -168,3 +168,42 @@ def test_vertical_presentation_cannot_deemphasize_rights_negation(tag: str) -> N
         REGISTRY["_validate_registry_corpus"](
   corpus.replace(original, fragment, 1)
         )
+
+
+def test_multiline_generic_raw_block_opener_cannot_detach_rights_boundary() -> None:
+    corpus = CORPUS.read_text(encoding="utf-8")
+    original = (
+        "Availability through ABC iview is not permission "
+        "to redistribute content."
+    )
+    fragment = (
+        "Availability through ABC iview is "
+        '<center data-x="a\nb">not permission to redistribute content.'
+    )
+    assert original in corpus
+    violations = POLICING["_governed_surface_html_violations"](fragment)
+    assert "raw-block" in violations
+    with pytest.raises(AssertionError, match="raw block-container HTML"):
+        REGISTRY["_validate_registry_corpus"](
+            corpus.replace(original, fragment, 1)
+        )
+
+
+def test_list_item_cannot_wrap_complete_governed_entry() -> None:
+    fragment = (
+        "## Governed section\n\n"
+        "<li>\n\nCanonical governed prose.\n\n</li>\n\n"
+        "## Next section\n"
+    )
+    violations = POLICING["_governed_surface_html_violations"](fragment)
+    assert "raw-list" in violations
+    assert "li" in POLICING["GOVERNED_BLOCK_TAGS_WITH_DEDICATED_POLICY"]
+    assert "li" not in POLICING["GOVERNED_RAW_BLOCK_CONTAINER_TAGS"]
+
+    corpus = CORPUS.read_text(encoding="utf-8")
+    start = corpus.index("### *Black Comedy* (ABC, 2014-2020)")
+    end = corpus.index("\n### *Kath & Kim*", start)
+    entry = corpus[start:end]
+    mutated = corpus[:start] + "<li>\n\n" + entry + "\n</li>\n" + corpus[end:]
+    with pytest.raises(AssertionError, match="raw list HTML"):
+        REGISTRY["_validate_registry_corpus"](mutated)

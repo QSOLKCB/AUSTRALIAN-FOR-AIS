@@ -132,7 +132,7 @@ PREFLIGHT_HTML_BLOCK_TAGS = frozenset({
 GOVERNED_BLOCK_TAGS_WITH_DEDICATED_POLICY = frozenset({
     "base", "basefont", "blockquote", "body", "caption", "col", "colgroup",
     "details", "dialog", "form", "h1", "h2", "h3", "h4", "h5", "h6",
-    "head", "hr", "html", "iframe", "link", "noframes", "ol", "optgroup",
+    "head", "hr", "html", "iframe", "li", "link", "noframes", "ol", "optgroup",
     "option", "table", "tbody", "td", "tfoot", "th", "thead", "title", "tr",
     "ul",
 })
@@ -1446,6 +1446,42 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         self, tag: str, attrs: list[tuple[str, str | None]]
     ) -> None:
         tag = tag.lower()
+        # Generic CommonMark block containers are checked from HTMLParser's
+        # complete parsed start-tag span. This is deliberately source-aware so
+        # multiline attributes cannot evade the ownership boundary by being
+        # split across physical source lines.
+        if tag in GOVERNED_RAW_BLOCK_CONTAINER_TAGS and self._source:
+            start = self._source_offset()
+            raw_tag = self.get_starttag_text() or ""
+            end = start + len(raw_tag)
+            previous = _nearest_substantive_source_line(
+                self._source, start, before=True
+            )
+            if (
+                not raw_tag
+                or not _source_tag_occupies_line(self._source, start, end)
+                or (
+                    previous is not None
+                    and not _is_governed_structural_boundary(previous)
+                )
+            ):
+                self.violations.add("raw-block")
+            else:
+                # CommonMark type-6 blocks consume source through the next
+                # blank line. Do not let a following Markdown list, quote, or
+                # ATX heading be re-invented later by line-based receipts.
+                line_end = self._source.find("\n", end)
+                if line_end >= 0:
+                    next_end = self._source.find("\n", line_end + 1)
+                    if next_end < 0:
+                        next_end = len(self._source)
+                    following = self._source[line_end + 1:next_end].lstrip(" \t")
+                    if (
+                        LIST_MARKER_PATTERN.match(following) is not None
+                        or following.startswith(">")
+                        or re.match(r"#{1,6}(?:[ \t]+|$)", following) is not None
+                    ):
+                        self.violations.add("raw-block")
         if tag == "a":
             if self._anchor_open:
                 self.violations.add("nested-anchor")
@@ -1476,7 +1512,7 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             self.violations.add("raw-table")
         # Raw list containers can terminate surrounding paragraphs in the
         # browser while flattened text still matches a sealed prose receipt.
-        if tag in {"ol", "ul"}:
+        if tag in {"ol", "ul", "li"}:
             self.violations.add("raw-list")
         # Legacy font presentation can make sealed prose unreadable without
         # changing its character data. Do not approximate that rendering.
@@ -1667,6 +1703,30 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
 
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
+        # Generic block closing tags use the parser's source position too,
+        # so closing boundaries cannot fall back to line-local regex parsing.
+        if tag in GOVERNED_RAW_BLOCK_CONTAINER_TAGS and self._source:
+            start = self._source_offset()
+            match = re.match(
+                rf"</{re.escape(tag)}[ \t\r\n\f]*>",
+                self._source[start:],
+                flags=re.IGNORECASE,
+            )
+            if match is None:
+                self.violations.add("raw-block")
+            else:
+                end = start + match.end()
+                following = _nearest_substantive_source_line(
+                    self._source, end, before=False
+                )
+                if (
+                    not _source_tag_occupies_line(self._source, start, end)
+                    or (
+                        following is not None
+                        and not _is_governed_structural_boundary(following)
+                    )
+                ):
+                    self.violations.add("raw-block")
         if tag == "dialog":
             dialog_was_open = self._dialog_open_stack.pop() if self._dialog_open_stack else False
             if dialog_was_open and self._source:
@@ -1752,54 +1812,9 @@ def _governed_surface_html_violations(markdown: str) -> set[str]:
     live_markup = "".join(characters)
     parser = _GovernedSurfaceHTMLParser(live_markup)
 
-    # Raw block containers may be retained only as complete structural
-    # wrappers. A tag sharing a line with prose is always unsafe; a clean
-    # tag line must also sit at a real section boundary. In addition, a
-    # type-6 opener must not consume Markdown list/quote/heading syntax as
-    # raw HTML content, because downstream line receipts would otherwise
-    # invent structure that the browser never rendered.
-    raw_block_pattern = "|".join(
-        re.escape(tag) for tag in sorted(GOVERNED_RAW_BLOCK_CONTAINER_TAGS)
-    )
-    raw_block_tag = re.compile(
-        rf"<(?P<closing>/)?(?P<tag>{raw_block_pattern})\b[^>]*>",
-        flags=re.IGNORECASE,
-    )
-    raw_lines = live_markup.splitlines()
-    for line_index, raw_line in enumerate(raw_lines):
-        matches = list(raw_block_tag.finditer(raw_line))
-        if not matches:
-            continue
-        residual = raw_block_tag.sub("", raw_line)
-        if residual.strip():
-            parser.violations.add("raw-block")
-            break
-        for match in matches:
-            closing = match.group("closing") is not None
-            boundary = _nearest_substantive_line_from_lines(
-                raw_lines, line_index, before=not closing
-            )
-            if (
-                boundary is not None
-                and not _is_governed_structural_boundary(boundary)
-            ):
-                parser.violations.add("raw-block")
-                break
-
-            # CommonMark type-6 blocks consume following source lines
-            # through the next blank line. Do not let an unchanged list,
-            # quote, or heading line be reclassified later as Markdown.
-            if not closing and line_index + 1 < len(raw_lines):
-                following = raw_lines[line_index + 1].lstrip(" \t")
-                if (
-                    LIST_MARKER_PATTERN.match(following) is not None
-                    or following.startswith(">")
-                    or re.match(r"#{1,6}(?:[ \t]+|$)", following) is not None
-                ):
-                    parser.violations.add("raw-block")
-                    break
-        if "raw-block" in parser.violations:
-            break
+    # Generic raw-block ownership is enforced by the parsed HTML start/end
+    # tag callbacks above, including multiline tags. Keep this function-level
+    # pass focused on Markdown-only semantics that HTMLParser cannot see.
 
     # Markdown links become anchors only after Markdown rendering, so the raw-HTML
     # parser cannot enforce executable-scheme policy on them. Inspect the rendered
