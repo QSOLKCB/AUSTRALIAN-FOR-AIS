@@ -3365,6 +3365,9 @@ def _assert_no_active_document_html(found: set[str]) -> None:
     assert "accessible-name" not in found, (
         "accessible-name overrides are not allowed in governed documents"
     )
+    assert "semantic-insertion" not in found, (
+        "semantic insertion HTML is not allowed in governed documents"
+    )
     assert "language-override" not in found, (
         "language overrides are not allowed on governed content"
     )
@@ -3880,7 +3883,12 @@ def _validate_registry_corpus(corpus: str) -> None:
     )
 
     batch_prefix_source = _registry_batch_prefix_source(corpus)
-    batch_prefix_violations = _SHARED_HTML_PREFLIGHT(batch_prefix_source)
+    # A supported whole-batch dialog wrapper opens in this prefix and
+    # closes after the entry slices. Balance is enforced on the complete
+    # corpus preflight; do not misclassify this intentional partial view.
+    batch_prefix_violations = _SHARED_HTML_PREFLIGHT(
+        batch_prefix_source, require_balanced_dialogs=False
+    )
     _SHARED_POLICING["_assert_supported_governed_html"](batch_prefix_violations)
     batch_prefix = _normalised_registry_batch_prefix_value(corpus)
     assert not batch_prefix, (

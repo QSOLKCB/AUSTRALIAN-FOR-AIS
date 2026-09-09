@@ -1537,6 +1537,8 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             self.violations.add("conditional-raw-text")
         if tag in {"del", "s", "strike"}:
             self.violations.add("semantic-deletion")
+        if tag == "ins":
+            self.violations.add("semantic-insertion")
         if tag in {"q", "blockquote"}:
             self.violations.add("generated-quotation")
         # Heading elements reframe governed prose structurally even when
@@ -1640,7 +1642,7 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         # middle of a sealed governed surface without changing its text.
         if "autofocus" in attribute_names:
             self.violations.add("keyboard-navigation")
-        if {"aria-label", "aria-labelledby", "aria-description", "aria-describedby", "aria-details"}.intersection(attribute_names):
+        if {"aria-label", "aria-labelledby", "aria-description", "aria-describedby", "aria-details", "aria-braillelabel"}.intersection(attribute_names):
             self.violations.add("accessible-name")
         if "aria-owns" in attribute_names:
             self.violations.add("accessibility-ownership")
@@ -1774,7 +1776,9 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         self.handle_starttag(tag, attrs)
 
 
-def _governed_surface_html_violations(markdown: str) -> set[str]:
+def _governed_surface_html_violations(
+    markdown: str, *, require_balanced_dialogs: bool = True
+) -> set[str]:
     """Inspect live rendered structure while leaving comments/code inert."""
     html_spans: list[tuple[int, int]] = []
     structure = _rendered_structure(markdown, html_spans=html_spans)
@@ -1859,6 +1863,8 @@ def _governed_surface_html_violations(markdown: str) -> set[str]:
 
     parser.feed(_protect_non_commonmark_raw_tag_openers(live_markup))
     parser.close()
+    if require_balanced_dialogs and any(parser._dialog_open_stack):
+        parser.violations.add("dialog-inline-block")
     return parser.violations
 
 
@@ -1878,6 +1884,7 @@ def _assert_supported_governed_html(violations: set[str]) -> None:
         "raw-svg": "raw SVG HTML",
         "inline-style": "inline style HTML",
         "semantic-deletion": "semantic deletion HTML",
+        "semantic-insertion": "semantic insertion HTML",
         "stylesheet": "stylesheet/class-driven HTML",
         "raw-mathml": "raw MathML HTML",
         "bidirectional": "bidirectional HTML",
