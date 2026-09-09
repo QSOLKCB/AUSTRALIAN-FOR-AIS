@@ -1627,21 +1627,32 @@ def _governed_surface_html_violations(markdown: str) -> set[str]:
         r"</?(?:address|article|aside|div|dl|fieldset|figcaption|figure|footer|header|main|nav|p|section|summary)\b[^>]*>",
         flags=re.IGNORECASE,
     )
-    dialog_tag = re.compile(r"</?dialog\b[^>]*>", flags=re.IGNORECASE)
     open_dialog_tag = re.compile(
         r"<dialog\b(?=[^>]*(?:\sopen(?:\s*=|\s|/?>)))[^>]*>",
-        flags=re.IGNORECASE,
+        flags=re.IGNORECASE | re.DOTALL,
     )
+    # Inspect complete opening-tag spans before source-line splitting. HTML
+    # attributes may legally cross line boundaries, so a line-local regex can
+    # miss `<dialog\n open>`. An open dialog is an inline/reframing violation
+    # when its opener shares its source line with governed prose on either
+    # side. A clean whole-section wrapper remains supported even when the
+    # opener itself is formatted across multiple lines.
+    for open_dialog_match in open_dialog_tag.finditer(live_markup):
+        line_start = live_markup.rfind("\n", 0, open_dialog_match.start()) + 1
+        line_end = live_markup.find("\n", open_dialog_match.end())
+        if line_end < 0:
+            line_end = len(live_markup)
+        prefix = live_markup[line_start:open_dialog_match.start()]
+        suffix = live_markup[open_dialog_match.end():line_end]
+        if prefix.strip() or suffix.strip():
+            parser.violations.add("dialog-inline-block")
+            break
+
     for raw_line in live_markup.splitlines():
         if raw_block_tag.search(raw_line) is not None:
             residual = raw_block_tag.sub("", raw_line)
             if residual.strip():
                 parser.violations.add("raw-block")
-                break
-        if open_dialog_tag.search(raw_line) is not None:
-            residual = dialog_tag.sub("", raw_line)
-            if residual.strip():
-                parser.violations.add("dialog-inline-block")
                 break
 
     # Markdown links become anchors only after Markdown rendering, so the raw-HTML
