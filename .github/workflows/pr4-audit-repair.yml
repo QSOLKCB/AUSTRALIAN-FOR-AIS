@@ -20,7 +20,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = "8056c7a483e6ddad50550d44149233ca71dcd8ff"
+          test "$(git rev-parse HEAD^)" = "35d2281a6e196c5624bb786c4752e497e45c557e"
 
       - name: Patch validators and add regressions
         shell: bash
@@ -51,15 +51,21 @@ jobs:
               "        # HTMLParser has already tokenized the complete start tag, including\n",
               "        # contenteditable changes committed governance prose into an\n",
               "".join([
-                  "        # An open dialog is a top-layer block container. Preserve the\n",
-                  "        # explicitly supported whole-surface wrapper only when the opener is\n",
-                  "        # the first substantive content in the governed surface. Checking\n",
-                  "        # merely the opener line lets a clean-line dialog extract a clause\n",
-                  "        # fragment from surrounding prose while flattened text stays intact.\n",
+                  "        # Open dialogs may wrap a complete governed Markdown section, but\n",
+                  "        # must not split one prose clause into a separate top-layer block.\n",
+                  "        # A clean tag line is therefore not sufficient: require the nearest\n",
+                  "        # substantive source boundary before the opener to be structural.\n",
                   "        if tag == \"dialog\" and \"open\" in attribute_names and self._source:\n",
                   "            start = self._source_offset()\n",
-                  "            if self._source[:start].strip():\n",
-                  "                self.violations.add(\"dialog-inline-block\")\n",
+                  "            before = self._source[:start].rstrip()\n",
+                  "            if before:\n",
+                  "                previous = before.splitlines()[-1].strip()\n",
+                  "                structural = re.fullmatch(\n",
+                  "                    r\"(?:#{1,6}[ \\t]+.+|(?:\\*[ \\t]*){3,}|(?:-[ \\t]*){3,}|(?:_[ \\t]*){3,})\",\n",
+                  "                    previous,\n",
+                  "                )\n",
+                  "                if structural is None:\n",
+                  "                    self.violations.add(\"dialog-inline-block\")\n",
               ]),
           )
           splice(
@@ -72,8 +78,16 @@ jobs:
                   "            if dialog_was_open and self._source:\n",
                   "                start = self._source_offset()\n",
                   "                close = self._source.find(\">\", start)\n",
-                  "                if close >= 0 and self._source[close + 1:].strip():\n",
-                  "                    self.violations.add(\"dialog-inline-block\")\n",
+                  "                if close >= 0:\n",
+                  "                    after = self._source[close + 1:].lstrip()\n",
+                  "                    if after:\n",
+                  "                        following = after.splitlines()[0].strip()\n",
+                  "                        structural = re.fullmatch(\n",
+                  "                            r\"(?:#{1,6}[ \\t]+.+|(?:\\*[ \\t]*){3,}|(?:-[ \\t]*){3,}|(?:_[ \\t]*){3,})\",\n",
+                  "                            following,\n",
+                  "                        )\n",
+                  "                        if structural is None:\n",
+                  "                            self.violations.add(\"dialog-inline-block\")\n",
               ]),
           )
           replace_once(
@@ -86,7 +100,7 @@ jobs:
                   "    def close(self) -> None:\n",
                   "        super().close()\n",
                   "        # A missing closing tag cannot establish the complete wrapper\n",
-                  "        # boundary required for the whole-surface dialog exception.\n",
+                  "        # boundary required for the whole-section dialog exception.\n",
                   "        if any(self._dialog_open_stack):\n",
                   "            self.violations.add(\"dialog-inline-block\")\n",
                   "\n",
@@ -95,29 +109,37 @@ jobs:
           )
 
           registry = Path("tests/test_research_reference_registry.py")
-          splice(
+          replace_once(
               registry,
-              "BARE_HTTPS_LINE_PATTERN = re.compile(\n",
-              "AUTOLINK_PATTERN = re.compile(",
+              "AUTOLINK_PATTERN = re.compile(r\"<(?P<url>https?://[^<>\\s]+)>\")\n",
               "".join([
-                  "BARE_HTTPS_PATTERN = re.compile(\n",
-                  "    r\"(?<![A-Za-z0-9])(?P<url>https?://[^\\s<>]+)\"\n",
+                  "GOVERNED_METADATA_BARE_HTTPS_PATTERN = re.compile(\n",
+                  "    r\"(?m)^[ \\t]*\\*\\*(?:Registered source(?:s)?|DOI):\\*\\*[ \\t]+\"\n",
+                  "    r\"(?P<url>https?://\\S+)[ \\t]*$\"\n",
                   ")\n",
+                  "AUTOLINK_PATTERN = re.compile(r\"<(?P<url>https?://[^<>\\s]+)>\")\n",
               ]),
           )
-          splice(
+          replace_once(
               registry,
-              "    without_links = AUTOLINK_PATTERN.sub(\"\", without_reference_links)\n",
-              "    return tuple(bindings)\n",
               "".join([
-                  "    without_links = AUTOLINK_PATTERN.sub(\"\", without_reference_links)\n",
-                  "    # Bare provenance URLs are equivalent whether they begin a list line\n",
-                  "    # or follow a metadata label. Mask non-rendering reference definitions\n",
-                  "    # so their destinations are not promoted to reader-visible bare links.\n",
-                  "    bare_source = _mask_link_reference_definitions_for_visibility(without_links)\n",
-                  "    for match in BARE_HTTPS_PATTERN.finditer(bare_source):\n",
+                  "    for match in BARE_HTTPS_LINE_PATTERN.finditer(without_links):\n",
                   "        candidate = match.group(\"url\")\n",
                   "        record(candidate, candidate, strip_prose=True)\n",
+                  "    return tuple(bindings)\n",
+              ]),
+              "".join([
+                  "    for match in BARE_HTTPS_LINE_PATTERN.finditer(without_links):\n",
+                  "        candidate = match.group(\"url\")\n",
+                  "        record(candidate, candidate, strip_prose=True)\n",
+                  "    # Bare governed metadata URLs are formatting-equivalent to explicit\n",
+                  "    # Markdown/HTML links even when the field label precedes the URL.\n",
+                  "    # Keep this targeted so unrelated prose URLs and trailing receipts do\n",
+                  "    # not acquire new link semantics.\n",
+                  "    for match in GOVERNED_METADATA_BARE_HTTPS_PATTERN.finditer(without_links):\n",
+                  "        candidate = match.group(\"url\")\n",
+                  "        record(candidate, candidate, strip_prose=True)\n",
+                  "    return tuple(bindings)\n",
               ]),
           )
 
@@ -165,9 +187,8 @@ jobs:
                   "        _usable_https_source_bindings(section, reference_scope=reference_scope)\n",
                   "    )\n",
                   "    expected_entry_bindings = _expected_entry_link_bindings(contract)\n",
-                  "    # Discovery order depends on Markdown syntax (inline links are found\n",
-                  "    # before bare URLs), so compare multisets. Counter preserves duplicate\n",
-                  "    # detection while still rejecting extra or misbound links.\n",
+                  "    # Discovery order depends on link syntax, so compare multisets while\n",
+                  "    # retaining duplicate, extra-link, and label/destination detection.\n",
                   "    assert Counter(whole_entry_bindings) == Counter(expected_entry_bindings), (\n",
                   "        f\"{entry} contains ungoverned or misbound hyperlinks outside its pinned \"\n",
                   "        f\"entry contract: expected {expected_entry_bindings!r}, \"\n",
@@ -177,77 +198,7 @@ jobs:
           )
 
           regression = Path("tests/test_pr4_clean_head_audit_regressions.py")
-          lines = [
-              '"""Regressions for the PR #4 clean-head audit blockers."""',
-              "",
-              "from collections import Counter",
-              "from pathlib import Path",
-              "import runpy",
-              "",
-              "import pytest",
-              "",
-              'ROOT = Path(__file__).resolve().parents[1]',
-              'POLICING = runpy.run_path(str(ROOT / "tests/test_policing_context_roadmap.py"))',
-              'REGISTRY = runpy.run_path(str(ROOT / "tests/test_research_reference_registry.py"))',
-              'CORPUS = ROOT / "docs/RESEARCH-REFERENCE-CORPUS.md"',
-              "",
-              "",
-              "def test_clean_line_dialog_clause_fragment_is_rejected() -> None:",
-              "    fragment = (",
-              '        "Availability through ABC iview is\\n"',
-              '        "<dialog open>\\n"',
-              '        "not\\n"',
-              '        "</dialog>\\n"',
-              '        "permission to redistribute content."',
-              "    )",
-              '    assert "dialog-inline-block" in POLICING["_governed_surface_html_violations"](fragment)',
-              '    corpus = CORPUS.read_text(encoding="utf-8")',
-              '    original = "Availability through ABC iview is not permission to redistribute content."',
-              '    assert original in corpus',
-              '    mutated = corpus.replace(original, fragment, 1)',
-              '    with pytest.raises(AssertionError, match="dialog block-container HTML"):',
-              '        REGISTRY["_validate_registry_corpus"](mutated)',
-              "",
-              "",
-              "def test_whole_surface_open_dialog_wrapper_remains_supported() -> None:",
-              '    fragment = "  \\n<dialog open>\\nCanonical governed prose.\\n</dialog>\\n  "',
-              '    assert "dialog-inline-block" not in POLICING["_governed_surface_html_violations"](fragment)',
-              "",
-              "",
-              "def test_unclosed_open_dialog_is_not_a_complete_wrapper() -> None:",
-              '    fragment = "<dialog open>\\nCanonical governed prose.\\n"',
-              '    assert "dialog-inline-block" in POLICING["_governed_surface_html_violations"](fragment)',
-              "",
-              "",
-              "def test_single_source_accepts_equivalent_inline_link() -> None:",
-              '    corpus = CORPUS.read_text(encoding="utf-8")',
-              '    url = "https://iview.abc.net.au/show/black-comedy"',
-              '    original = f"**Registered source:** {url}"',
-              '    replacement = f"**Registered source:** [{url}]({url})"',
-              '    assert original in corpus',
-              '    REGISTRY["_validate_registry_corpus"](corpus.replace(original, replacement, 1))',
-              "",
-              "",
-              "def test_single_source_whole_entry_binding_is_format_invariant() -> None:",
-              '    corpus = CORPUS.read_text(encoding="utf-8")',
-              '    url = "https://iview.abc.net.au/show/black-comedy"',
-              '    entry = "### *Black Comedy* (ABC, 2014-2020)"',
-              '    original = f"**Registered source:** {url}"',
-              '    replacement = f"**Registered source:** [{url}]({url})"',
-              '    sections = REGISTRY["_registered_sections"](corpus)',
-              '    original_bindings = REGISTRY["_usable_https_source_bindings"](',
-              '        sections[entry], reference_scope=corpus',
-              '    )',
-              '    mutated = corpus.replace(original, replacement, 1)',
-              '    mutated_sections = REGISTRY["_registered_sections"](mutated)',
-              '    linked_bindings = REGISTRY["_usable_https_source_bindings"](',
-              '        mutated_sections[entry], reference_scope=mutated',
-              '    )',
-              '    expected = Counter({(url, url): 1})',
-              '    assert Counter(original_bindings) == Counter(linked_bindings) == expected',
-              "",
-          ]
-          regression.write_text("\n".join(lines), encoding="utf-8")
+          regression.write_text('''"""Regressions for the PR #4 clean-head audit blockers."""\n\nfrom collections import Counter\nfrom pathlib import Path\nimport runpy\n\nimport pytest\n\nROOT = Path(__file__).resolve().parents[1]\nPOLICING = runpy.run_path(str(ROOT / "tests/test_policing_context_roadmap.py"))\nREGISTRY = runpy.run_path(str(ROOT / "tests/test_research_reference_registry.py"))\nCORPUS = ROOT / "docs/RESEARCH-REFERENCE-CORPUS.md"\n\n\ndef test_clean_line_dialog_clause_fragment_is_rejected() -> None:\n    fragment = (\n        "Availability through ABC iview is\\n"\n        "<dialog open>\\n"\n        "not\\n"\n        "</dialog>\\n"\n        "permission to redistribute content."\n    )\n    assert "dialog-inline-block" in POLICING["_governed_surface_html_violations"](fragment)\n    corpus = CORPUS.read_text(encoding="utf-8")\n    original = "Availability through ABC iview is not permission to redistribute content."\n    assert original in corpus\n    mutated = corpus.replace(original, fragment, 1)\n    with pytest.raises(AssertionError, match="dialog block-container HTML"):\n        REGISTRY["_validate_registry_corpus"](mutated)\n\n\ndef test_structural_section_dialog_wrapper_remains_supported() -> None:\n    fragment = "## Governed section\\n\\n<dialog open>\\nCanonical governed prose.\\n</dialog>\\n\\n## Next section\\n"\n    assert "dialog-inline-block" not in POLICING["_governed_surface_html_violations"](fragment)\n\n\ndef test_unclosed_open_dialog_is_not_a_complete_wrapper() -> None:\n    fragment = "<dialog open>\\nCanonical governed prose.\\n"\n    assert "dialog-inline-block" in POLICING["_governed_surface_html_violations"](fragment)\n\n\ndef test_single_source_accepts_equivalent_inline_link() -> None:\n    corpus = CORPUS.read_text(encoding="utf-8")\n    url = "https://iview.abc.net.au/show/black-comedy"\n    original = f"**Registered source:** {url}"\n    replacement = f"**Registered source:** [{url}]({url})"\n    assert original in corpus\n    REGISTRY["_validate_registry_corpus"](corpus.replace(original, replacement, 1))\n\n\ndef test_single_source_whole_entry_binding_is_format_invariant() -> None:\n    corpus = CORPUS.read_text(encoding="utf-8")\n    url = "https://iview.abc.net.au/show/black-comedy"\n    entry = "### *Black Comedy* (ABC, 2014-2020)"\n    original = f"**Registered source:** {url}"\n    replacement = f"**Registered source:** [{url}]({url})"\n    sections = REGISTRY["_registered_sections"](corpus)\n    original_bindings = REGISTRY["_usable_https_source_bindings"](\n        sections[entry], reference_scope=corpus\n    )\n    mutated = corpus.replace(original, replacement, 1)\n    mutated_sections = REGISTRY["_registered_sections"](mutated)\n    linked_bindings = REGISTRY["_usable_https_source_bindings"](\n        mutated_sections[entry], reference_scope=mutated\n    )\n    expected = Counter({(url, url): 1})\n    assert Counter(original_bindings) == Counter(linked_bindings) == expected\n''', encoding="utf-8")
           PY
 
       - name: Install test dependencies
