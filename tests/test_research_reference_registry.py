@@ -47,6 +47,7 @@ ACTIVE_DOCUMENT_HTML_KINDS = frozenset({
     "language-override",
     "accessibility-hidden",
     "accessibility-disabled",
+    "accessibility-ownership",
     "keyboard-navigation",
     "semantic-role",
     "preformatted-content",
@@ -3372,6 +3373,9 @@ def _assert_no_active_document_html(found: set[str]) -> None:
     )
     assert "accessibility-disabled" not in found, (
         "aria-disabled source-link suppression is not allowed in governed documents"
+    )
+    assert "accessibility-ownership" not in found, (
+        "aria-owns accessibility-tree ownership overrides are not allowed in governed documents"
     )
     assert "keyboard-navigation" not in found, (
         "negative tabindex keyboard-navigation suppression is not allowed in governed documents"

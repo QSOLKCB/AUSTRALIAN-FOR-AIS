@@ -1357,6 +1357,7 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         self.violations: set[str] = set()
         self._anchor_open = False
         self._nobr_open = False
+        self._dialog_open_stack: list[bool] = []
         self._source = source
         self._line_starts = [0]
         self._line_starts.extend(match.end() for match in re.finditer(r"\n", source))
@@ -1437,6 +1438,8 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         # Parsed names cover duplicate, boolean, and multiline attributes.
         # The reducer cannot establish readability for arbitrary inline CSS.
         attribute_names = {key.lower() for key, _ in attrs}
+        if tag == "dialog":
+            self._dialog_open_stack.append("open" in attribute_names)
         # HTMLParser has already tokenized the complete start tag, including
         # quoted `>` characters and attributes split across source lines. Use
         # that parsed span to decide whether an open dialog carries governed
@@ -1515,6 +1518,8 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             self.violations.add("language-override")
         if {"aria-label", "aria-labelledby", "aria-description", "aria-describedby", "aria-details"}.intersection(attribute_names):
             self.violations.add("accessible-name")
+        if "aria-owns" in attribute_names:
+            self.violations.add("accessibility-ownership")
         if "aria-hidden" in attribute_names:
             self.violations.add("accessibility-hidden")
         # Native inert suppresses descendant interaction and accessibility
@@ -1585,6 +1590,21 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
 
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
+        if tag == "dialog":
+            dialog_was_open = self._dialog_open_stack.pop() if self._dialog_open_stack else False
+            if dialog_was_open and self._source:
+                start = self._source_offset()
+                close = self._source.find(">", start)
+                if close >= 0:
+                    end = close + 1
+                    line_start = self._source.rfind("\n", 0, start) + 1
+                    line_end = self._source.find("\n", end)
+                    if line_end < 0:
+                        line_end = len(self._source)
+                    prefix = self._source[line_start:start]
+                    suffix = self._source[end:line_end]
+                    if prefix.strip() or suffix.strip():
+                        self.violations.add("dialog-inline-block")
         if tag == "a":
             self._anchor_open = False
         if tag == "nobr":
@@ -1698,8 +1718,12 @@ def _governed_surface_html_violations(markdown: str) -> set[str]:
 
 def _assert_supported_governed_html(violations: set[str]) -> None:
     """Fail closed on rendering semantics outside the shared text contract."""
+    if "closed-details" in violations:
+        violations = violations - {"raw-block"}
     descriptions = {
         "replacement-content": "replacement-content HTML",
+        "raw-block": "raw block-container HTML carrying governed prose",
+        "raw-list": "raw list HTML",
         "rendered-break": "rendered break HTML",
         "dialog-inline-block": "dialog block-container HTML carrying governed prose",
         "preformatted-content": "preformatted content HTML",
@@ -1730,6 +1754,7 @@ def _assert_supported_governed_html(violations: set[str]) -> None:
         "semantic-role": "semantic role override HTML",
         "accessibility-inert": "native inert accessibility suppression HTML",
         "accessibility-disabled": "aria-disabled source-link suppression HTML",
+        "accessibility-ownership": "aria-owns accessibility-tree ownership override HTML",
         "nested-anchor": "nested anchor HTML",
         "nobr": "nobr HTML",
         "nested-nobr": "nested nobr HTML",
