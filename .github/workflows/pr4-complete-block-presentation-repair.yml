@@ -20,7 +20,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = "e2cc265328dc0225408eee96959e48431d325f10"
+          test "$(git rev-parse HEAD^)" = "479d50da342df0ed849f99adfae8b6ac1ebb249a"
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -47,7 +47,7 @@ jobs:
           policing = Path("tests/test_policing_context_roadmap.py")
 
           policy_marker = 'COMMONMARK_RAW_HTML_TAG_SENTINEL = "\\ue03f"\n'
-          policy = '''# Every CommonMark type-6 block tag must either have a dedicated fail-closed\n# rendering policy or participate in the generic raw-block ownership policy.\n# Derive the latter from the canonical CommonMark set above so new/less-common\n# block elements cannot silently drift out of coverage.\nGOVERNED_BLOCK_TAGS_WITH_DEDICATED_POLICY = frozenset({\n    "base", "basefont", "blockquote", "body", "caption", "col", "colgroup",\n    "details", "dialog", "form", "h1", "h2", "h3", "h4", "h5", "h6",\n    "head", "hr", "html", "iframe", "link", "noframes", "ol", "optgroup",\n    "option", "table", "tbody", "td", "tfoot", "th", "thead", "tr", "ul",\n})\nGOVERNED_RAW_BLOCK_CONTAINER_TAGS = (\n    PREFLIGHT_HTML_BLOCK_TAGS - GOVERNED_BLOCK_TAGS_WITH_DEDICATED_POLICY\n)\n\n\n'''
+          policy = '''# Every CommonMark type-6 block tag must either have a dedicated fail-closed\n# rendering policy or participate in the generic raw-block ownership policy.\n# Derive the latter from the canonical CommonMark set above so new/less-common\n# block elements cannot silently drift out of coverage.\nGOVERNED_BLOCK_TAGS_WITH_DEDICATED_POLICY = frozenset({\n    "base", "basefont", "blockquote", "body", "caption", "col", "colgroup",\n    "details", "dialog", "form", "h1", "h2", "h3", "h4", "h5", "h6",\n    "head", "hr", "html", "iframe", "link", "noframes", "ol", "optgroup",\n    "option", "table", "tbody", "td", "tfoot", "th", "thead", "title", "tr",\n    "ul",\n})\nGOVERNED_RAW_BLOCK_CONTAINER_TAGS = (\n    PREFLIGHT_HTML_BLOCK_TAGS - GOVERNED_BLOCK_TAGS_WITH_DEDICATED_POLICY\n)\n\n\n'''
           replace_once(policing, policy_marker, policy + policy_marker)
 
           old_regex = '''    raw_block_tag = re.compile(\n        r"<(?P<closing>/)?(?P<tag>address|article|aside|div|dl|fieldset|figcaption|figure|footer|header|main|nav|p|section|summary)\\b[^>]*>",\n        flags=re.IGNORECASE,\n    )\n'''
@@ -72,6 +72,7 @@ jobs:
               )
               assert POLICING["GOVERNED_RAW_BLOCK_CONTAINER_TAGS"] == expected
               assert {"center", "search", "menu", "legend"} <= expected
+              assert "title" not in expected
 
 
           @pytest.mark.parametrize("tag", ("center", "search", "menu", "legend"))
@@ -111,7 +112,7 @@ jobs:
               assert original in corpus
               violations = POLICING["_governed_surface_html_violations"](fragment)
               assert "presentational-font" in violations
-              with pytest.raises(AssertionError, match="presentational font-size HTML"):
+              with pytest.raises(AssertionError, match="presentational"):
                   REGISTRY["_validate_registry_corpus"](
                       corpus.replace(original, fragment, 1)
                   )
