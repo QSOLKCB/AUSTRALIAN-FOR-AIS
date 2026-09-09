@@ -1,0 +1,228 @@
+name: PR4 latest review repair
+
+on:
+  push:
+    branches:
+      - research-corpus-governed-expansion
+    paths:
+      - .github/workflows/pr4-latest-review-repair.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research-corpus-governed-expansion
+          fetch-depth: 0
+
+      - name: Require reviewed starting head
+        run: |
+          test "$(git rev-parse HEAD)" = "9227c43b6d9952e2a0a66f45578c8fafbd80f392" || {
+            echo "Branch moved before guarded repair" >&2
+            exit 1
+          }
+
+      - name: Apply merge-blocker repair
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("tests/test_policing_context_roadmap.py")
+          text = path.read_text(encoding="utf-8")
+
+          old = '''        self._anchor_open = False
+        self._nobr_open = False
+        self._source = source
+'''
+          new = '''        self._anchor_open = False
+        self._nobr_open = False
+        self._dialog_open_stack: list[bool] = []
+        self._source = source
+'''
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = '''        attribute_names = {key.lower() for key, _ in attrs}
+        # HTMLParser has already tokenized the complete start tag, including
+'''
+          new = '''        attribute_names = {key.lower() for key, _ in attrs}
+        if tag == "dialog":
+            self._dialog_open_stack.append("open" in attribute_names)
+        # HTMLParser has already tokenized the complete start tag, including
+'''
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = '''        if {"aria-label", "aria-labelledby", "aria-description", "aria-describedby", "aria-details"}.intersection(attribute_names):
+            self.violations.add("accessible-name")
+        if "aria-hidden" in attribute_names:
+'''
+          new = '''        if {"aria-label", "aria-labelledby", "aria-description", "aria-describedby", "aria-details"}.intersection(attribute_names):
+            self.violations.add("accessible-name")
+        # aria-owns can reparent/reorder governed descendants in the
+        # accessibility tree without changing the sealed character data.
+        if "aria-owns" in attribute_names:
+            self.violations.add("accessibility-ownership")
+        if "aria-hidden" in attribute_names:
+'''
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = '''    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag == "a":
+            self._anchor_open = False
+        if tag == "nobr":
+            self._nobr_open = False
+'''
+          new = '''    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag == "dialog":
+            dialog_was_open = (
+                self._dialog_open_stack.pop() if self._dialog_open_stack else False
+            )
+            if dialog_was_open and self._source:
+                start = self._source_offset()
+                close = self._source.find(">", start)
+                if close >= 0:
+                    end = close + 1
+                    line_start = self._source.rfind("\\n", 0, start) + 1
+                    line_end = self._source.find("\\n", end)
+                    if line_end < 0:
+                        line_end = len(self._source)
+                    prefix = self._source[line_start:start]
+                    suffix = self._source[end:line_end]
+                    if prefix.strip() or suffix.strip():
+                        self.violations.add("dialog-inline-block")
+        if tag == "a":
+            self._anchor_open = False
+        if tag == "nobr":
+            self._nobr_open = False
+'''
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = '''    descriptions = {
+        "replacement-content": "replacement-content HTML",
+        "rendered-break": "rendered break HTML",
+'''
+          new = '''    descriptions = {
+        "replacement-content": "replacement-content HTML",
+        "raw-block": "raw block-container HTML carrying governed prose",
+        "raw-list": "raw list HTML",
+        "rendered-break": "rendered break HTML",
+'''
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          old = '''        "accessibility-disabled": "aria-disabled source-link suppression HTML",
+        "nested-anchor": "nested anchor HTML",
+'''
+          new = '''        "accessibility-disabled": "aria-disabled source-link suppression HTML",
+        "accessibility-ownership": "aria-owns accessibility-tree ownership override HTML",
+        "nested-anchor": "nested anchor HTML",
+'''
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding="utf-8")
+
+          regression = Path("tests/test_pr4_latest_merge_blockers.py")
+          regression.write_text('''"""End-to-end regressions for the latest PR #4 merge blockers."""
+
+from pathlib import Path
+import runpy
+
+import pytest
+
+ROOT = Path(__file__).parent.parent
+POLICING = runpy.run_path(str(ROOT / "tests" / "test_policing_context_roadmap.py"))
+REGISTRY = runpy.run_path(str(ROOT / "tests" / "test_research_reference_registry.py"))
+CORPUS = ROOT / "docs" / "RESEARCH-REFERENCE-CORPUS.md"
+ROADMAP = ROOT / "ROADMAP.md"
+
+
+def test_raw_block_violation_is_consumed_end_to_end() -> None:
+    original = "source-gated research proposal"
+    mutated = ROADMAP.read_text(encoding="utf-8").replace(
+        original, "source-gated <div>research</div> proposal", 1
+    )
+    assert "raw-block" in POLICING["_governed_surface_html_violations"](
+        "source-gated <div>research</div> proposal"
+    )
+    with pytest.raises(AssertionError, match="raw block-container HTML"):
+        POLICING["_validate_policing_workstream"](mutated)
+
+
+def test_raw_list_violation_is_consumed_end_to_end() -> None:
+    original = "source-gated research proposal"
+    mutated = ROADMAP.read_text(encoding="utf-8").replace(
+        original, "source-gated <ul><li>research</li></ul> proposal", 1
+    )
+    assert "raw-list" in POLICING["_governed_surface_html_violations"](
+        "source-gated <ul><li>research</li></ul> proposal"
+    )
+    with pytest.raises(AssertionError, match="raw list HTML"):
+        POLICING["_validate_policing_workstream"](mutated)
+
+
+def test_open_dialog_closing_boundary_cannot_share_governed_prose() -> None:
+    original = "Availability through ABC iview is not permission to redistribute content."
+    fragment = (
+        "Availability through ABC iview is\\n"
+        "<dialog open>\\n"
+        "not</dialog> permission to redistribute content."
+    )
+    assert "dialog-inline-block" in POLICING["_governed_surface_html_violations"](fragment)
+    mutated = CORPUS.read_text(encoding="utf-8").replace(original, fragment, 1)
+    with pytest.raises(AssertionError, match="dialog block-container HTML"):
+        REGISTRY["_validate_registry_corpus"](mutated)
+
+
+def test_clean_multiline_open_dialog_wrapper_still_supported() -> None:
+    fragment = "<dialog open>\\nCanonical governed prose.\\n</dialog>\\n"
+    assert "dialog-inline-block" not in POLICING["_governed_surface_html_violations"](fragment)
+
+
+def test_aria_owns_reorders_no_governed_accessibility_tree() -> None:
+    original = "Availability through ABC iview is not permission to redistribute content."
+    fragment = (
+        'Availability through ABC iview is <span id="negation">not</span> '
+        'permission to redistribute content.<span aria-owns="negation"></span>'
+    )
+    assert "accessibility-ownership" in POLICING["_governed_surface_html_violations"](fragment)
+    mutated = CORPUS.read_text(encoding="utf-8").replace(original, fragment, 1)
+    with pytest.raises(AssertionError, match="aria-owns accessibility-tree ownership"):
+        REGISTRY["_validate_registry_corpus"](mutated)
+''', encoding="utf-8")
+          PY
+
+      - name: Exact regressions
+        run: pytest -q tests/test_pr4_latest_merge_blockers.py
+
+      - name: Focused governance
+        run: pytest -q tests/test_policing_context_roadmap.py tests/test_research_reference_registry.py tests/test_pr4_native_machine_dialog_regressions.py tests/test_pr4_latest_merge_blockers.py
+
+      - name: Validate datasets
+        run: |
+          python scripts/validate_dataset.py data/starter_dataset.jsonl
+          python scripts/validate_dataset.py data/phase2_pilot_dataset.jsonl
+
+      - name: Full suite
+        run: pytest -q
+
+      - name: Whitespace check
+        run: git diff --check
+
+      - name: Commit verified repair and self-delete
+        run: |
+          rm .github/workflows/pr4-latest-review-repair.yml
+          git config user.name "EmergentMonk"
+          git config user.email "73952179+EmergentMonk@users.noreply.github.com"
+          git add tests/test_policing_context_roadmap.py tests/test_pr4_latest_merge_blockers.py .github/workflows/pr4-latest-review-repair.yml
+          git commit -m "Harden governed HTML enforcement boundaries"
+          git push origin HEAD:research-corpus-governed-expansion
