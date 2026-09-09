@@ -19,6 +19,18 @@ jobs:
           ref: research-corpus-governed-expansion
           fetch-depth: 0
 
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
       - name: Require reviewed code tree
         run: |
           git diff --exit-code 9227c43b6d9952e2a0a66f45578c8fafbd80f392 -- . ':(exclude).github/workflows/pr4-latest-review-repair.yml'
@@ -145,8 +157,8 @@ jobs:
 
       - name: Validate datasets
         run: |
-          python scripts/validate_dataset.py data/starter_dataset.jsonl
-          python scripts/validate_dataset.py data/phase2_pilot_dataset.jsonl
+          python -m australian_for_ais.cli validate data/starter/examples.jsonl
+          python -m australian_for_ais.cli validate-pilot data/pilot/items.jsonl
 
       - name: Full suite
         run: pytest -q
