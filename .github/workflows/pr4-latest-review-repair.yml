@@ -42,7 +42,6 @@ jobs:
 
           path = Path("tests/test_policing_context_roadmap.py")
           text = path.read_text(encoding="utf-8")
-
           replacements = [
               (
                   "        self._anchor_open = False\n        self._nobr_open = False\n        self._source = source\n",
@@ -69,17 +68,30 @@ jobs:
                   "        \"accessibility-disabled\": \"aria-disabled source-link suppression HTML\",\n        \"accessibility-ownership\": \"aria-owns accessibility-tree ownership override HTML\",\n        \"nested-anchor\": \"nested anchor HTML\",\n",
               ),
           ]
-
           for old, new in replacements:
               assert text.count(old) == 1, old[:100]
               text = text.replace(old, new, 1)
-
           path.write_text(text, encoding="utf-8")
 
           registry_path = Path("tests/test_research_reference_registry.py")
           registry = registry_path.read_text(encoding="utf-8")
           old = '    "accessibility-disabled",\n    "keyboard-navigation",\n'
           new = '    "accessibility-disabled",\n    "accessibility-ownership",\n    "keyboard-navigation",\n'
+          assert registry.count(old) == 1
+          registry = registry.replace(old, new, 1)
+          old = '''    assert "accessibility-disabled" not in found, (
+        "aria-disabled source-link suppression is not allowed in governed documents"
+    )
+    assert "keyboard-navigation" not in found, (
+'''
+          new = '''    assert "accessibility-disabled" not in found, (
+        "aria-disabled source-link suppression is not allowed in governed documents"
+    )
+    assert "accessibility-ownership" not in found, (
+        "aria-owns accessibility-tree ownership overrides are not allowed in governed documents"
+    )
+    assert "keyboard-navigation" not in found, (
+'''
           assert registry.count(old) == 1
           registry_path.write_text(registry.replace(old, new, 1), encoding="utf-8")
           PY
@@ -102,9 +114,7 @@ jobs:
 
           def test_raw_block_violation_is_consumed_end_to_end() -> None:
               mutated = ROADMAP.read_text(encoding="utf-8").replace(
-                  "source-gated research proposal",
-                  "source-gated <div>research</div> proposal",
-                  1,
+                  "source-gated research proposal", "source-gated <div>research</div> proposal", 1
               )
               assert "raw-block" in POLICING["_governed_surface_html_violations"](
                   "source-gated <div>research</div> proposal"
@@ -115,9 +125,7 @@ jobs:
 
           def test_raw_list_violation_is_consumed_end_to_end() -> None:
               mutated = ROADMAP.read_text(encoding="utf-8").replace(
-                  "source-gated research proposal",
-                  "source-gated <ul><li>research</li></ul> proposal",
-                  1,
+                  "source-gated research proposal", "source-gated <ul><li>research</li></ul> proposal", 1
               )
               assert "raw-list" in POLICING["_governed_surface_html_violations"](
                   "source-gated <ul><li>research</li></ul> proposal"
