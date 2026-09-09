@@ -155,4 +155,7 @@ def test_list_item_cannot_wrap_complete_governed_entry() -> None:
     with pytest.raises(AssertionError, match="raw list HTML"):
         REGISTRY["_validate_registry_corpus"](mutated)
 '''
-regression_path.write_text(regressions.rstrip() + addition + "\n", encoding="utf-8")
+regression_path.write_text(
+    regressions.rstrip() + addition.rstrip() + "\n",
+    encoding="utf-8",
+)
