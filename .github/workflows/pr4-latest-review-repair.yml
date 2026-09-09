@@ -79,19 +79,8 @@ jobs:
           new = '    "accessibility-disabled",\n    "accessibility-ownership",\n    "keyboard-navigation",\n'
           assert registry.count(old) == 1
           registry = registry.replace(old, new, 1)
-          old = '''    assert "accessibility-disabled" not in found, (
-        "aria-disabled source-link suppression is not allowed in governed documents"
-    )
-    assert "keyboard-navigation" not in found, (
-'''
-          new = '''    assert "accessibility-disabled" not in found, (
-        "aria-disabled source-link suppression is not allowed in governed documents"
-    )
-    assert "accessibility-ownership" not in found, (
-        "aria-owns accessibility-tree ownership overrides are not allowed in governed documents"
-    )
-    assert "keyboard-navigation" not in found, (
-'''
+          old = '    assert "accessibility-disabled" not in found, (\n        "aria-disabled source-link suppression is not allowed in governed documents"\n    )\n    assert "keyboard-navigation" not in found, (\n'
+          new = '    assert "accessibility-disabled" not in found, (\n        "aria-disabled source-link suppression is not allowed in governed documents"\n    )\n    assert "accessibility-ownership" not in found, (\n        "aria-owns accessibility-tree ownership overrides are not allowed in governed documents"\n    )\n    assert "keyboard-navigation" not in found, (\n'
           assert registry.count(old) == 1
           registry_path.write_text(registry.replace(old, new, 1), encoding="utf-8")
           PY
