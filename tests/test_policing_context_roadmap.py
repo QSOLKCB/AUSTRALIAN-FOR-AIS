@@ -1349,6 +1349,63 @@ def _has_executable_url_scheme(value: str) -> bool:
     return scheme in GOVERNED_EXECUTABLE_URL_SCHEMES
 
 
+GOVERNED_STRUCTURAL_BOUNDARY_PATTERN = re.compile(
+    r"(?:#{1,6}[ \t]+.+|(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})"
+)
+
+
+def _is_governed_structural_boundary(line: str) -> bool:
+    """Return whether a complete source line is an approved section boundary."""
+    return GOVERNED_STRUCTURAL_BOUNDARY_PATTERN.fullmatch(line.strip()) is not None
+
+
+def _source_tag_occupies_line(source: str, start: int, end: int) -> bool:
+    """Require a raw HTML boundary tag to occupy its source line by itself."""
+    line_start = source.rfind("\n", 0, start) + 1
+    line_end = source.find("\n", end)
+    if line_end < 0:
+        line_end = len(source)
+    return (
+        not source[line_start:start].strip()
+        and not source[end:line_end].strip()
+    )
+
+
+def _nearest_substantive_source_line(
+    source: str, offset: int, *, before: bool
+) -> str | None:
+    """Return the nearest nonblank complete source line around an offset."""
+    line_start = source.rfind("\n", 0, offset) + 1
+    line_end = source.find("\n", offset)
+    if before:
+        candidates = reversed(source[:line_start].splitlines())
+    else:
+        if line_end < 0:
+            return None
+        candidates = iter(source[line_end + 1:].splitlines())
+    for raw_line in candidates:
+        line = raw_line.strip()
+        if line:
+            return line
+    return None
+
+
+def _nearest_substantive_line_from_lines(
+    lines: list[str], index: int, *, before: bool
+) -> str | None:
+    """Return the nearest nonblank line around a line-array position."""
+    indexes = (
+        range(index - 1, -1, -1)
+        if before
+        else range(index + 1, len(lines))
+    )
+    for line_index in indexes:
+        line = lines[line_index].strip()
+        if line:
+            return line
+    return None
+
+
 class _GovernedSurfaceHTMLParser(HTMLParser):
     """Detect live HTML whose browser semantics are unsafe to approximate."""
 
@@ -1441,20 +1498,25 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
         if tag == "dialog":
             self._dialog_open_stack.append("open" in attribute_names)
         # Open dialogs may wrap a complete governed Markdown section, but
-        # must not split one prose clause into a separate top-layer block.
-        # A clean tag line is therefore not sufficient: require the nearest
-        # substantive source boundary before the opener to be structural.
+        # they must not split a prose clause or counterfeit a structural
+        # boundary by sharing a line with a heading/thematic break. Check
+        # complete source lines on both sides of the tag.
         if tag == "dialog" and "open" in attribute_names and self._source:
             start = self._source_offset()
-            before = self._source[:start].rstrip()
-            if before:
-                previous = before.splitlines()[-1].strip()
-                structural = re.fullmatch(
-                    r"(?:#{1,6}[ \t]+.+|(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})",
-                    previous,
+            raw_tag = self.get_starttag_text() or ""
+            end = start + len(raw_tag)
+            previous = _nearest_substantive_source_line(
+                self._source, start, before=True
+            )
+            if (
+                not raw_tag
+                or not _source_tag_occupies_line(self._source, start, end)
+                or (
+                    previous is not None
+                    and not _is_governed_structural_boundary(previous)
                 )
-                if structural is None:
-                    self.violations.add("dialog-inline-block")
+            ):
+                self.violations.add("dialog-inline-block")
         # contenteditable changes committed governance prose into an
         # ordinary browser editing surface without changing its receipt.
         if "contenteditable" in attribute_names:
@@ -1593,17 +1655,26 @@ class _GovernedSurfaceHTMLParser(HTMLParser):
             dialog_was_open = self._dialog_open_stack.pop() if self._dialog_open_stack else False
             if dialog_was_open and self._source:
                 start = self._source_offset()
-                close = self._source.find(">", start)
-                if close >= 0:
-                    after = self._source[close + 1:].lstrip()
-                    if after:
-                        following = after.splitlines()[0].strip()
-                        structural = re.fullmatch(
-                            r"(?:#{1,6}[ \t]+.+|(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})",
-                            following,
+                match = re.match(
+                    r"</dialog[ \t\r\n\f]*>",
+                    self._source[start:],
+                    flags=re.IGNORECASE,
+                )
+                if match is None:
+                    self.violations.add("dialog-inline-block")
+                else:
+                    end = start + match.end()
+                    following = _nearest_substantive_source_line(
+                        self._source, end, before=False
+                    )
+                    if (
+                        not _source_tag_occupies_line(self._source, start, end)
+                        or (
+                            following is not None
+                            and not _is_governed_structural_boundary(following)
                         )
-                        if structural is None:
-                            self.violations.add("dialog-inline-block")
+                    ):
+                        self.violations.add("dialog-inline-block")
         if tag == "a":
             self._anchor_open = False
         if tag == "nobr":
@@ -1665,20 +1736,51 @@ def _governed_surface_html_violations(markdown: str) -> set[str]:
     live_markup = "".join(characters)
     parser = _GovernedSurfaceHTMLParser(live_markup)
 
-    # Block containers are dangerous specifically when they carry/reframe
-    # governed prose on the same rendered source line. Do not classify a bare
-    # flow-HTML opener/closer as a violation here: CommonMark can legitimately
-    # terminate that block at a blank line and resume Markdown afterwards.
+    # Raw block containers may be retained only as complete structural
+    # wrappers. A tag sharing a line with prose is always unsafe; a clean
+    # tag line must also sit at a real section boundary. In addition, a
+    # type-6 opener must not consume Markdown list/quote/heading syntax as
+    # raw HTML content, because downstream line receipts would otherwise
+    # invent structure that the browser never rendered.
     raw_block_tag = re.compile(
-        r"</?(?:address|article|aside|div|dl|fieldset|figcaption|figure|footer|header|main|nav|p|section|summary)\b[^>]*>",
+        r"<(?P<closing>/)?(?P<tag>address|article|aside|div|dl|fieldset|figcaption|figure|footer|header|main|nav|p|section|summary)\b[^>]*>",
         flags=re.IGNORECASE,
     )
-    for raw_line in live_markup.splitlines():
-        if raw_block_tag.search(raw_line) is not None:
-            residual = raw_block_tag.sub("", raw_line)
-            if residual.strip():
+    raw_lines = live_markup.splitlines()
+    for line_index, raw_line in enumerate(raw_lines):
+        matches = list(raw_block_tag.finditer(raw_line))
+        if not matches:
+            continue
+        residual = raw_block_tag.sub("", raw_line)
+        if residual.strip():
+            parser.violations.add("raw-block")
+            break
+        for match in matches:
+            closing = match.group("closing") is not None
+            boundary = _nearest_substantive_line_from_lines(
+                raw_lines, line_index, before=not closing
+            )
+            if (
+                boundary is not None
+                and not _is_governed_structural_boundary(boundary)
+            ):
                 parser.violations.add("raw-block")
                 break
+
+            # CommonMark type-6 blocks consume following source lines
+            # through the next blank line. Do not let an unchanged list,
+            # quote, or heading line be reclassified later as Markdown.
+            if not closing and line_index + 1 < len(raw_lines):
+                following = raw_lines[line_index + 1].lstrip(" \t")
+                if (
+                    LIST_MARKER_PATTERN.match(following) is not None
+                    or following.startswith(">")
+                    or re.match(r"#{1,6}(?:[ \t]+|$)", following) is not None
+                ):
+                    parser.violations.add("raw-block")
+                    break
+        if "raw-block" in parser.violations:
+            break
 
     # Markdown links become anchors only after Markdown rendering, so the raw-HTML
     # parser cannot enforce executable-scheme policy on them. Inspect the rendered

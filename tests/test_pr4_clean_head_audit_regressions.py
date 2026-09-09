@@ -34,6 +34,60 @@ def test_structural_section_dialog_wrapper_remains_supported() -> None:
     assert "dialog-inline-block" not in POLICING["_governed_surface_html_violations"](fragment)
 
 
+@pytest.mark.parametrize(
+    "fragment",
+    (
+        "## Governed section<dialog open>\nCanonical governed prose.\n</dialog>\n## Next section\n",
+        "## Governed section\n<dialog open>\nCanonical governed prose.\n</dialog>## Next section\n",
+    ),
+)
+def test_dialog_boundaries_must_be_standalone_source_lines(fragment: str) -> None:
+    violations = POLICING["_governed_surface_html_violations"](fragment)
+    assert "dialog-inline-block" in violations
+
+
+@pytest.mark.parametrize("tag", ("div", "section"))
+def test_clean_line_block_container_clause_fragment_is_rejected(tag: str) -> None:
+    fragment = (
+        "Availability through ABC iview is\n"
+        f"<{tag}>\n"
+        "not\n"
+        f"</{tag}>\n"
+        "permission to redistribute content."
+    )
+    assert "raw-block" in POLICING["_governed_surface_html_violations"](fragment)
+
+    corpus = CORPUS.read_text(encoding="utf-8")
+    original = "Availability through ABC iview is not permission to redistribute content."
+    assert original in corpus
+    with pytest.raises(AssertionError, match="raw block-container HTML"):
+        REGISTRY["_validate_registry_corpus"](
+            corpus.replace(original, fragment, 1)
+        )
+
+
+def test_type6_block_cannot_steal_markdown_list_ownership() -> None:
+    fragment = (
+        "## Governed section\n"
+        "<div>\n"
+        "- canonical governed item\n"
+        "</div>\n"
+        "## Next section\n"
+    )
+    assert "raw-block" in POLICING["_governed_surface_html_violations"](fragment)
+
+    roadmap_path = ROOT / "ROADMAP.md"
+    roadmap = roadmap_path.read_text(encoding="utf-8")
+    item = (
+        "- register official and current sources for each Australian and United States "
+        "jurisdictional claim before adopting it as benchmark context;"
+    )
+    assert item in roadmap
+    mutated = roadmap.replace(item, f"<div>\n{item}\n</div>", 1)
+    with pytest.raises(AssertionError):
+        POLICING["_validate_policing_workstream"](mutated)
+
+
 def test_single_source_accepts_equivalent_inline_link() -> None:
     corpus = CORPUS.read_text(encoding="utf-8")
     url = "https://iview.abc.net.au/show/black-comedy"
