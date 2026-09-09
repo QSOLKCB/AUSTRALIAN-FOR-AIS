@@ -75,6 +75,13 @@ jobs:
               text = text.replace(old, new, 1)
 
           path.write_text(text, encoding="utf-8")
+
+          registry_path = Path("tests/test_research_reference_registry.py")
+          registry = registry_path.read_text(encoding="utf-8")
+          old = '    "accessibility-disabled",\n    "keyboard-navigation",\n'
+          new = '    "accessibility-disabled",\n    "accessibility-ownership",\n    "keyboard-navigation",\n'
+          assert registry.count(old) == 1
+          registry_path.write_text(registry.replace(old, new, 1), encoding="utf-8")
           PY
 
       - name: Add exact regressions
@@ -171,6 +178,6 @@ jobs:
           rm .github/workflows/pr4-latest-review-repair.yml
           git config user.name "EmergentMonk"
           git config user.email "73952179+EmergentMonk@users.noreply.github.com"
-          git add tests/test_policing_context_roadmap.py tests/test_pr4_latest_merge_blockers.py .github/workflows/pr4-latest-review-repair.yml
+          git add tests/test_policing_context_roadmap.py tests/test_research_reference_registry.py tests/test_pr4_latest_merge_blockers.py .github/workflows/pr4-latest-review-repair.yml
           git commit -m "Harden governed HTML enforcement boundaries"
           git push origin HEAD:research-corpus-governed-expansion
