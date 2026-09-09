@@ -1,0 +1,325 @@
+name: PR4 block-container ownership repair
+
+on:
+  push:
+    branches:
+      - research-corpus-governed-expansion
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Verify exact repair parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "4a85f7e6352ff7dcd25b7bc88314c6028aa7b350"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Patch block-container ownership and regressions
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: Path, old: str, new: str) -> None:
+              text = path.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(
+                      f"{path}: expected one occurrence of {old!r}, found {count}"
+                  )
+              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          def splice(path: Path, start_marker: str, end_marker: str, replacement: str) -> None:
+              text = path.read_text(encoding="utf-8")
+              if text.count(start_marker) != 1:
+                  raise SystemExit(
+                      f"{path}: start marker count {text.count(start_marker)} for {start_marker!r}"
+                  )
+              start = text.index(start_marker)
+              end = text.find(end_marker, start + len(start_marker))
+              if end < 0:
+                  raise SystemExit(f"{path}: missing end marker {end_marker!r}")
+              path.write_text(text[:start] + replacement + text[end:], encoding="utf-8")
+
+          policing = Path("tests/test_policing_context_roadmap.py")
+
+          helper_anchor = "class _GovernedSurfaceHTMLParser(HTMLParser):\n"
+          helpers = r'''GOVERNED_STRUCTURAL_BOUNDARY_PATTERN = re.compile(
+              r"(?:#{1,6}[ \t]+.+|(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})"
+          )
+
+
+          def _is_governed_structural_boundary(line: str) -> bool:
+              """Return whether a complete source line is an approved section boundary."""
+              return GOVERNED_STRUCTURAL_BOUNDARY_PATTERN.fullmatch(line.strip()) is not None
+
+
+          def _source_tag_occupies_line(source: str, start: int, end: int) -> bool:
+              """Require a raw HTML boundary tag to occupy its source line by itself."""
+              line_start = source.rfind("\n", 0, start) + 1
+              line_end = source.find("\n", end)
+              if line_end < 0:
+                  line_end = len(source)
+              return (
+                  not source[line_start:start].strip()
+                  and not source[end:line_end].strip()
+              )
+
+
+          def _nearest_substantive_source_line(
+              source: str, offset: int, *, before: bool
+          ) -> str | None:
+              """Return the nearest nonblank complete source line around an offset."""
+              line_start = source.rfind("\n", 0, offset) + 1
+              line_end = source.find("\n", offset)
+              if before:
+                  candidates = reversed(source[:line_start].splitlines())
+              else:
+                  if line_end < 0:
+                      return None
+                  candidates = iter(source[line_end + 1:].splitlines())
+              for raw_line in candidates:
+                  line = raw_line.strip()
+                  if line:
+                      return line
+              return None
+
+
+          def _nearest_substantive_line_from_lines(
+              lines: list[str], index: int, *, before: bool
+          ) -> str | None:
+              """Return the nearest nonblank line around a line-array position."""
+              indexes = (
+                  range(index - 1, -1, -1)
+                  if before
+                  else range(index + 1, len(lines))
+              )
+              for line_index in indexes:
+                  line = lines[line_index].strip()
+                  if line:
+                      return line
+              return None
+
+
+          '''
+          helpers = "\n".join(line[10:] if line.startswith("          ") else line for line in helpers.splitlines()) + "\n"
+          replace_once(policing, helper_anchor, helpers + helper_anchor)
+
+          splice(
+              policing,
+              "        # Open dialogs may wrap a complete governed Markdown section, but\n",
+              "        # contenteditable changes committed governance prose into an\n",
+              "".join([
+                  "        # Open dialogs may wrap a complete governed Markdown section, but\n",
+                  "        # they must not split a prose clause or counterfeit a structural\n",
+                  "        # boundary by sharing a line with a heading/thematic break. Check\n",
+                  "        # complete source lines on both sides of the tag.\n",
+                  "        if tag == \"dialog\" and \"open\" in attribute_names and self._source:\n",
+                  "            start = self._source_offset()\n",
+                  "            raw_tag = self.get_starttag_text() or \"\"\n",
+                  "            end = start + len(raw_tag)\n",
+                  "            previous = _nearest_substantive_source_line(\n",
+                  "                self._source, start, before=True\n",
+                  "            )\n",
+                  "            if (\n",
+                  "                not raw_tag\n",
+                  "                or not _source_tag_occupies_line(self._source, start, end)\n",
+                  "                or (\n",
+                  "                    previous is not None\n",
+                  "                    and not _is_governed_structural_boundary(previous)\n",
+                  "                )\n",
+                  "            ):\n",
+                  "                self.violations.add(\"dialog-inline-block\")\n",
+              ]),
+          )
+
+          splice(
+              policing,
+              "        if tag == \"dialog\":\n            dialog_was_open = self._dialog_open_stack.pop() if self._dialog_open_stack else False\n",
+              "        if tag == \"a\":\n",
+              "".join([
+                  "        if tag == \"dialog\":\n",
+                  "            dialog_was_open = self._dialog_open_stack.pop() if self._dialog_open_stack else False\n",
+                  "            if dialog_was_open and self._source:\n",
+                  "                start = self._source_offset()\n",
+                  "                match = re.match(\n",
+                  "                    r\"</dialog[ \\t\\r\\n\\f]*>\",\n",
+                  "                    self._source[start:],\n",
+                  "                    flags=re.IGNORECASE,\n",
+                  "                )\n",
+                  "                if match is None:\n",
+                  "                    self.violations.add(\"dialog-inline-block\")\n",
+                  "                else:\n",
+                  "                    end = start + match.end()\n",
+                  "                    following = _nearest_substantive_source_line(\n",
+                  "                        self._source, end, before=False\n",
+                  "                    )\n",
+                  "                    if (\n",
+                  "                        not _source_tag_occupies_line(self._source, start, end)\n",
+                  "                        or (\n",
+                  "                            following is not None\n",
+                  "                            and not _is_governed_structural_boundary(following)\n",
+                  "                        )\n",
+                  "                    ):\n",
+                  "                        self.violations.add(\"dialog-inline-block\")\n",
+              ]),
+          )
+
+          splice(
+              policing,
+              "    # Block containers are dangerous specifically when they carry/reframe\n",
+              "    # Markdown links become anchors only after Markdown rendering, so the raw-HTML\n",
+              "".join([
+                  "    # Raw block containers may be retained only as complete structural\n",
+                  "    # wrappers. A tag sharing a line with prose is always unsafe; a clean\n",
+                  "    # tag line must also sit at a real section boundary. In addition, a\n",
+                  "    # type-6 opener must not consume Markdown list/quote/heading syntax as\n",
+                  "    # raw HTML content, because downstream line receipts would otherwise\n",
+                  "    # invent structure that the browser never rendered.\n",
+                  "    raw_block_tag = re.compile(\n",
+                  "        r\"(?P<closing></)?(?P<tag>address|article|aside|div|dl|fieldset|figcaption|figure|footer|header|main|nav|p|section|summary)\\b[^>]*>\",\n",
+                  "        flags=re.IGNORECASE,\n",
+                  "    )\n",
+                  "    raw_lines = live_markup.splitlines()\n",
+                  "    for line_index, raw_line in enumerate(raw_lines):\n",
+                  "        matches = list(raw_block_tag.finditer(raw_line))\n",
+                  "        if not matches:\n",
+                  "            continue\n",
+                  "        residual = raw_block_tag.sub(\"\", raw_line)\n",
+                  "        if residual.strip():\n",
+                  "            parser.violations.add(\"raw-block\")\n",
+                  "            break\n",
+                  "        for match in matches:\n",
+                  "            closing = match.group(\"closing\") is not None\n",
+                  "            boundary = _nearest_substantive_line_from_lines(\n",
+                  "                raw_lines, line_index, before=not closing\n",
+                  "            )\n",
+                  "            if (\n",
+                  "                boundary is not None\n",
+                  "                and not _is_governed_structural_boundary(boundary)\n",
+                  "            ):\n",
+                  "                parser.violations.add(\"raw-block\")\n",
+                  "                break\n",
+                  "\n",
+                  "            # CommonMark type-6 blocks consume following source lines\n",
+                  "            # through the next blank line. Do not let an unchanged list,\n",
+                  "            # quote, or heading line be reclassified later as Markdown.\n",
+                  "            if not closing and line_index + 1 < len(raw_lines):\n",
+                  "                following = raw_lines[line_index + 1].lstrip(\" \\t\")\n",
+                  "                if (\n",
+                  "                    LIST_MARKER_PATTERN.match(following) is not None\n",
+                  "                    or following.startswith(\">\")\n",
+                  "                    or re.match(r\"#{1,6}(?:[ \\t]+|$)\", following) is not None\n",
+                  "                ):\n",
+                  "                    parser.violations.add(\"raw-block\")\n",
+                  "                    break\n",
+                  "        if \"raw-block\" in parser.violations:\n",
+                  "            break\n",
+                  "\n",
+              ]),
+          )
+
+          regression = Path("tests/test_pr4_clean_head_audit_regressions.py")
+          test_anchor = "\n\ndef test_single_source_accepts_equivalent_inline_link() -> None:\n"
+          new_tests = r'''
+
+          @pytest.mark.parametrize(
+              "fragment",
+              (
+                  "## Governed section<dialog open>\nCanonical governed prose.\n</dialog>\n## Next section\n",
+                  "## Governed section\n<dialog open>\nCanonical governed prose.\n</dialog>## Next section\n",
+              ),
+          )
+          def test_dialog_boundaries_must_be_standalone_source_lines(fragment: str) -> None:
+              violations = POLICING["_governed_surface_html_violations"](fragment)
+              assert "dialog-inline-block" in violations
+
+
+          @pytest.mark.parametrize("tag", ("div", "section"))
+          def test_clean_line_block_container_clause_fragment_is_rejected(tag: str) -> None:
+              fragment = (
+                  "Availability through ABC iview is\n"
+                  f"<{tag}>\n"
+                  "not\n"
+                  f"</{tag}>\n"
+                  "permission to redistribute content."
+              )
+              assert "raw-block" in POLICING["_governed_surface_html_violations"](fragment)
+
+              corpus = CORPUS.read_text(encoding="utf-8")
+              original = "Availability through ABC iview is not permission to redistribute content."
+              assert original in corpus
+              with pytest.raises(AssertionError, match="raw block-container HTML"):
+                  REGISTRY["_validate_registry_corpus"](
+                      corpus.replace(original, fragment, 1)
+                  )
+
+
+          def test_type6_block_cannot_steal_markdown_list_ownership() -> None:
+              fragment = (
+                  "## Governed section\n"
+                  "<div>\n"
+                  "- canonical governed item\n"
+                  "</div>\n"
+                  "## Next section\n"
+              )
+              assert "raw-block" in POLICING["_governed_surface_html_violations"](fragment)
+
+              roadmap_path = ROOT / "ROADMAP.md"
+              roadmap = roadmap_path.read_text(encoding="utf-8")
+              item = (
+                  "- register official and current sources for each Australian and United States "
+                  "jurisdictional claim before adopting it as benchmark context;"
+              )
+              assert item in roadmap
+              mutated = roadmap.replace(item, f"<div>\n{item}\n</div>", 1)
+              with pytest.raises(AssertionError):
+                  POLICING["_validate_policing_workstream"](mutated)
+          '''
+          new_tests = "\n".join(line[10:] if line.startswith("          ") else line for line in new_tests.splitlines())
+          replace_once(regression, test_anchor, new_tests + test_anchor)
+          PY
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run focused block-container regressions
+        run: |
+          pytest -q \
+            tests/test_pr4_clean_head_audit_regressions.py \
+            tests/test_policing_context_roadmap.py \
+            tests/test_research_reference_registry.py
+
+      - name: Run full suite
+        run: pytest -q --disable-warnings --maxfail=1
+
+      - name: Commit verified repair and self-delete runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/pr4-block-container-repair.yml
+          git add tests/test_policing_context_roadmap.py \
+                  tests/test_pr4_clean_head_audit_regressions.py
+          git diff --cached --check
+          git commit -m "Fix PR4 block-container ownership gaps"
+          git push origin HEAD:research-corpus-governed-expansion
