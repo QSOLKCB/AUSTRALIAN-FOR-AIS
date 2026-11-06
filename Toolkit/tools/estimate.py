@@ -2,7 +2,7 @@
 
 import argparse
 import hashlib
- from pathlib import Path
+from pathlib import Path
 
 from Toolkit.modules.contrast import estimate
 from Toolkit.modules.receipts import (MAX_CAPTURE_BYTES, MAX_CAPTURE_LINE_BYTES,
