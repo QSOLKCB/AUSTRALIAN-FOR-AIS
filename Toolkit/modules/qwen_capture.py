@@ -68,10 +68,29 @@ class LocalQwenCapture:
         if encoded["input_ids"].shape[1] > self.max_tokens:
             raise ValueError("prompt exceeds max_tokens; no truncation permitted")
         encoded = {key: value.to(self.device) for key, value in encoded.items()}
-        with self.torch.inference_mode():
-            output = self.model(**encoded, output_hidden_states=True, use_cache=False)
-        states = output.hidden_states
-        if states is None or len(states) < 2:
-            raise RuntimeError("model returned no layer activations")
-        return {str(i): state[0, -1, :].float().cpu().tolist()
-                for i, state in enumerate(states[1:])}
+        # Qwen3 normalizes the final hidden state *after* its last decoder
+        # layer. output_hidden_states[1:] therefore mixes activation sites.
+        # Hooks provide the same pre-final-norm decoder output at every layer.
+        layers = getattr(getattr(self.model, "model", None), "layers", None)
+        if layers is None or not len(layers):
+            raise RuntimeError("Qwen3 decoder layers are unavailable")
+        captured = {}
+        handles = []
+
+        def capture_hook(index):
+            def hook(_module, _inputs, output):
+                hidden = output[0] if isinstance(output, (tuple, list)) else output
+                captured[str(index)] = hidden[0, -1, :].detach().float().cpu().tolist()
+            return hook
+
+        try:
+            for index, layer in enumerate(layers):
+                handles.append(layer.register_forward_hook(capture_hook(index)))
+            with self.torch.inference_mode():
+                self.model(**encoded, use_cache=False)
+        finally:
+            for handle in handles:
+                handle.remove()
+        if len(captured) != len(layers):
+            raise RuntimeError("a decoder layer did not produce an activation")
+        return {str(index): captured[str(index)] for index in range(len(layers))}

@@ -33,24 +33,41 @@ def json_record(line):
                           ValueError(f"non-finite JSON constant: {value}")))
 
 
-def load_jsonl(path, *, max_bytes=128 * 1024 * 1024, max_records=1000):
+# Producer and consumer use exactly the same on-disk limits.
+MAX_CAPTURE_BYTES = 1024 * 1024 * 1024
+MAX_CAPTURE_LINE_BYTES = 32 * 1024 * 1024
+MAX_CAPTURE_RECORDS = 100
+
+
+def iter_jsonl(path, *, max_bytes=128 * 1024 * 1024, max_records=1000,
+               max_line_bytes=MAX_CAPTURE_LINE_BYTES):
+    """Stream strict JSONL with bounded record and line sizes."""
     path = Path(path)
     if not path.is_file() or path.stat().st_size > max_bytes:
         raise ValueError("input is missing or exceeds the byte limit")
-    records = []
-    with path.open("r", encoding="utf-8") as stream:
-        for line_number, line in enumerate(stream, 1):
+    count = 0
+    with path.open("rb") as stream:
+        line_number = 0
+        while line := stream.readline(max_line_bytes + 1):
+            line_number += 1
+            if len(line) > max_line_bytes:
+                raise ValueError(f"JSONL line {line_number} exceeds the byte limit")
             if not line.strip():
                 continue
-            if len(records) >= max_records:
+            if count >= max_records:
                 raise ValueError("input exceeds the record limit")
             try:
-                records.append(json_record(line))
-            except (ValueError, json.JSONDecodeError) as exc:
+                record = json_record(line.decode("utf-8"))
+            except (UnicodeError, ValueError) as exc:
                 raise ValueError(f"invalid JSONL line {line_number}: {exc}") from exc
-    if not records:
+            count += 1
+            yield record
+    if count == 0:
         raise ValueError("input has no records")
-    return records
+
+
+def load_jsonl(path, *, max_bytes=128 * 1024 * 1024, max_records=1000):
+    return list(iter_jsonl(path, max_bytes=max_bytes, max_records=max_records))
 
 
 def write_new(path, data):

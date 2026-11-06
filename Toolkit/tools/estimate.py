@@ -2,11 +2,12 @@
 
 import argparse
 import hashlib
-import json
-from pathlib import Path
+ from pathlib import Path
 
 from Toolkit.modules.contrast import estimate
-from Toolkit.modules.receipts import canonical_json, load_jsonl, sha256_file, write_new
+from Toolkit.modules.receipts import (MAX_CAPTURE_BYTES, MAX_CAPTURE_LINE_BYTES,
+                                      MAX_CAPTURE_RECORDS, canonical_json, iter_jsonl,
+                                      sha256_file, write_new)
 
 
 def main(argv=None):
@@ -19,14 +20,19 @@ def main(argv=None):
     if len(args.checkpoint_manifest) != 64 or any(c not in "0123456789abcdef" for c in args.checkpoint_manifest):
         parser.error("checkpoint-manifest must be a lowercase SHA-256 hex digest")
     try:
-        pairs = load_jsonl(args.input)
-        if any(pair.get("checkpoint_manifest_sha256") != args.checkpoint_manifest
-               for pair in pairs if isinstance(pair, dict)):
-            raise ValueError("pair checkpoint fingerprints do not match the supplied manifest")
+        def checked_pairs():
+            for pair in iter_jsonl(args.input, max_bytes=MAX_CAPTURE_BYTES,
+                                   max_records=MAX_CAPTURE_RECORDS,
+                                   max_line_bytes=MAX_CAPTURE_LINE_BYTES):
+                if not isinstance(pair, dict) or pair.get("checkpoint_manifest_sha256") != args.checkpoint_manifest:
+                    raise ValueError("pair checkpoint fingerprints do not match the supplied manifest")
+                yield pair
+
+        directions = estimate(checked_pairs())
         result = {"schema": "au-steer-vector/1",
                   "checkpoint_manifest_sha256": args.checkpoint_manifest,
                   "input_sha256": sha256_file(args.input),
-                  **estimate(pairs)}
+                  **directions}
         result["receipt_sha256"] = hashlib.sha256(canonical_json(result)).hexdigest()
         write_new(args.output, canonical_json(result))
     except (ValueError, OSError, OverflowError) as exc:

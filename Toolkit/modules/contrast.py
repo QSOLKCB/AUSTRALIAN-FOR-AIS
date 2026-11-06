@@ -34,12 +34,14 @@ def estimate(pairs):
               negative:{layer:[...]}}]. A held-out record is never admitted.
     A nonzero direction is a descriptive contrast, not a causal effect.
     """
-    if not isinstance(pairs, list) or not pairs:
-        raise ContrastError("at least one training pair is required")
+    try:
+        rows = iter(pairs)
+    except TypeError as exc:
+        raise ContrastError("training pairs must be iterable") from exc
     seen = set()
     validated = []
     layout = None
-    for index, pair in enumerate(pairs):
+    for index, pair in enumerate(rows):
         if not isinstance(pair, dict):
             raise ContrastError(f"pair {index}: expected an object")
         pair_id = pair.get("pair_id")
@@ -59,14 +61,17 @@ def estimate(pairs):
             layout = shape
         elif shape != layout:
             raise ContrastError(f"{pair_id}: inconsistent layer shape")
-        validated.append((pair_id, positive, negative))
-
+        # Retain only differences, not two copies of the input activations.
+        validated.append((pair_id, {k: [a - b for a, b in zip(positive[k], negative[k])]
+                                    for k in positive}))
+    if not validated:
+        raise ContrastError("at least one training pair is required")
     validated.sort(key=lambda item: item[0])
     results = {}
     for layer in sorted(layout, key=int):
         width = layout[layer]
         delta = [
-            math.fsum(pos[layer][j] - neg[layer][j] for _, pos, neg in validated) / len(validated)
+            math.fsum(diff[layer][j] for _, diff in validated) / len(validated)
             for j in range(width)
         ]
         if any(not math.isfinite(x) for x in delta):

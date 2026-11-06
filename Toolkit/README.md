@@ -69,8 +69,14 @@ Capture input JSONL rows are:
 {"pair_id":"example-1","split":"train","positive_prompt":"An authored Australian example","negative_prompt":"A matched control example"}
 ~~~
 
-The v1 capture site is the **last prompt token** of each Qwen3 residual
-stream layer output (embedding excluded), not an MLP output or an audio encoder.
+The v2 capture site is the **last prompt token**, taken directly from each
+Qwen3 decoder layer output **before** the final model RMS normalization
+(embedding excluded), not an MLP output or an audio encoder. This avoids
+mixing normalized final hidden states with unnormalized intermediate layers.
+The capture producer and estimation consumer share a 1 GiB file bound,
+32 MiB per-record bound and a 100-pair limit. Capture streams to a temporary
+file and will not publish activations if the destination or receipt already
+exists; it attempts to roll back an output if receipt publication fails.
 A capture receipt includes exact hashes of local checkpoint files, input and output.
 No dataset is automatically downloaded. No model weights are changed.
 
@@ -92,3 +98,20 @@ A CLT is **not included yet**. Cross-layer transcoder reconstruction and
 trained sparse features demand additional target-activation collection,
 out-of-sample reconstruction tests, sparsity metrics and causal validation.
 See docs/PLAN.md.
+
+## Correctness hardening for AU-STEER-001
+
+Qwen3's final `hidden_states` entry can be post-RMS-normalization, so the capture
+adapter now attaches scoped hooks to every decoder layer output and removes
+them in a finally block. The capture receipt uses method
+`qwen3-final-prompt-token-decoder-pre-norm-v2` to distinguish this from the
+original mixed-site prototype. Activation files should not be compared across
+these method versions.
+
+The capture producer and streaming estimator share a bounded 1 GiB output
+contract, 32 MiB per JSONL record, and 100 records. The producer buffers only
+one captured JSONL record at a time, while the estimator retains paired
+differences in memory for deterministic ordering. Validate the checksum in
+`out.jsonl.receipt.json` before using any artifact that may have been left
+by process termination. Receipt publication failures trigger output rollback;
+there is no general two-file atomic transaction across abrupt power loss.
